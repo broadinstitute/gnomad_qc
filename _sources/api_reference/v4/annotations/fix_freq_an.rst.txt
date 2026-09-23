@@ -1,0 +1,58 @@
+gnomad_qc.v4.annotations.fix_freq_an
+====================================
+
+
+Updates the v4.0 freq HT with the correct AN for the v4.1 release.
+
+There is an error in the v4.0 freq HT where the AN can be incorrect for variants that
+are only present in one of the UKB or non-UKB subsets. This is because the frequency
+data was computed on each subset separately and then combined. In order to filter the
+dataset to only samples that are in the UKB or non-UKB subsets, the
+`hail.vds.filter_samples` was used. Unfortunately, the behavior of this function was
+not the expected behavior due to the following line of code:
+
+    .. code-block::
+
+        variant_data = variant_data.filter_rows(hl.agg.count() > 0)
+
+This line of code filters any row that has no genotypes in the sample subset. When the
+VariantDataset is densified prior to the frequency calculations this results in no
+reference data being filled in for that row, unless a row is part of multiallelic site that is not
+exclusive to the sample subset, and therefore a missing AN for that row. When combining
+the frequency data for the UKB and non-UKB subsets, the AN for these rows will
+only have the AN for the subset that has non-ref genotypes for that row.
+
+This script performs the following steps:
+
+    - Generates allele number and GQ/DP histograms for all sites in the exome calling
+      interval.
+
+        - For raw genotypes, the AN is just the sum of the ploidy (more specifics on
+          this below) for all genotypes.
+        - For adj genotypes, the AN is the sum of the ploidy for all genotypes that pass
+          the GQ, DP, and allele balance adj filters. Since this is for a site, rather
+          than a specific variant, this number will not always be the same as the AN for
+          a specific variant at that site. This AN can be smaller if it is a
+          multi-allelic site where there are non-ref genotypes for another variant that
+          fails the adj filters.
+        - For raw genotypes on non-PAR regions of the X or Y chromosome, the AN is the
+          sum of the ploidy after adjusting for sex karyotype, BUT NOT taking into
+          account the genotype when adjusting the ploidy. For instance, a het genotype
+          for an XY sample will still have a ploidy of 1, even though the genotype is a
+          het and is therefore set to missing for the frequency calculations.
+
+    - Generates allele number and GQ/DP histograms for the frequency correction.
+
+
+
+
+
+
+
+Module Functions
+****************
+
+.. gnomad_automodulesummary:: gnomad_qc.v4.annotations.fix_freq_an
+
+.. automodule:: gnomad_qc.v4.annotations.fix_freq_an
+    :exclude-members: get_script_argument_parser

@@ -1,0 +1,1081 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>gnomad_qc.v4.sample_qc.relatedness &mdash; gnomad_qc master documentation</title>
+      <link rel="stylesheet" href="../../../../_static/pygments.css" type="text/css" />
+      <link rel="stylesheet" href="../../../../_static/css/theme.css" type="text/css" />
+      <link rel="stylesheet" href="../../../../_static/theme_overrides.css" type="text/css" />
+  <!--[if lt IE 9]>
+    <script src="../../../../_static/js/html5shiv.min.js"></script>
+  <![endif]-->
+  
+        <script src="../../../../_static/jquery.js"></script>
+        <script src="../../../../_static/_sphinx_javascript_frameworks_compat.js"></script>
+        <script data-url_root="../../../../" id="documentation_options" src="../../../../_static/documentation_options.js"></script>
+        <script src="../../../../_static/doctools.js"></script>
+        <script src="../../../../_static/sphinx_highlight.js"></script>
+        <script src="https://unpkg.com/mermaid@10.2.0/dist/mermaid.min.js"></script>
+        <script>mermaid.initialize({startOnLoad:true});</script>
+    <script src="../../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../../index.html" class="icon icon-home">
+            gnomad_qc
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../../api_reference/index.html">API Reference</a></li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/broadinstitute/gnomad_qc/tags">Change Log</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../../index.html">gnomad_qc</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../../index.html">Module code</a></li>
+      <li class="breadcrumb-item active">gnomad_qc.v4.sample_qc.relatedness</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for gnomad_qc.v4.sample_qc.relatedness</h1><div class="highlight"><pre>
+<span></span><span class="sd">&quot;&quot;&quot;Script to compute relatedness estimates among pairs of samples in the callset.&quot;&quot;&quot;</span>
+
+<span class="kn">import</span> <span class="nn">argparse</span>
+<span class="kn">import</span> <span class="nn">logging</span>
+<span class="kn">import</span> <span class="nn">textwrap</span>
+<span class="kn">from</span> <span class="nn">typing</span> <span class="kn">import</span> <span class="n">Dict</span><span class="p">,</span> <span class="n">Optional</span><span class="p">,</span> <span class="n">Tuple</span>
+
+<span class="kn">import</span> <span class="nn">hail</span> <span class="k">as</span> <span class="nn">hl</span>
+<span class="kn">import</span> <span class="nn">networkx</span> <span class="k">as</span> <span class="nn">nx</span>
+<span class="kn">from</span> <span class="nn">gnomad.sample_qc.relatedness</span> <span class="kn">import</span> <span class="p">(</span>
+    <span class="n">DUPLICATE_OR_TWINS</span><span class="p">,</span>
+    <span class="n">compute_related_samples_to_drop</span><span class="p">,</span>
+    <span class="n">get_slope_int_relationship_expr</span><span class="p">,</span>
+<span class="p">)</span>
+<span class="kn">from</span> <span class="nn">gnomad.utils.slack</span> <span class="kn">import</span> <span class="n">slack_notifications</span>
+<span class="kn">from</span> <span class="nn">hail.utils.misc</span> <span class="kn">import</span> <span class="n">new_temp_file</span>
+
+<span class="kn">from</span> <span class="nn">gnomad_qc.resource_utils</span> <span class="kn">import</span> <span class="p">(</span>
+    <span class="n">PipelineResourceCollection</span><span class="p">,</span>
+    <span class="n">PipelineStepResourceCollection</span><span class="p">,</span>
+<span class="p">)</span>
+<span class="kn">from</span> <span class="nn">gnomad_qc.slack_creds</span> <span class="kn">import</span> <span class="n">slack_token</span>
+<span class="kn">from</span> <span class="nn">gnomad_qc.v4.resources.basics</span> <span class="kn">import</span> <span class="n">get_logging_path</span>
+<span class="kn">from</span> <span class="nn">gnomad_qc.v4.resources.meta</span> <span class="kn">import</span> <span class="n">project_meta</span>
+<span class="kn">from</span> <span class="nn">gnomad_qc.v4.resources.sample_qc</span> <span class="kn">import</span> <span class="p">(</span>
+    <span class="n">finalized_outlier_filtering</span><span class="p">,</span>
+    <span class="n">get_cuking_input_path</span><span class="p">,</span>
+    <span class="n">get_cuking_output_path</span><span class="p">,</span>
+    <span class="n">get_joint_qc</span><span class="p">,</span>
+    <span class="n">ibd</span><span class="p">,</span>
+    <span class="n">joint_qc_meta</span><span class="p">,</span>
+    <span class="n">pc_relate_pca_scores</span><span class="p">,</span>
+    <span class="n">related_samples_to_drop</span><span class="p">,</span>
+    <span class="n">relatedness</span><span class="p">,</span>
+    <span class="n">sample_rankings</span><span class="p">,</span>
+<span class="p">)</span>
+<span class="kn">from</span> <span class="nn">gnomad_qc.v4.sample_qc.cuKING.cuking_outputs_to_ht</span> <span class="kn">import</span> <span class="n">cuking_outputs_to_ht</span>
+<span class="kn">from</span> <span class="nn">gnomad_qc.v4.sample_qc.cuKING.mt_to_cuking_inputs</span> <span class="kn">import</span> <span class="n">mt_to_cuking_inputs</span>
+
+<span class="n">logging</span><span class="o">.</span><span class="n">basicConfig</span><span class="p">(</span><span class="nb">format</span><span class="o">=</span><span class="s2">&quot;</span><span class="si">%(levelname)s</span><span class="s2"> (</span><span class="si">%(name)s</span><span class="s2"> </span><span class="si">%(lineno)s</span><span class="s2">): </span><span class="si">%(message)s</span><span class="s2">&quot;</span><span class="p">)</span>
+<span class="n">logger</span> <span class="o">=</span> <span class="n">logging</span><span class="o">.</span><span class="n">getLogger</span><span class="p">(</span><span class="s2">&quot;relatedness&quot;</span><span class="p">)</span>
+<span class="n">logger</span><span class="o">.</span><span class="n">setLevel</span><span class="p">(</span><span class="n">logging</span><span class="o">.</span><span class="n">INFO</span><span class="p">)</span>
+
+<span class="n">DATA_TYPES</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;genomes&quot;</span><span class="p">,</span> <span class="s2">&quot;exomes&quot;</span><span class="p">}</span>
+
+
+<div class="viewcode-block" id="print_cuking_command"><a class="viewcode-back" href="../../../../api_reference/v4/sample_qc/relatedness.html#gnomad_qc.v4.sample_qc.relatedness.print_cuking_command">[docs]</a><span class="k">def</span> <span class="nf">print_cuking_command</span><span class="p">(</span>
+    <span class="n">cuking_input_path</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="n">cuking_output_path</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="n">min_emission_kinship</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">0.5</span><span class="p">,</span>
+    <span class="n">cuking_split_factor</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">4</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Print the command to submit a Cloud Batch job for running cuKING.</span>
+
+<span class="sd">    :param cuking_input_path: Path to the cuKING input Parquet files.</span>
+<span class="sd">    :param cuking_output_path: Path to the cuKING output Parquet files.</span>
+<span class="sd">    :param min_emission_kinship: Minimum kinship threshold for emitting a pair of</span>
+<span class="sd">        samples in the relatedness output.</span>
+<span class="sd">    :param cuking_split_factor: Split factor to use for splitting the full relatedness</span>
+<span class="sd">        matrix table into equally sized submatrices that are computed independently to</span>
+<span class="sd">        parallelize the relatedness computation and decrease the memory requirements.</span>
+<span class="sd">        For example, to halve memory requirements, the full matrix can be split into</span>
+<span class="sd">        equally sized submatrices (i.e. a &#39;split factor&#39; of 4). Only the</span>
+<span class="sd">        &#39;upper triangular&#39; submatrices need to be evaluated due to the symmetry of the</span>
+<span class="sd">        relatedness matrix, leading to 10 shards. Default is 4.</span>
+<span class="sd">    :return:</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span>
+        <span class="s2">&quot;Printing a command that can be used to submit a Cloud Batch job to run &quot;</span>
+        <span class="s2">&quot;cuKING on the files created by --prepare-cuking-inputs.&quot;</span>
+    <span class="p">)</span>
+    <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span>
+        <span class="s2">&quot;This printed command assumes that the cuKING directory is in the same &quot;</span>
+        <span class="s2">&quot;location where the command is being run and that $PROJECT_ID is set!&quot;</span>
+    <span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span>
+        <span class="n">textwrap</span><span class="o">.</span><span class="n">dedent</span><span class="p">(</span>
+            <span class="sa">f</span><span class="s2">&quot;&quot;&quot;</span><span class="se">\</span>
+<span class="s2">             cd cuKING &amp;&amp; </span><span class="se">\\</span>
+<span class="s2">             ./cloud_batch_submit.py </span><span class="se">\\</span>
+<span class="s2">                 --location=us-central1 </span><span class="se">\\</span>
+<span class="s2">                 --project-id=$PROJECT_ID </span><span class="se">\\</span>
+<span class="s2">                 --tag-name=$(git describe --tags) </span><span class="se">\\</span>
+<span class="s2">                 --input-uri=</span><span class="si">{</span><span class="n">cuking_input_path</span><span class="si">}</span><span class="s2"> </span><span class="se">\\</span>
+<span class="s2">                 --output-uri=</span><span class="si">{</span><span class="n">cuking_output_path</span><span class="si">}</span><span class="s2"> </span><span class="se">\\</span>
+<span class="s2">                 --service-account=cuking@$PROJECT_ID.iam.gserviceaccount.com </span><span class="se">\\</span>
+<span class="s2">                 --write-success-file </span><span class="se">\\</span>
+<span class="s2">                 --requester-pays-project=$PROJECT_ID </span><span class="se">\\</span>
+<span class="s2">                 --kin-threshold=</span><span class="si">{</span><span class="n">min_emission_kinship</span><span class="si">}</span><span class="s2"> </span><span class="se">\\</span>
+<span class="s2">                 --split-factor=</span><span class="si">{</span><span class="n">cuking_split_factor</span><span class="si">}</span><span class="s2"> &amp;&amp;</span>
+<span class="s2">             cd ..</span>
+<span class="s2">             &quot;&quot;&quot;</span>
+        <span class="p">)</span>
+    <span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="compute_ibd_on_cuking_pair_subset"><a class="viewcode-back" href="../../../../api_reference/v4/sample_qc/relatedness.html#gnomad_qc.v4.sample_qc.relatedness.compute_ibd_on_cuking_pair_subset">[docs]</a><span class="k">def</span> <span class="nf">compute_ibd_on_cuking_pair_subset</span><span class="p">(</span>
+    <span class="n">mt</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">,</span>
+    <span class="n">relatedness_ht</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">,</span>
+    <span class="n">ibd_min_cuking_kin</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">0.16</span><span class="p">,</span>
+    <span class="n">ibd_max_cuking_ibs0</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">50</span><span class="p">,</span>
+    <span class="n">ibd_max_samples</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">10000</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Run Hail&#39;s identity by descent on a subset of related pairs identified by cuKING.</span>
+
+<span class="sd">    The pairs that will get an identity by descent annotation are those where either</span>
+<span class="sd">    `ibd_min_cuking_kin` or `ibd_max_cuking_ibs0` are met.</span>
+
+<span class="sd">    :param mt: QC MatrixTable.</span>
+<span class="sd">    :param relatedness_ht: cuKING relatedness Table.</span>
+<span class="sd">    :param ibd_min_cuking_kin: Minimum cuKING kinship for pair to be included in IBD</span>
+<span class="sd">        estimates. Default is 0.16.</span>
+<span class="sd">    :param ibd_max_cuking_ibs0: Maximum cuKING IBS0 for pair to be included in IBD</span>
+<span class="sd">        estimates. Default is 50. This default was determined from looking at the cuKING</span>
+<span class="sd">        Kinship vs. IBS0 plot for gnomAD v3 + gnomAD v4.</span>
+<span class="sd">    :param ibd_max_samples: Maximum number of samples to include in each IBD run.</span>
+<span class="sd">    :return: Table containing identity by descent metrics on related sample pairs.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span>
+        <span class="s2">&quot;Filtering the relatedness HT to pairs with cuKING kinship greater than </span><span class="si">%f</span><span class="s2"> or &quot;</span>
+        <span class="s2">&quot;IBS0 less than </span><span class="si">%d</span><span class="s2"> for IBD annotation.&quot;</span><span class="p">,</span>
+        <span class="n">ibd_min_cuking_kin</span><span class="p">,</span>
+        <span class="n">ibd_max_cuking_ibs0</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">relatedness_ht</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span>
+        <span class="p">(</span><span class="n">relatedness_ht</span><span class="o">.</span><span class="n">kin</span> <span class="o">&gt;</span> <span class="n">ibd_min_cuking_kin</span><span class="p">)</span>
+        <span class="o">|</span> <span class="p">(</span><span class="n">relatedness_ht</span><span class="o">.</span><span class="n">ibs0</span> <span class="o">&lt;</span> <span class="n">ibd_max_cuking_ibs0</span><span class="p">)</span>
+    <span class="p">)</span>
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">key_by</span><span class="p">(</span><span class="n">i</span><span class="o">=</span><span class="n">ht</span><span class="o">.</span><span class="n">i</span><span class="o">.</span><span class="n">s</span><span class="p">,</span> <span class="n">j</span><span class="o">=</span><span class="n">ht</span><span class="o">.</span><span class="n">j</span><span class="o">.</span><span class="n">s</span><span class="p">)</span>
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">checkpoint</span><span class="p">(</span><span class="n">new_temp_file</span><span class="p">(</span><span class="s2">&quot;cuking_for_ibd&quot;</span><span class="p">,</span> <span class="n">extension</span><span class="o">=</span><span class="s2">&quot;ht&quot;</span><span class="p">))</span>
+
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span>
+        <span class="s2">&quot;Building a network from the list of pairs and extracting the list of &quot;</span>
+        <span class="s2">&quot;connected components.&quot;</span>
+    <span class="p">)</span>
+    <span class="n">pair_graph</span> <span class="o">=</span> <span class="n">nx</span><span class="o">.</span><span class="n">Graph</span><span class="p">()</span>
+    <span class="n">pair_graph</span><span class="o">.</span><span class="n">add_edges_from</span><span class="p">(</span><span class="nb">list</span><span class="p">(</span><span class="nb">zip</span><span class="p">(</span><span class="n">ht</span><span class="o">.</span><span class="n">i</span><span class="o">.</span><span class="n">collect</span><span class="p">(),</span> <span class="n">ht</span><span class="o">.</span><span class="n">j</span><span class="o">.</span><span class="n">collect</span><span class="p">())))</span>
+    <span class="n">connected_samples</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">nx</span><span class="o">.</span><span class="n">connected_components</span><span class="p">(</span><span class="n">pair_graph</span><span class="p">))</span>
+
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span>
+        <span class="s2">&quot;Looping through </span><span class="si">%d</span><span class="s2"> connected components that include a total of </span><span class="si">%d</span><span class="s2"> samples. &quot;</span>
+        <span class="s2">&quot;hl.identity_by_descent is run on at most </span><span class="si">%d</span><span class="s2"> samples at a time, where all &quot;</span>
+        <span class="s2">&quot;samples from a connected component are in the same IBD run.&quot;</span><span class="p">,</span>
+        <span class="nb">len</span><span class="p">(</span><span class="n">connected_samples</span><span class="p">),</span>
+        <span class="nb">sum</span><span class="p">([</span><span class="nb">len</span><span class="p">(</span><span class="n">c</span><span class="p">)</span> <span class="k">for</span> <span class="n">c</span> <span class="ow">in</span> <span class="n">connected_samples</span><span class="p">]),</span>
+        <span class="n">ibd_max_samples</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">ibd_hts</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="n">sample_subset</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">while</span> <span class="n">connected_samples</span><span class="p">:</span>
+        <span class="n">sample_subset</span><span class="o">.</span><span class="n">extend</span><span class="p">(</span><span class="n">connected_samples</span><span class="o">.</span><span class="n">pop</span><span class="p">())</span>
+        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">sample_subset</span><span class="p">)</span> <span class="o">&gt;</span> <span class="n">ibd_max_samples</span> <span class="ow">or</span> <span class="ow">not</span> <span class="n">connected_samples</span><span class="p">:</span>
+            <span class="n">ibd_ht</span> <span class="o">=</span> <span class="n">hl</span><span class="o">.</span><span class="n">identity_by_descent</span><span class="p">(</span>
+                <span class="n">mt</span><span class="o">.</span><span class="n">filter_cols</span><span class="p">(</span><span class="n">hl</span><span class="o">.</span><span class="n">literal</span><span class="p">(</span><span class="n">sample_subset</span><span class="p">)</span><span class="o">.</span><span class="n">contains</span><span class="p">(</span><span class="n">mt</span><span class="o">.</span><span class="n">s</span><span class="p">))</span>
+            <span class="p">)</span>
+            <span class="c1"># Order the ibd output so that i and j are the same in `ht` and `ibd_ht`.</span>
+            <span class="n">ht_idx1</span> <span class="o">=</span> <span class="n">hl</span><span class="o">.</span><span class="n">is_defined</span><span class="p">(</span><span class="n">ht</span><span class="p">[</span><span class="n">ibd_ht</span><span class="o">.</span><span class="n">i</span><span class="p">,</span> <span class="n">ibd_ht</span><span class="o">.</span><span class="n">j</span><span class="p">])</span>
+            <span class="n">ht_idx2</span> <span class="o">=</span> <span class="n">hl</span><span class="o">.</span><span class="n">is_defined</span><span class="p">(</span><span class="n">ht</span><span class="p">[</span><span class="n">ibd_ht</span><span class="o">.</span><span class="n">j</span><span class="p">,</span> <span class="n">ibd_ht</span><span class="o">.</span><span class="n">i</span><span class="p">])</span>
+            <span class="n">ibd_ht</span> <span class="o">=</span> <span class="n">ibd_ht</span><span class="o">.</span><span class="n">key_by</span><span class="p">(</span>
+                <span class="n">i</span><span class="o">=</span><span class="n">hl</span><span class="o">.</span><span class="n">struct</span><span class="p">(</span><span class="n">s</span><span class="o">=</span><span class="n">hl</span><span class="o">.</span><span class="n">if_else</span><span class="p">(</span><span class="n">ht_idx1</span><span class="p">,</span> <span class="n">ibd_ht</span><span class="o">.</span><span class="n">i</span><span class="p">,</span> <span class="n">ibd_ht</span><span class="o">.</span><span class="n">j</span><span class="p">)),</span>
+                <span class="n">j</span><span class="o">=</span><span class="n">hl</span><span class="o">.</span><span class="n">struct</span><span class="p">(</span><span class="n">s</span><span class="o">=</span><span class="n">hl</span><span class="o">.</span><span class="n">if_else</span><span class="p">(</span><span class="n">ht_idx2</span><span class="p">,</span> <span class="n">ibd_ht</span><span class="o">.</span><span class="n">j</span><span class="p">,</span> <span class="n">ibd_ht</span><span class="o">.</span><span class="n">i</span><span class="p">)),</span>
+            <span class="p">)</span>
+            <span class="c1"># Keep only pairs that were in the original relatedness HT.</span>
+            <span class="n">ibd_ht</span> <span class="o">=</span> <span class="n">ibd_ht</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">hl</span><span class="o">.</span><span class="n">is_defined</span><span class="p">(</span><span class="n">ibd_ht</span><span class="o">.</span><span class="n">key</span><span class="p">))</span>
+            <span class="n">ibd_hts</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
+                <span class="n">ibd_ht</span><span class="o">.</span><span class="n">checkpoint</span><span class="p">(</span>
+                    <span class="n">new_temp_file</span><span class="p">(</span><span class="s2">&quot;relatedness_ibd_subset&quot;</span><span class="p">,</span> <span class="n">extension</span><span class="o">=</span><span class="s2">&quot;ht&quot;</span><span class="p">)</span>
+                <span class="p">)</span>
+            <span class="p">)</span>
+            <span class="n">sample_subset</span> <span class="o">=</span> <span class="p">[]</span>
+
+    <span class="n">full_ibd_ht</span> <span class="o">=</span> <span class="n">ibd_hts</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">union</span><span class="p">(</span><span class="o">*</span><span class="n">ibd_hts</span><span class="p">[</span><span class="mi">1</span><span class="p">:])</span>
+    <span class="n">full_ibd_ht</span> <span class="o">=</span> <span class="n">full_ibd_ht</span><span class="o">.</span><span class="n">annotate_globals</span><span class="p">(</span><span class="n">ibd_min_cuking_kin</span><span class="o">=</span><span class="n">ibd_min_cuking_kin</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">full_ibd_ht</span><span class="o">.</span><span class="n">distinct</span><span class="p">()</span></div>
+
+
+<div class="viewcode-block" id="finalize_relatedness_ht"><a class="viewcode-back" href="../../../../api_reference/v4/sample_qc/relatedness.html#gnomad_qc.v4.sample_qc.relatedness.finalize_relatedness_ht">[docs]</a><span class="k">def</span> <span class="nf">finalize_relatedness_ht</span><span class="p">(</span>
+    <span class="n">ht</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">,</span>
+    <span class="n">meta_ht</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">,</span>
+    <span class="n">relatedness_method</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="n">relatedness_args</span><span class="p">:</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">float</span><span class="p">],</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Create the finalized relatedness Table including adding a &#39;relationship&#39; annotation for each pair.</span>
+
+<span class="sd">    The `relatedness_args` dictionary should have the following keys:</span>
+<span class="sd">        - &#39;second_degree_min_kin&#39;: Minimum kinship threshold for filtering a pair of</span>
+<span class="sd">          samples with a second degree relationship when filtering related individuals.</span>
+<span class="sd">          Default is 0.08838835. Bycroft et al. (2018) calculates a theoretical kinship</span>
+<span class="sd">          of 0.08838835 for a second degree relationship cutoff. This cutoff should be</span>
+<span class="sd">          determined by evaluation of the kinship distribution.</span>
+<span class="sd">        - &#39;parent_child_max_ibd0_or_ibs0_over_ibs2&#39;: Maximum value of IBD0 (if</span>
+<span class="sd">          `relatedness_method` is &#39;pc_relate&#39;) or IBS0/IBS2 (if `relatedness_method` is</span>
+<span class="sd">          &#39;cuking&#39;) for a parent-child pair.</span>
+<span class="sd">        - &#39;second_degree_sibling_lower_cutoff_slope&#39;: Slope of the line to use as a</span>
+<span class="sd">          lower cutoff for second degree relatives and siblings from parent-child pairs.</span>
+<span class="sd">        - &#39;second_degree_sibling_lower_cutoff_intercept&#39;: Intercept of the line to use</span>
+<span class="sd">          as a lower cutoff for second degree relatives and siblings from parent-child</span>
+<span class="sd">          pairs.</span>
+<span class="sd">        - &#39;second_degree_upper_sibling_lower_cutoff_slope&#39;: Slope of the line to use as</span>
+<span class="sd">          an upper cutoff for second degree relatives and a lower cutoff for siblings.</span>
+<span class="sd">        - &#39;second_degree_upper_sibling_lower_cutoff_intercept&#39;: Intercept of the line to</span>
+<span class="sd">          use as an upper cutoff for second degree relatives and a lower cutoff for</span>
+<span class="sd">          siblings.</span>
+<span class="sd">        - &#39;duplicate_twin_min_kin&#39;: Minimum kinship for duplicate or twin pairs.</span>
+<span class="sd">        - &#39;duplicate_twin_ibd1_min&#39;: Minimum IBD1 cutoff for duplicate or twin pairs.</span>
+<span class="sd">          Only used when `relatedness_method` is &#39;pc_relate&#39;. Note: the min is used</span>
+<span class="sd">          because pc_relate can output large negative values in some corner cases.</span>
+<span class="sd">        - &#39;duplicate_twin_ibd1_max&#39;: Maximum IBD1 cutoff for duplicate or twin pairs.</span>
+<span class="sd">          Only used when `relatedness_method` is &#39;pc_relate&#39;.</span>
+
+<span class="sd">    The following annotations are added to `ht`:</span>
+<span class="sd">        - &#39;relationship&#39;: Relationship annotation for the pair. Returned by</span>
+<span class="sd">          `get_slope_int_relationship_expr`.</span>
+<span class="sd">        - &#39;gnomad_v3_duplicate&#39;: Whether the sample is a duplicate of a sample found in</span>
+<span class="sd">          the gnomAD v3.1 genomes.</span>
+<span class="sd">        - &#39;gnomad_v3_release_duplicate&#39;: Whether the sample is a duplicate of a sample</span>
+<span class="sd">          found in the gnomAD v3.1 release genomes.</span>
+
+<span class="sd">    :param ht: Input relatedness Table.</span>
+<span class="sd">    :param meta_ht: Input metadata Table. Used to add v3 overlap annotations.</span>
+<span class="sd">    :param relatedness_method: Which relatedness method to use for finalized</span>
+<span class="sd">        relatedness Table. Options are &#39;cuking&#39; and &#39;pc_relate&#39;. Default is &#39;cuking&#39;.</span>
+<span class="sd">    :param relatedness_args: Dictionary of arguments to be passed to</span>
+<span class="sd">        `get_slope_int_relationship_expr`.</span>
+<span class="sd">    :return: Finalized relatedness Table</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="n">relatedness_method</span> <span class="ow">not</span> <span class="ow">in</span> <span class="p">{</span><span class="s2">&quot;cuking&quot;</span><span class="p">,</span> <span class="s2">&quot;pc_relate&quot;</span><span class="p">}:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;`relatedness_method` must be &#39;cuking&#39; or &#39;pc_relate&#39;!&quot;</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">relatedness_method</span> <span class="o">==</span> <span class="s2">&quot;pc_relate&quot;</span><span class="p">:</span>
+        <span class="n">y_expr</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">ibd0</span>
+        <span class="n">ibd1_expr</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">ibd1</span>
+        <span class="n">parent_child_max_ann</span> <span class="o">=</span> <span class="s2">&quot;parent_child_max_ibd0&quot;</span>
+        <span class="n">relatedness_args</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="s2">&quot;duplicate_twin_ibd1_min&quot;</span><span class="p">)</span>
+        <span class="n">relatedness_args</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="s2">&quot;duplicate_twin_ibd1_max&quot;</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">y_expr</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">ibs0</span> <span class="o">/</span> <span class="n">ht</span><span class="o">.</span><span class="n">ibs2</span>
+        <span class="n">ibd1_expr</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="n">parent_child_max_ann</span> <span class="o">=</span> <span class="s2">&quot;parent_child_max_ibs0_over_ibs2&quot;</span>
+
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">annotate</span><span class="p">(</span>
+        <span class="n">relationship</span><span class="o">=</span><span class="n">get_slope_int_relationship_expr</span><span class="p">(</span>
+            <span class="n">kin_expr</span><span class="o">=</span><span class="n">ht</span><span class="o">.</span><span class="n">kin</span><span class="p">,</span>
+            <span class="n">y_expr</span><span class="o">=</span><span class="n">y_expr</span><span class="p">,</span>
+            <span class="o">**</span><span class="n">relatedness_args</span><span class="p">,</span>
+            <span class="n">ibd1_expr</span><span class="o">=</span><span class="n">ibd1_expr</span><span class="p">,</span>
+        <span class="p">)</span>
+    <span class="p">)</span>
+    <span class="n">relatedness_args</span><span class="p">[</span><span class="n">parent_child_max_ann</span><span class="p">]</span> <span class="o">=</span> <span class="n">relatedness_args</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="s2">&quot;parent_child_max_y&quot;</span><span class="p">)</span>
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">annotate_globals</span><span class="p">(</span>
+        <span class="n">relationship_inference_method</span><span class="o">=</span><span class="n">relatedness_method</span><span class="p">,</span>
+        <span class="n">relationship_cutoffs</span><span class="o">=</span><span class="n">hl</span><span class="o">.</span><span class="n">struct</span><span class="p">(</span><span class="o">**</span><span class="n">relatedness_args</span><span class="p">),</span>
+    <span class="p">)</span>
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">key_by</span><span class="p">(</span>
+        <span class="n">i</span><span class="o">=</span><span class="n">ht</span><span class="o">.</span><span class="n">i</span><span class="o">.</span><span class="n">annotate</span><span class="p">(</span><span class="n">data_type</span><span class="o">=</span><span class="n">meta_ht</span><span class="p">[</span><span class="n">ht</span><span class="o">.</span><span class="n">i</span><span class="o">.</span><span class="n">s</span><span class="p">]</span><span class="o">.</span><span class="n">data_type</span><span class="p">),</span>
+        <span class="n">j</span><span class="o">=</span><span class="n">ht</span><span class="o">.</span><span class="n">j</span><span class="o">.</span><span class="n">annotate</span><span class="p">(</span><span class="n">data_type</span><span class="o">=</span><span class="n">meta_ht</span><span class="p">[</span><span class="n">ht</span><span class="o">.</span><span class="n">j</span><span class="o">.</span><span class="n">s</span><span class="p">]</span><span class="o">.</span><span class="n">data_type</span><span class="p">),</span>
+    <span class="p">)</span>
+    <span class="n">gnomad_v3_duplicate_expr</span> <span class="o">=</span> <span class="p">(</span><span class="n">ht</span><span class="o">.</span><span class="n">relationship</span> <span class="o">==</span> <span class="n">DUPLICATE_OR_TWINS</span><span class="p">)</span> <span class="o">&amp;</span> <span class="p">(</span>
+        <span class="n">hl</span><span class="o">.</span><span class="n">set</span><span class="p">({</span><span class="n">ht</span><span class="o">.</span><span class="n">i</span><span class="o">.</span><span class="n">data_type</span><span class="p">,</span> <span class="n">ht</span><span class="o">.</span><span class="n">j</span><span class="o">.</span><span class="n">data_type</span><span class="p">})</span> <span class="o">==</span> <span class="n">hl</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="n">DATA_TYPES</span><span class="p">)</span>
+    <span class="p">)</span>
+    <span class="n">gnomad_v3_release_expr</span> <span class="o">=</span> <span class="n">hl</span><span class="o">.</span><span class="n">coalesce</span><span class="p">(</span>
+        <span class="n">meta_ht</span><span class="p">[</span><span class="n">ht</span><span class="o">.</span><span class="n">i</span><span class="o">.</span><span class="n">s</span><span class="p">]</span><span class="o">.</span><span class="n">v3_meta</span><span class="o">.</span><span class="n">v3_release</span> <span class="o">|</span> <span class="n">meta_ht</span><span class="p">[</span><span class="n">ht</span><span class="o">.</span><span class="n">j</span><span class="o">.</span><span class="n">s</span><span class="p">]</span><span class="o">.</span><span class="n">v3_meta</span><span class="o">.</span><span class="n">v3_release</span><span class="p">,</span>
+        <span class="kc">False</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">annotate</span><span class="p">(</span>
+        <span class="n">gnomad_v3_duplicate</span><span class="o">=</span><span class="n">gnomad_v3_duplicate_expr</span><span class="p">,</span>
+        <span class="n">gnomad_v3_release_duplicate</span><span class="o">=</span><span class="n">gnomad_v3_duplicate_expr</span> <span class="o">&amp;</span> <span class="n">gnomad_v3_release_expr</span><span class="p">,</span>
+    <span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">ht</span></div>
+
+
+<div class="viewcode-block" id="compute_rank_ht"><a class="viewcode-back" href="../../../../api_reference/v4/sample_qc/relatedness.html#gnomad_qc.v4.sample_qc.relatedness.compute_rank_ht">[docs]</a><span class="k">def</span> <span class="nf">compute_rank_ht</span><span class="p">(</span><span class="n">ht</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">,</span> <span class="n">filter_ht</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Add a rank to each sample for use when breaking maximal independent set ties.</span>
+
+<span class="sd">    Favor v3 release samples, then v4 samples over v3 non-release samples, then</span>
+<span class="sd">    higher chr20 mean DP.</span>
+
+<span class="sd">    If `filter_ht` is provided, rank based on filtering &#39;outlier_filtered&#39; annotation</span>
+<span class="sd">    first.</span>
+
+<span class="sd">    :param ht: Table to add rank to.</span>
+<span class="sd">    :param filter_ht: Optional Table with &#39;outlier_filtered&#39; annotation to be used in</span>
+<span class="sd">        ranking.</span>
+<span class="sd">    :return: Table containing sample ID and rank.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">select</span><span class="p">(</span>
+        <span class="s2">&quot;releasable&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;chr20_mean_dp&quot;</span><span class="p">,</span>
+        <span class="n">in_v3</span><span class="o">=</span><span class="n">hl</span><span class="o">.</span><span class="n">is_defined</span><span class="p">(</span><span class="n">ht</span><span class="o">.</span><span class="n">v3_meta</span><span class="p">),</span>
+        <span class="n">in_v3_release</span><span class="o">=</span><span class="n">hl</span><span class="o">.</span><span class="n">is_defined</span><span class="p">(</span><span class="n">ht</span><span class="o">.</span><span class="n">v3_meta</span><span class="p">)</span> <span class="o">&amp;</span> <span class="n">ht</span><span class="o">.</span><span class="n">v3_meta</span><span class="o">.</span><span class="n">v3_release</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">rank_order</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="n">ht_select</span> <span class="o">=</span> <span class="p">[</span><span class="s2">&quot;rank&quot;</span><span class="p">]</span>
+    <span class="k">if</span> <span class="n">filter_ht</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">annotate</span><span class="p">(</span>
+            <span class="n">filtered</span><span class="o">=</span><span class="n">hl</span><span class="o">.</span><span class="n">coalesce</span><span class="p">(</span><span class="n">filter_ht</span><span class="p">[</span><span class="n">ht</span><span class="o">.</span><span class="n">key</span><span class="p">]</span><span class="o">.</span><span class="n">outlier_filtered</span><span class="p">,</span> <span class="kc">False</span><span class="p">)</span>
+        <span class="p">)</span>
+        <span class="n">rank_order</span> <span class="o">=</span> <span class="p">[</span><span class="n">ht</span><span class="o">.</span><span class="n">filtered</span><span class="p">]</span>
+        <span class="n">ht_select</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s2">&quot;filtered&quot;</span><span class="p">)</span>
+
+    <span class="n">rank_order</span><span class="o">.</span><span class="n">extend</span><span class="p">(</span>
+        <span class="p">[</span>
+            <span class="n">hl</span><span class="o">.</span><span class="n">desc</span><span class="p">(</span><span class="n">ht</span><span class="o">.</span><span class="n">in_v3_release</span><span class="p">),</span>
+            <span class="n">hl</span><span class="o">.</span><span class="n">asc</span><span class="p">(</span><span class="n">ht</span><span class="o">.</span><span class="n">in_v3</span><span class="p">),</span>
+            <span class="n">hl</span><span class="o">.</span><span class="n">desc</span><span class="p">(</span><span class="n">ht</span><span class="o">.</span><span class="n">releasable</span><span class="p">),</span>
+            <span class="n">hl</span><span class="o">.</span><span class="n">desc</span><span class="p">(</span><span class="n">ht</span><span class="o">.</span><span class="n">chr20_mean_dp</span><span class="p">),</span>
+        <span class="p">]</span>
+    <span class="p">)</span>
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">order_by</span><span class="p">(</span><span class="o">*</span><span class="n">rank_order</span><span class="p">)</span><span class="o">.</span><span class="n">add_index</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="s2">&quot;rank&quot;</span><span class="p">)</span>
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">key_by</span><span class="p">(</span><span class="n">ht</span><span class="o">.</span><span class="n">s</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">ht</span><span class="o">.</span><span class="n">select</span><span class="p">(</span><span class="o">*</span><span class="n">ht_select</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="run_compute_related_samples_to_drop"><a class="viewcode-back" href="../../../../api_reference/v4/sample_qc/relatedness.html#gnomad_qc.v4.sample_qc.relatedness.run_compute_related_samples_to_drop">[docs]</a><span class="k">def</span> <span class="nf">run_compute_related_samples_to_drop</span><span class="p">(</span>
+    <span class="n">ht</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">,</span>
+    <span class="n">meta_ht</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">,</span>
+    <span class="n">release</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+    <span class="n">filter_ht</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Tuple</span><span class="p">[</span><span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">,</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Determine the minimal set of related samples to prune for ancestry PCA or release.</span>
+
+<span class="sd">    Runs `compute_related_samples_to_drop` in gnomad_methods after computing the</span>
+<span class="sd">    sample rankings using `compute_rank_ht`.</span>
+
+<span class="sd">    When `release` is True, `filter_ht` is used to rank samples based on filtering</span>
+<span class="sd">    &#39;outlier_filtered&#39; annotation, favoring those that are not filtered. The &#39;filter_ht&#39;</span>
+<span class="sd">    &#39;outlier_filtered&#39; samples will also be included in the returned</span>
+<span class="sd">    `samples_to_drop_ht` Table.</span>
+
+<span class="sd">    :param ht: Input relatedness Table.</span>
+<span class="sd">    :param meta_ht: Metadata Table with `v3_meta.v3_release`, `releasable`,</span>
+<span class="sd">        `chr20_mean_dp` annotations to be used in ranking and filtering of related</span>
+<span class="sd">        individuals.</span>
+<span class="sd">    :param release: Whether to determine related samples to drop for the release based</span>
+<span class="sd">        on outlier filtering of sample QC metrics. `filter_ht` must be supplied.</span>
+<span class="sd">    :param filter_ht: Optional Table with outlier filtering of sample QC metrics to</span>
+<span class="sd">        use if `release` is True.</span>
+<span class="sd">    :return: Table with sample rank and a Table with related samples to drop.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="n">release</span> <span class="ow">and</span> <span class="n">filter_ht</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;&#39;filter_ht&#39; must be supplied when &#39;release&#39; is True!&quot;</span><span class="p">)</span>
+
+    <span class="c1"># Compute_related_samples_to_drop uses a rank Table as a tiebreaker when</span>
+    <span class="c1"># pruning samples.</span>
+    <span class="n">rank_ht</span> <span class="o">=</span> <span class="n">compute_rank_ht</span><span class="p">(</span><span class="n">meta_ht</span><span class="p">,</span> <span class="n">filter_ht</span><span class="o">=</span><span class="n">filter_ht</span> <span class="k">if</span> <span class="n">release</span> <span class="k">else</span> <span class="kc">None</span><span class="p">)</span>
+    <span class="n">rank_ht</span> <span class="o">=</span> <span class="n">rank_ht</span><span class="o">.</span><span class="n">checkpoint</span><span class="p">(</span><span class="n">new_temp_file</span><span class="p">(</span><span class="s2">&quot;rank&quot;</span><span class="p">,</span> <span class="n">extension</span><span class="o">=</span><span class="s2">&quot;ht&quot;</span><span class="p">))</span>
+
+    <span class="n">filtered_samples</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="k">if</span> <span class="n">release</span><span class="p">:</span>
+        <span class="n">filtered_samples</span> <span class="o">=</span> <span class="n">rank_ht</span><span class="o">.</span><span class="n">aggregate</span><span class="p">(</span>
+            <span class="n">hl</span><span class="o">.</span><span class="n">agg</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">rank_ht</span><span class="o">.</span><span class="n">filtered</span><span class="p">,</span> <span class="n">hl</span><span class="o">.</span><span class="n">agg</span><span class="o">.</span><span class="n">collect_as_set</span><span class="p">(</span><span class="n">rank_ht</span><span class="o">.</span><span class="n">s</span><span class="p">)),</span>
+            <span class="n">_localize</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+        <span class="p">)</span>
+    <span class="n">second_degree_min_kin</span> <span class="o">=</span> <span class="n">hl</span><span class="o">.</span><span class="n">eval</span><span class="p">(</span><span class="n">ht</span><span class="o">.</span><span class="n">relationship_cutoffs</span><span class="o">.</span><span class="n">second_degree_min_kin</span><span class="p">)</span>
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">key_by</span><span class="p">(</span><span class="n">i</span><span class="o">=</span><span class="n">ht</span><span class="o">.</span><span class="n">i</span><span class="o">.</span><span class="n">s</span><span class="p">,</span> <span class="n">j</span><span class="o">=</span><span class="n">ht</span><span class="o">.</span><span class="n">j</span><span class="o">.</span><span class="n">s</span><span class="p">)</span>
+    <span class="n">v3_release_samples</span> <span class="o">=</span> <span class="n">meta_ht</span><span class="o">.</span><span class="n">aggregate</span><span class="p">(</span>
+        <span class="n">hl</span><span class="o">.</span><span class="n">agg</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">meta_ht</span><span class="o">.</span><span class="n">v3_meta</span><span class="o">.</span><span class="n">v3_release</span><span class="p">,</span> <span class="n">hl</span><span class="o">.</span><span class="n">agg</span><span class="o">.</span><span class="n">collect_as_set</span><span class="p">(</span><span class="n">meta_ht</span><span class="o">.</span><span class="n">s</span><span class="p">)),</span>
+        <span class="n">_localize</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">samples_to_drop_ht</span> <span class="o">=</span> <span class="n">compute_related_samples_to_drop</span><span class="p">(</span>
+        <span class="n">ht</span><span class="p">,</span>
+        <span class="n">rank_ht</span><span class="p">,</span>
+        <span class="n">second_degree_min_kin</span><span class="p">,</span>
+        <span class="n">filtered_samples</span><span class="o">=</span><span class="n">filtered_samples</span><span class="p">,</span>
+        <span class="n">keep_samples</span><span class="o">=</span><span class="n">v3_release_samples</span><span class="p">,</span>
+        <span class="n">keep_samples_when_related</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">samples_to_drop_ht</span> <span class="o">=</span> <span class="n">samples_to_drop_ht</span><span class="o">.</span><span class="n">annotate_globals</span><span class="p">(</span>
+        <span class="n">second_degree_min_kin</span><span class="o">=</span><span class="n">second_degree_min_kin</span><span class="p">,</span>
+    <span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">rank_ht</span><span class="p">,</span> <span class="n">samples_to_drop_ht</span></div>
+
+
+<div class="viewcode-block" id="get_relatedness_resources"><a class="viewcode-back" href="../../../../api_reference/v4/sample_qc/relatedness.html#gnomad_qc.v4.sample_qc.relatedness.get_relatedness_resources">[docs]</a><span class="k">def</span> <span class="nf">get_relatedness_resources</span><span class="p">(</span>
+    <span class="n">test</span><span class="p">:</span> <span class="nb">bool</span><span class="p">,</span>
+    <span class="n">release</span><span class="p">:</span> <span class="nb">bool</span><span class="p">,</span>
+    <span class="n">relatedness_method</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="n">overwrite</span><span class="p">:</span> <span class="nb">bool</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">PipelineResourceCollection</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Get PipelineResourceCollection for all resources needed in the relatedness pipeline.</span>
+
+<span class="sd">    :param test: Whether to gather all resources for the test dataset.</span>
+<span class="sd">    :param release: Whether to get release resource for</span>
+<span class="sd">        &#39;compute-related-samples-to-drop&#39; step of the relatedness pipeline.</span>
+<span class="sd">    :param relatedness_method: The relatedness method to use for</span>
+<span class="sd">        &#39;finalize-relatedness-ht&#39; resources.</span>
+<span class="sd">    :param overwrite: Whether to overwrite resources if they exist.</span>
+<span class="sd">    :return: PipelineResourceCollection containing resources for all steps of the</span>
+<span class="sd">        relatedness inference pipeline.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">joint_qc_mt</span> <span class="o">=</span> <span class="n">get_joint_qc</span><span class="p">(</span><span class="n">test</span><span class="o">=</span><span class="n">test</span><span class="p">)</span>
+
+    <span class="c1"># Adding resources from previous scripts that are used by multiple steps in the</span>
+    <span class="c1"># relatedness inference pipeline.</span>
+    <span class="n">joint_qc_mt_input</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="s2">&quot;generate_qc_mt.py --generate-qc-mt&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;joint_qc_mt&quot;</span><span class="p">:</span> <span class="n">joint_qc_mt</span><span class="p">}</span>
+    <span class="p">}</span>
+    <span class="n">joint_qc_meta_input</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="s2">&quot;generate_qc_mt.py --generate-qc-meta&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;joint_qc_meta&quot;</span><span class="p">:</span> <span class="n">joint_qc_meta</span><span class="p">}</span>
+    <span class="p">}</span>
+
+    <span class="c1"># Initialize relatedness pipeline resource collection</span>
+    <span class="n">relatedness_pipeline</span> <span class="o">=</span> <span class="n">PipelineResourceCollection</span><span class="p">(</span>
+        <span class="n">pipeline_name</span><span class="o">=</span><span class="s2">&quot;relatedness&quot;</span><span class="p">,</span>
+        <span class="n">pipeline_resources</span><span class="o">=</span><span class="p">{</span><span class="o">**</span><span class="n">joint_qc_mt_input</span><span class="p">,</span> <span class="o">**</span><span class="n">joint_qc_meta_input</span><span class="p">},</span>
+        <span class="n">overwrite</span><span class="o">=</span><span class="n">overwrite</span><span class="p">,</span>
+    <span class="p">)</span>
+
+    <span class="c1"># Create resource collection for each step of the relatedness pipeline.</span>
+    <span class="n">prepare_cuking_inputs</span> <span class="o">=</span> <span class="n">PipelineStepResourceCollection</span><span class="p">(</span>
+        <span class="s2">&quot;--prepare-cuking-inputs&quot;</span><span class="p">,</span>
+        <span class="n">output_resources</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;cuking_input_path&quot;</span><span class="p">:</span> <span class="n">get_cuking_input_path</span><span class="p">(</span><span class="n">test</span><span class="o">=</span><span class="n">test</span><span class="p">)},</span>
+        <span class="n">input_resources</span><span class="o">=</span><span class="n">joint_qc_mt_input</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">print_cuking_command</span> <span class="o">=</span> <span class="n">PipelineStepResourceCollection</span><span class="p">(</span>
+        <span class="s2">&quot;--print-cuking-command&quot;</span><span class="p">,</span>
+        <span class="n">output_resources</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;cuking_output_path&quot;</span><span class="p">:</span> <span class="n">get_cuking_output_path</span><span class="p">(</span><span class="n">test</span><span class="o">=</span><span class="n">test</span><span class="p">)},</span>
+        <span class="n">pipeline_input_steps</span><span class="o">=</span><span class="p">[</span><span class="n">prepare_cuking_inputs</span><span class="p">],</span>
+    <span class="p">)</span>
+    <span class="n">create_cuking_relatedness_table</span> <span class="o">=</span> <span class="n">PipelineStepResourceCollection</span><span class="p">(</span>
+        <span class="s2">&quot;--create-cuking-relatedness-table&quot;</span><span class="p">,</span>
+        <span class="n">output_resources</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;cuking_relatedness_ht&quot;</span><span class="p">:</span> <span class="n">relatedness</span><span class="p">(</span><span class="s2">&quot;cuking&quot;</span><span class="p">,</span> <span class="n">test</span><span class="o">=</span><span class="n">test</span><span class="p">)},</span>
+        <span class="n">pipeline_input_steps</span><span class="o">=</span><span class="p">[</span><span class="n">print_cuking_command</span><span class="p">],</span>
+    <span class="p">)</span>
+    <span class="n">run_ibd_on_cuking_pairs</span> <span class="o">=</span> <span class="n">PipelineStepResourceCollection</span><span class="p">(</span>
+        <span class="s2">&quot;--run-ibd-on-cuking-pairs&quot;</span><span class="p">,</span>
+        <span class="n">output_resources</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;ibd_ht&quot;</span><span class="p">:</span> <span class="n">ibd</span><span class="p">(</span><span class="n">test</span><span class="o">=</span><span class="n">test</span><span class="p">)},</span>
+        <span class="n">pipeline_input_steps</span><span class="o">=</span><span class="p">[</span><span class="n">create_cuking_relatedness_table</span><span class="p">],</span>
+        <span class="n">add_input_resources</span><span class="o">=</span><span class="n">joint_qc_mt_input</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">run_pc_relate_pca</span> <span class="o">=</span> <span class="n">PipelineStepResourceCollection</span><span class="p">(</span>
+        <span class="s2">&quot;--run-pc-relate-pca&quot;</span><span class="p">,</span>
+        <span class="n">output_resources</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;pc_relate_pca_scores&quot;</span><span class="p">:</span> <span class="n">pc_relate_pca_scores</span><span class="p">(</span><span class="n">test</span><span class="o">=</span><span class="n">test</span><span class="p">)},</span>
+        <span class="n">input_resources</span><span class="o">=</span><span class="n">joint_qc_mt_input</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">create_pc_relate_relatedness_table</span> <span class="o">=</span> <span class="n">PipelineStepResourceCollection</span><span class="p">(</span>
+        <span class="s2">&quot;--create-pc-relate-relatedness-table&quot;</span><span class="p">,</span>
+        <span class="n">output_resources</span><span class="o">=</span><span class="p">{</span>
+            <span class="s2">&quot;pc_relate_relatedness_ht&quot;</span><span class="p">:</span> <span class="n">relatedness</span><span class="p">(</span><span class="s2">&quot;pc_relate&quot;</span><span class="p">,</span> <span class="n">test</span><span class="o">=</span><span class="n">test</span><span class="p">)</span>
+        <span class="p">},</span>
+        <span class="n">pipeline_input_steps</span><span class="o">=</span><span class="p">[</span><span class="n">run_pc_relate_pca</span><span class="p">],</span>
+        <span class="n">add_input_resources</span><span class="o">=</span><span class="n">joint_qc_mt_input</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">finalize_relatedness_ht</span> <span class="o">=</span> <span class="n">PipelineStepResourceCollection</span><span class="p">(</span>
+        <span class="s2">&quot;--finalize-relatedness-ht&quot;</span><span class="p">,</span>
+        <span class="n">output_resources</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;final_relatedness_ht&quot;</span><span class="p">:</span> <span class="n">relatedness</span><span class="p">(</span><span class="n">test</span><span class="o">=</span><span class="n">test</span><span class="p">)},</span>
+        <span class="n">pipeline_input_steps</span><span class="o">=</span><span class="p">[</span>
+            <span class="p">(</span>
+                <span class="n">create_cuking_relatedness_table</span>
+                <span class="k">if</span> <span class="n">relatedness_method</span> <span class="o">==</span> <span class="s2">&quot;cuking&quot;</span>
+                <span class="k">else</span> <span class="n">create_pc_relate_relatedness_table</span>
+            <span class="p">)</span>
+        <span class="p">],</span>
+        <span class="n">add_input_resources</span><span class="o">=</span><span class="n">joint_qc_meta_input</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">finalize_relatedness_ht</span><span class="o">.</span><span class="n">relatedness_ht</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span>
+        <span class="n">finalize_relatedness_ht</span><span class="p">,</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">relatedness_method</span><span class="si">}</span><span class="s2">_relatedness_ht&quot;</span>
+    <span class="p">)</span>
+    <span class="n">compute_related_samples_to_drop</span> <span class="o">=</span> <span class="n">PipelineStepResourceCollection</span><span class="p">(</span>
+        <span class="s2">&quot;--compute-related-samples-to-drop&quot;</span><span class="p">,</span>
+        <span class="n">output_resources</span><span class="o">=</span><span class="p">{</span>
+            <span class="s2">&quot;sample_rankings_ht&quot;</span><span class="p">:</span> <span class="n">sample_rankings</span><span class="p">(</span><span class="n">test</span><span class="o">=</span><span class="n">test</span><span class="p">,</span> <span class="n">release</span><span class="o">=</span><span class="n">release</span><span class="p">),</span>
+            <span class="s2">&quot;related_samples_to_drop_ht&quot;</span><span class="p">:</span> <span class="n">related_samples_to_drop</span><span class="p">(</span>
+                <span class="n">test</span><span class="o">=</span><span class="n">test</span><span class="p">,</span> <span class="n">release</span><span class="o">=</span><span class="n">release</span>
+            <span class="p">),</span>
+        <span class="p">},</span>
+        <span class="n">pipeline_input_steps</span><span class="o">=</span><span class="p">[</span><span class="n">finalize_relatedness_ht</span><span class="p">],</span>
+        <span class="n">add_input_resources</span><span class="o">=</span><span class="p">{</span>
+            <span class="o">**</span><span class="n">joint_qc_mt_input</span><span class="p">,</span>
+            <span class="o">**</span><span class="n">joint_qc_meta_input</span><span class="p">,</span>
+            <span class="o">**</span><span class="p">(</span>
+                <span class="p">{</span>
+                    <span class="s2">&quot;outlier_filtering.py --create-finalized-outlier-filter&quot;</span><span class="p">:</span> <span class="p">{</span>
+                        <span class="s2">&quot;outlier_filter_ht&quot;</span><span class="p">:</span> <span class="n">finalized_outlier_filtering</span><span class="p">()</span>
+                    <span class="p">}</span>
+                <span class="p">}</span>
+                <span class="k">if</span> <span class="n">release</span>
+                <span class="k">else</span> <span class="p">{}</span>
+            <span class="p">),</span>
+        <span class="p">},</span>
+    <span class="p">)</span>
+
+    <span class="c1"># Add all steps to the relatedness pipeline resource collection.</span>
+    <span class="n">relatedness_pipeline</span><span class="o">.</span><span class="n">add_steps</span><span class="p">(</span>
+        <span class="p">{</span>
+            <span class="s2">&quot;prepare_cuking_inputs&quot;</span><span class="p">:</span> <span class="n">prepare_cuking_inputs</span><span class="p">,</span>
+            <span class="s2">&quot;print_cuking_command&quot;</span><span class="p">:</span> <span class="n">print_cuking_command</span><span class="p">,</span>
+            <span class="s2">&quot;create_cuking_relatedness_table&quot;</span><span class="p">:</span> <span class="n">create_cuking_relatedness_table</span><span class="p">,</span>
+            <span class="s2">&quot;run_ibd_on_cuking_pairs&quot;</span><span class="p">:</span> <span class="n">run_ibd_on_cuking_pairs</span><span class="p">,</span>
+            <span class="s2">&quot;run_pc_relate_pca&quot;</span><span class="p">:</span> <span class="n">run_pc_relate_pca</span><span class="p">,</span>
+            <span class="s2">&quot;create_pc_relate_relatedness_table&quot;</span><span class="p">:</span> <span class="n">create_pc_relate_relatedness_table</span><span class="p">,</span>
+            <span class="s2">&quot;finalize_relatedness_ht&quot;</span><span class="p">:</span> <span class="n">finalize_relatedness_ht</span><span class="p">,</span>
+            <span class="s2">&quot;compute_related_samples_to_drop&quot;</span><span class="p">:</span> <span class="n">compute_related_samples_to_drop</span><span class="p">,</span>
+        <span class="p">}</span>
+    <span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">relatedness_pipeline</span></div>
+
+
+<div class="viewcode-block" id="main"><a class="viewcode-back" href="../../../../api_reference/v4/sample_qc/relatedness.html#gnomad_qc.v4.sample_qc.relatedness.main">[docs]</a><span class="k">def</span> <span class="nf">main</span><span class="p">(</span><span class="n">args</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Compute relatedness estimates among pairs of samples in the callset.&quot;&quot;&quot;</span>
+    <span class="n">test</span> <span class="o">=</span> <span class="n">args</span><span class="o">.</span><span class="n">test</span>
+    <span class="n">overwrite</span> <span class="o">=</span> <span class="n">args</span><span class="o">.</span><span class="n">overwrite</span>
+    <span class="n">min_emission_kinship</span> <span class="o">=</span> <span class="n">args</span><span class="o">.</span><span class="n">min_emission_kinship</span>
+    <span class="n">release</span> <span class="o">=</span> <span class="n">args</span><span class="o">.</span><span class="n">release</span>
+    <span class="n">rel_method</span> <span class="o">=</span> <span class="n">args</span><span class="o">.</span><span class="n">finalize_relatedness_method</span>
+    <span class="n">second_degree_min_kin</span> <span class="o">=</span> <span class="n">args</span><span class="o">.</span><span class="n">second_degree_min_kin</span>
+    <span class="n">relatedness_resources</span> <span class="o">=</span> <span class="n">get_relatedness_resources</span><span class="p">(</span>
+        <span class="n">test</span><span class="p">,</span> <span class="n">release</span><span class="p">,</span> <span class="n">rel_method</span><span class="p">,</span> <span class="n">overwrite</span>
+    <span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">print_cuking_command</span><span class="p">:</span>
+        <span class="n">res</span> <span class="o">=</span> <span class="n">relatedness_resources</span><span class="o">.</span><span class="n">print_cuking_command</span>
+        <span class="n">res</span><span class="o">.</span><span class="n">check_resource_existence</span><span class="p">()</span>
+        <span class="n">print_cuking_command</span><span class="p">(</span>
+            <span class="n">res</span><span class="o">.</span><span class="n">cuking_input_path</span><span class="p">,</span>
+            <span class="n">res</span><span class="o">.</span><span class="n">cuking_output_path</span><span class="p">,</span>
+            <span class="n">min_emission_kinship</span><span class="p">,</span>
+            <span class="n">args</span><span class="o">.</span><span class="n">cuking_split_factor</span><span class="p">,</span>
+        <span class="p">)</span>
+        <span class="k">return</span>
+
+    <span class="n">hl</span><span class="o">.</span><span class="n">init</span><span class="p">(</span>
+        <span class="n">log</span><span class="o">=</span><span class="s2">&quot;/relatedness.log&quot;</span><span class="p">,</span>
+        <span class="n">default_reference</span><span class="o">=</span><span class="s2">&quot;GRCh38&quot;</span><span class="p">,</span>
+        <span class="n">tmp_dir</span><span class="o">=</span><span class="s2">&quot;gs://gnomad-tmp-4day&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+
+    <span class="n">joint_qc_mt</span> <span class="o">=</span> <span class="n">relatedness_resources</span><span class="o">.</span><span class="n">joint_qc_mt</span><span class="o">.</span><span class="n">mt</span><span class="p">()</span>
+    <span class="n">joint_qc_meta_ht</span> <span class="o">=</span> <span class="n">relatedness_resources</span><span class="o">.</span><span class="n">joint_qc_meta</span><span class="o">.</span><span class="n">ht</span><span class="p">()</span>
+
+    <span class="k">try</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">prepare_cuking_inputs</span><span class="p">:</span>
+            <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span>
+                <span class="s2">&quot;Converting joint dense QC MatrixTable to a Parquet format suitable &quot;</span>
+                <span class="s2">&quot;for cuKING.&quot;</span>
+            <span class="p">)</span>
+            <span class="n">res</span> <span class="o">=</span> <span class="n">relatedness_resources</span><span class="o">.</span><span class="n">prepare_cuking_inputs</span>
+            <span class="n">res</span><span class="o">.</span><span class="n">check_resource_existence</span><span class="p">()</span>
+            <span class="n">mt_to_cuking_inputs</span><span class="p">(</span>
+                <span class="n">mt</span><span class="o">=</span><span class="n">joint_qc_mt</span><span class="p">,</span>
+                <span class="n">parquet_uri</span><span class="o">=</span><span class="n">res</span><span class="o">.</span><span class="n">cuking_input_path</span><span class="p">,</span>
+                <span class="n">overwrite</span><span class="o">=</span><span class="n">overwrite</span><span class="p">,</span>
+            <span class="p">)</span>
+
+        <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">create_cuking_relatedness_table</span><span class="p">:</span>
+            <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Converting cuKING outputs to Hail Table.&quot;</span><span class="p">)</span>
+            <span class="n">res</span> <span class="o">=</span> <span class="n">relatedness_resources</span><span class="o">.</span><span class="n">create_cuking_relatedness_table</span>
+            <span class="n">res</span><span class="o">.</span><span class="n">check_resource_existence</span><span class="p">()</span>
+            <span class="n">ht</span> <span class="o">=</span> <span class="n">cuking_outputs_to_ht</span><span class="p">(</span><span class="n">parquet_uri</span><span class="o">=</span><span class="n">res</span><span class="o">.</span><span class="n">cuking_output_path</span><span class="p">)</span>
+            <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">key_by</span><span class="p">(</span><span class="n">i</span><span class="o">=</span><span class="n">hl</span><span class="o">.</span><span class="n">struct</span><span class="p">(</span><span class="n">s</span><span class="o">=</span><span class="n">ht</span><span class="o">.</span><span class="n">i</span><span class="p">),</span> <span class="n">j</span><span class="o">=</span><span class="n">hl</span><span class="o">.</span><span class="n">struct</span><span class="p">(</span><span class="n">s</span><span class="o">=</span><span class="n">ht</span><span class="o">.</span><span class="n">j</span><span class="p">))</span>
+            <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">repartition</span><span class="p">(</span><span class="n">args</span><span class="o">.</span><span class="n">relatedness_n_partitions</span><span class="p">)</span>
+            <span class="n">ht</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">res</span><span class="o">.</span><span class="n">cuking_relatedness_ht</span><span class="o">.</span><span class="n">path</span><span class="p">,</span> <span class="n">overwrite</span><span class="o">=</span><span class="n">overwrite</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">run_ibd_on_cuking_pairs</span><span class="p">:</span>
+            <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span>
+                <span class="s2">&quot;Running IBD on cuKING pairs with kinship over </span><span class="si">%f</span><span class="s2">.&quot;</span><span class="p">,</span>
+                <span class="n">args</span><span class="o">.</span><span class="n">ibd_min_cuking_kin</span><span class="p">,</span>
+            <span class="p">)</span>
+            <span class="n">res</span> <span class="o">=</span> <span class="n">relatedness_resources</span><span class="o">.</span><span class="n">run_ibd_on_cuking_pairs</span>
+            <span class="n">res</span><span class="o">.</span><span class="n">check_resource_existence</span><span class="p">()</span>
+            <span class="n">compute_ibd_on_cuking_pair_subset</span><span class="p">(</span>
+                <span class="n">joint_qc_mt</span><span class="p">,</span>
+                <span class="n">res</span><span class="o">.</span><span class="n">cuking_relatedness_ht</span><span class="o">.</span><span class="n">ht</span><span class="p">(),</span>
+                <span class="n">args</span><span class="o">.</span><span class="n">ibd_min_cuking_kin</span><span class="p">,</span>
+                <span class="n">args</span><span class="o">.</span><span class="n">ibd_max_cuking_ibs0</span><span class="p">,</span>
+                <span class="n">args</span><span class="o">.</span><span class="n">ibd_max_samples</span><span class="p">,</span>
+            <span class="p">)</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">res</span><span class="o">.</span><span class="n">ibd_ht</span><span class="o">.</span><span class="n">path</span><span class="p">,</span> <span class="n">overwrite</span><span class="o">=</span><span class="n">overwrite</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">run_pc_relate_pca</span><span class="p">:</span>
+            <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Running PCA for PC-Relate&quot;</span><span class="p">)</span>
+            <span class="n">res</span> <span class="o">=</span> <span class="n">relatedness_resources</span><span class="o">.</span><span class="n">run_pc_relate_pca</span>
+            <span class="n">res</span><span class="o">.</span><span class="n">check_resource_existence</span><span class="p">()</span>
+            <span class="n">eig</span><span class="p">,</span> <span class="n">scores</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="n">hl</span><span class="o">.</span><span class="n">hwe_normalized_pca</span><span class="p">(</span>
+                <span class="n">joint_qc_mt</span><span class="o">.</span><span class="n">GT</span><span class="p">,</span> <span class="n">k</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">n_pca_pcs</span><span class="p">,</span> <span class="n">compute_loadings</span><span class="o">=</span><span class="kc">False</span>
+            <span class="p">)</span>
+            <span class="n">scores</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">res</span><span class="o">.</span><span class="n">pc_relate_pca_scores</span><span class="o">.</span><span class="n">path</span><span class="p">,</span> <span class="n">overwrite</span><span class="o">=</span><span class="n">overwrite</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">create_pc_relate_relatedness_table</span><span class="p">:</span>
+            <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Running PC-Relate&quot;</span><span class="p">)</span>
+            <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span>
+                <span class="s2">&quot;PC-relate requires SSDs and doesn&#39;t work with preemptible workers!&quot;</span>
+            <span class="p">)</span>
+            <span class="n">res</span> <span class="o">=</span> <span class="n">relatedness_resources</span><span class="o">.</span><span class="n">create_pc_relate_relatedness_table</span>
+            <span class="n">res</span><span class="o">.</span><span class="n">check_resource_existence</span><span class="p">()</span>
+
+            <span class="n">ht</span> <span class="o">=</span> <span class="n">hl</span><span class="o">.</span><span class="n">pc_relate</span><span class="p">(</span>
+                <span class="n">joint_qc_mt</span><span class="o">.</span><span class="n">GT</span><span class="p">,</span>
+                <span class="n">min_individual_maf</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">min_individual_maf</span><span class="p">,</span>
+                <span class="n">scores_expr</span><span class="o">=</span><span class="n">res</span><span class="o">.</span><span class="n">pc_relate_pca_scores</span><span class="o">.</span><span class="n">ht</span><span class="p">()[</span><span class="n">joint_qc_mt</span><span class="o">.</span><span class="n">col_key</span><span class="p">]</span><span class="o">.</span><span class="n">scores</span><span class="p">[</span>
+                    <span class="p">:</span> <span class="n">args</span><span class="o">.</span><span class="n">n_pc_relate_pcs</span>
+                <span class="p">],</span>
+                <span class="n">block_size</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">block_size</span><span class="p">,</span>
+                <span class="n">min_kinship</span><span class="o">=</span><span class="n">min_emission_kinship</span><span class="p">,</span>
+                <span class="n">statistics</span><span class="o">=</span><span class="s2">&quot;all&quot;</span><span class="p">,</span>
+            <span class="p">)</span>
+            <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">annotate_globals</span><span class="p">(</span>
+                <span class="n">min_individual_maf</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">min_individual_maf</span><span class="p">,</span>
+                <span class="n">min_emission_kinship</span><span class="o">=</span><span class="n">min_emission_kinship</span><span class="p">,</span>
+            <span class="p">)</span>
+            <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">repartition</span><span class="p">(</span><span class="n">args</span><span class="o">.</span><span class="n">relatedness_n_partitions</span><span class="p">)</span>
+            <span class="n">ht</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">res</span><span class="o">.</span><span class="n">pc_relate_relatedness_ht</span><span class="o">.</span><span class="n">path</span><span class="p">,</span> <span class="n">overwrite</span><span class="o">=</span><span class="n">overwrite</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">finalize_relatedness_ht</span><span class="p">:</span>
+            <span class="n">res</span> <span class="o">=</span> <span class="n">relatedness_resources</span><span class="o">.</span><span class="n">finalize_relatedness_ht</span>
+            <span class="n">res</span><span class="o">.</span><span class="n">check_resource_existence</span><span class="p">()</span>
+            <span class="n">relatedness_args</span> <span class="o">=</span> <span class="p">{</span>
+                <span class="s2">&quot;parent_child_max_y&quot;</span><span class="p">:</span> <span class="n">args</span><span class="o">.</span><span class="n">parent_child_max_ibd0_or_ibs0_over_ibs2</span><span class="p">,</span>
+                <span class="s2">&quot;second_degree_sibling_lower_cutoff_slope&quot;</span><span class="p">:</span> <span class="p">(</span>
+                    <span class="n">args</span><span class="o">.</span><span class="n">second_degree_sibling_lower_cutoff_slope</span>
+                <span class="p">),</span>
+                <span class="s2">&quot;second_degree_sibling_lower_cutoff_intercept&quot;</span><span class="p">:</span> <span class="p">(</span>
+                    <span class="n">args</span><span class="o">.</span><span class="n">second_degree_sibling_lower_cutoff_intercept</span>
+                <span class="p">),</span>
+                <span class="s2">&quot;second_degree_upper_sibling_lower_cutoff_slope&quot;</span><span class="p">:</span> <span class="p">(</span>
+                    <span class="n">args</span><span class="o">.</span><span class="n">second_degree_upper_sibling_lower_cutoff_slope</span>
+                <span class="p">),</span>
+                <span class="s2">&quot;second_degree_upper_sibling_lower_cutoff_intercept&quot;</span><span class="p">:</span> <span class="p">(</span>
+                    <span class="n">args</span><span class="o">.</span><span class="n">second_degree_upper_sibling_lower_cutoff_intercept</span>
+                <span class="p">),</span>
+                <span class="s2">&quot;duplicate_twin_min_kin&quot;</span><span class="p">:</span> <span class="n">args</span><span class="o">.</span><span class="n">duplicate_twin_min_kin</span><span class="p">,</span>
+                <span class="s2">&quot;second_degree_min_kin&quot;</span><span class="p">:</span> <span class="n">second_degree_min_kin</span><span class="p">,</span>
+                <span class="s2">&quot;duplicate_twin_ibd1_min&quot;</span><span class="p">:</span> <span class="n">args</span><span class="o">.</span><span class="n">duplicate_twin_ibd1_min</span><span class="p">,</span>
+                <span class="s2">&quot;duplicate_twin_ibd1_max&quot;</span><span class="p">:</span> <span class="n">args</span><span class="o">.</span><span class="n">duplicate_twin_ibd1_max</span><span class="p">,</span>
+            <span class="p">}</span>
+            <span class="n">finalize_relatedness_ht</span><span class="p">(</span>
+                <span class="n">res</span><span class="o">.</span><span class="n">relatedness_ht</span><span class="o">.</span><span class="n">ht</span><span class="p">(),</span> <span class="n">joint_qc_meta_ht</span><span class="p">,</span> <span class="n">rel_method</span><span class="p">,</span> <span class="n">relatedness_args</span>
+            <span class="p">)</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">res</span><span class="o">.</span><span class="n">final_relatedness_ht</span><span class="o">.</span><span class="n">path</span><span class="p">,</span> <span class="n">overwrite</span><span class="o">=</span><span class="n">overwrite</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">compute_related_samples_to_drop</span><span class="p">:</span>
+            <span class="n">res</span> <span class="o">=</span> <span class="n">relatedness_resources</span><span class="o">.</span><span class="n">compute_related_samples_to_drop</span>
+            <span class="n">res</span><span class="o">.</span><span class="n">check_resource_existence</span><span class="p">()</span>
+            <span class="c1"># Setting samples in the ELGH2 project to &#39;outlier_filtered&#39; True, so they</span>
+            <span class="c1"># are treated like outlier filtered samples when creating the release</span>
+            <span class="c1"># ranking. We identified that they do not have the full set of &#39;AS&#39;</span>
+            <span class="c1"># annotations in &#39;gvcf_info&#39; so we need to exclude them from variant QC and</span>
+            <span class="c1"># release.</span>
+            <span class="n">filter_ht</span> <span class="o">=</span> <span class="kc">None</span>
+            <span class="k">if</span> <span class="n">release</span><span class="p">:</span>
+                <span class="n">project_meta_ht</span> <span class="o">=</span> <span class="n">project_meta</span><span class="o">.</span><span class="n">ht</span><span class="p">()</span>
+                <span class="n">filter_ht</span> <span class="o">=</span> <span class="n">res</span><span class="o">.</span><span class="n">outlier_filter_ht</span><span class="o">.</span><span class="n">ht</span><span class="p">()</span>
+                <span class="n">filter_ht</span> <span class="o">=</span> <span class="n">filter_ht</span><span class="o">.</span><span class="n">annotate</span><span class="p">(</span>
+                    <span class="n">outlier_filtered</span><span class="o">=</span><span class="n">hl</span><span class="o">.</span><span class="n">if_else</span><span class="p">(</span>
+                        <span class="n">project_meta_ht</span><span class="p">[</span><span class="n">filter_ht</span><span class="o">.</span><span class="n">key</span><span class="p">]</span><span class="o">.</span><span class="n">project_meta</span><span class="o">.</span><span class="n">project</span> <span class="o">==</span> <span class="s2">&quot;elgh2&quot;</span><span class="p">,</span>
+                        <span class="kc">True</span><span class="p">,</span>
+                        <span class="n">filter_ht</span><span class="o">.</span><span class="n">outlier_filtered</span><span class="p">,</span>
+                        <span class="n">missing_false</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+                    <span class="p">)</span>
+                <span class="p">)</span>
+            <span class="n">rank_ht</span><span class="p">,</span> <span class="n">drop_ht</span> <span class="o">=</span> <span class="n">run_compute_related_samples_to_drop</span><span class="p">(</span>
+                <span class="n">res</span><span class="o">.</span><span class="n">final_relatedness_ht</span><span class="o">.</span><span class="n">ht</span><span class="p">(),</span>
+                <span class="n">joint_qc_meta_ht</span><span class="o">.</span><span class="n">select_globals</span><span class="p">()</span><span class="o">.</span><span class="n">semi_join</span><span class="p">(</span><span class="n">joint_qc_mt</span><span class="o">.</span><span class="n">cols</span><span class="p">()),</span>
+                <span class="n">release</span><span class="p">,</span>
+                <span class="n">filter_ht</span><span class="p">,</span>
+            <span class="p">)</span>
+            <span class="n">rank_ht</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">res</span><span class="o">.</span><span class="n">sample_rankings_ht</span><span class="o">.</span><span class="n">path</span><span class="p">,</span> <span class="n">overwrite</span><span class="o">=</span><span class="n">overwrite</span><span class="p">)</span>
+            <span class="n">drop_ht</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">res</span><span class="o">.</span><span class="n">related_samples_to_drop_ht</span><span class="o">.</span><span class="n">path</span><span class="p">,</span> <span class="n">overwrite</span><span class="o">=</span><span class="n">overwrite</span><span class="p">)</span>
+
+    <span class="k">finally</span><span class="p">:</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Copying hail log to logging bucket...&quot;</span><span class="p">)</span>
+        <span class="n">hl</span><span class="o">.</span><span class="n">copy_log</span><span class="p">(</span><span class="n">get_logging_path</span><span class="p">(</span><span class="s2">&quot;relatedness&quot;</span><span class="p">))</span></div>
+
+
+<span class="k">def</span> <span class="nf">get_script_argument_parser</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="n">argparse</span><span class="o">.</span><span class="n">ArgumentParser</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Get script argument parser.&quot;&quot;&quot;</span>
+    <span class="n">parser</span> <span class="o">=</span> <span class="n">argparse</span><span class="o">.</span><span class="n">ArgumentParser</span><span class="p">()</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;-o&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;--overwrite&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Overwrite output files.&quot;</span><span class="p">,</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--test&quot;</span><span class="p">,</span> <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Use a test MatrixTableResource as input.&quot;</span><span class="p">,</span> <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span>
+    <span class="p">)</span>
+
+    <span class="n">relatedness_estimate_args</span> <span class="o">=</span> <span class="n">parser</span><span class="o">.</span><span class="n">add_argument_group</span><span class="p">(</span>
+        <span class="s2">&quot;Common relatedness estimate arguments&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;Arguments relevant to both cuKING and PC-relate relatedness estimates.&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">relatedness_estimate_args</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--min-emission-kinship&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="p">(</span>
+            <span class="s2">&quot;Minimum kinship threshold for emitting a pair of samples in the &quot;</span>
+            <span class="s2">&quot;relatedness output.&quot;</span>
+        <span class="p">),</span>
+        <span class="n">default</span><span class="o">=</span><span class="mf">0.05</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">float</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">relatedness_estimate_args</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--relatedness-n-partitions&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Number of desired partitions for the relatedness Table.&quot;</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="mi">100</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">int</span><span class="p">,</span>
+    <span class="p">)</span>
+
+    <span class="n">cuking_args</span> <span class="o">=</span> <span class="n">parser</span><span class="o">.</span><span class="n">add_argument_group</span><span class="p">(</span>
+        <span class="s2">&quot;cuKING specific relatedness arguments&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;Arguments specific to computing relatedness estimates using cuKING.&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">cuking_args</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--prepare-cuking-inputs&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="p">(</span>
+            <span class="s2">&quot;Converts the dense QC MatrixTable to a Parquet format suitable for cuKING.&quot;</span>
+        <span class="p">),</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">print_cuking_cmd</span> <span class="o">=</span> <span class="n">cuking_args</span><span class="o">.</span><span class="n">add_argument_group</span><span class="p">(</span>
+        <span class="s2">&quot;Print cuKING Cloud Batch job submission command&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;Arguments used to create the cuKING Cloud Batch job submission command &quot;</span>
+        <span class="s2">&quot;needed to run cuKING.&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">print_cuking_cmd</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--print-cuking-command&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Print the command to submit a Cloud Batch job for running cuKING.&quot;</span><span class="p">,</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">print_cuking_cmd</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--cuking-split-factor&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="p">(</span>
+            <span class="s2">&quot;Split factor to use for splitting the full relatedness matrix table &quot;</span>
+            <span class="s2">&quot;into equally sized submatrices that are computed independently to &quot;</span>
+            <span class="s2">&quot;parallelize the relatedness computation and decrease the memory &quot;</span>
+            <span class="s2">&quot;requirements. For example, to halve memory requirements, the full matrix &quot;</span>
+            <span class="s2">&quot;can be split into  equally sized submatrices (i.e. a &#39;split factor&#39; of 4).&quot;</span>
+            <span class="s2">&quot; Only the &#39;upper triangular&#39; submatrices need to be evaluated due to &quot;</span>
+            <span class="s2">&quot;the symmetry of the relatedness matrix, leading to 10 shards.&quot;</span>
+        <span class="p">),</span>
+        <span class="n">default</span><span class="o">=</span><span class="mi">4</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">int</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">cuking_args</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--create-cuking-relatedness-table&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Convert the cuKING outputs to a standard Hail Table.&quot;</span><span class="p">,</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">cuking_ibd</span> <span class="o">=</span> <span class="n">cuking_args</span><span class="o">.</span><span class="n">add_argument_group</span><span class="p">(</span>
+        <span class="s2">&quot;Run IBD on related pairs identified by cuKING&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;Arguments used run IBD on related cuKING pairs.&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">cuking_ibd</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--run-ibd-on-cuking-pairs&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Run IBD on related pairs identified by cuKING.&quot;</span><span class="p">,</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">cuking_ibd</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--ibd-min-cuking-kin&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Minimum cuKING kinship for pair to be included in IBD estimates.&quot;</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="mf">0.16</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">float</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">cuking_ibd</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--ibd-max-cuking-ibs0&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="p">(</span>
+            <span class="s2">&quot;Maximum cuKING IBS0 for pair to be included in IBD estimates. Note: This &quot;</span>
+            <span class="s2">&quot;default was determined from looking at the cuKING Kinship vs. IBS0 plot &quot;</span>
+            <span class="s2">&quot;for gnomAD v3 + gnomAD v4.&quot;</span>
+        <span class="p">),</span>
+        <span class="n">default</span><span class="o">=</span><span class="mi">50</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">int</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">cuking_ibd</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--ibd-max-samples&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Maximum number of samples to include in each IBD run.&quot;</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="mi">10000</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">int</span><span class="p">,</span>
+    <span class="p">)</span>
+
+    <span class="n">pc_relate_args</span> <span class="o">=</span> <span class="n">parser</span><span class="o">.</span><span class="n">add_argument_group</span><span class="p">(</span>
+        <span class="s2">&quot;PC-relate specific relatedness arguments&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;Arguments specific to computing relatedness estimates using PC-relate.&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">run_pca</span> <span class="o">=</span> <span class="n">pc_relate_args</span><span class="o">.</span><span class="n">add_argument_group</span><span class="p">(</span>
+        <span class="s2">&quot;Run PCA for PC-relate&quot;</span><span class="p">,</span> <span class="s2">&quot;Arguments used to run the PCA for PC-relate.&quot;</span>
+    <span class="p">)</span>
+    <span class="n">run_pca</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--run-pc-relate-pca&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Run PCA to generate the scores needed for PC-relate.&quot;</span><span class="p">,</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">run_pca</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--n-pca-pcs&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Number of PCs to compute for PC-relate.&quot;</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">int</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="mi">20</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">run_pc_relate</span> <span class="o">=</span> <span class="n">pc_relate_args</span><span class="o">.</span><span class="n">add_argument_group</span><span class="p">(</span>
+        <span class="s2">&quot;Run PC-relate&quot;</span><span class="p">,</span> <span class="s2">&quot;Arguments used to run PC-relate.&quot;</span>
+    <span class="p">)</span>
+    <span class="n">run_pc_relate</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--create-pc-relate-relatedness-table&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Run PC-relate to create the PC-relate relatedness Table.&quot;</span><span class="p">,</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">run_pc_relate</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--n-pc-relate-pcs&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Number of PCs to use in PC-relate.&quot;</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">int</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="mi">10</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">run_pc_relate</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--min-individual-maf&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;The minimum individual-specific minor allele frequency.&quot;</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="mf">0.01</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">float</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">run_pc_relate</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--block-size&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Block size parameter to use for PC-relate.&quot;</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="mi">2048</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">int</span><span class="p">,</span>
+    <span class="p">)</span>
+
+    <span class="n">finalize</span> <span class="o">=</span> <span class="n">parser</span><span class="o">.</span><span class="n">add_argument_group</span><span class="p">(</span>
+        <span class="s2">&quot;Finalize relatedness specific arguments&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;Arguments specific to creating the final relatedness Table including adding a &quot;</span>
+        <span class="s2">&quot;&#39;relationship&#39; annotation for each pair. Note: The defaults provided for the &quot;</span>
+        <span class="s2">&quot;slope and intercept cutoffs were determined from visualization of the &quot;</span>
+        <span class="s2">&quot;cuking kinship distribution and the IBS0/IBS2 vs. kinship plot.&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">finalize</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--finalize-relatedness-ht&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Whether to finalize the relatedness HT.&quot;</span><span class="p">,</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">finalize</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--finalize-relatedness-method&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="p">(</span>
+            <span class="s2">&quot;Which relatedness method to use for finalized relatedness Table. Options &quot;</span>
+            <span class="s2">&quot;are &#39;cuking&#39; and &#39;pc_relate&#39;. Default is &#39;cuking&#39;.&quot;</span>
+        <span class="p">),</span>
+        <span class="n">default</span><span class="o">=</span><span class="s2">&quot;cuking&quot;</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">str</span><span class="p">,</span>
+        <span class="n">choices</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;cuking&quot;</span><span class="p">,</span> <span class="s2">&quot;pc_relate&quot;</span><span class="p">],</span>
+    <span class="p">)</span>
+    <span class="n">finalize</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--second-degree-min-kin&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="p">(</span>
+            <span class="s2">&quot;Minimum kinship threshold for filtering a pair of samples with a second &quot;</span>
+            <span class="s2">&quot;degree relationship when filtering related individuals. Default is &quot;</span>
+            <span class="s2">&quot;0.08838835. Bycroft et al. (2018) calculates a theoretical kinship of &quot;</span>
+            <span class="s2">&quot;0.08838835 for a second degree relationship cutoff. This cutoff should&quot;</span>
+            <span class="s2">&quot;be determined by evaluation of the kinship distribution.&quot;</span>
+        <span class="p">),</span>
+        <span class="n">default</span><span class="o">=</span><span class="mf">0.08838835</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">float</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">finalize</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--parent-child-max-ibd0-or-ibs0-over-ibs2&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="p">(</span>
+            <span class="s2">&quot;Maximum value of IBD0 (if &#39;--finalize-relatedness-method&#39; is &#39;pc_relate&#39;) &quot;</span>
+            <span class="s2">&quot;or IBS0/IBS2 (if &#39;--finalize-relatedness-method&#39; is &#39;cuking&#39;) for a &quot;</span>
+            <span class="s2">&quot;parent-child pair.&quot;</span>
+        <span class="p">),</span>
+        <span class="n">default</span><span class="o">=</span><span class="mf">5.2e-5</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">float</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">finalize</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--second-degree-sibling-lower-cutoff-slope&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="p">(</span>
+            <span class="s2">&quot;Slope of the line to use as a lower cutoff for second degree relatives &quot;</span>
+            <span class="s2">&quot;and siblings from parent-child pairs.&quot;</span>
+        <span class="p">),</span>
+        <span class="n">default</span><span class="o">=-</span><span class="mf">1.9e-3</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">float</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">finalize</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--second-degree-sibling-lower-cutoff-intercept&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="p">(</span>
+            <span class="s2">&quot;Intercept of the line to use as a lower cutoff for second degree &quot;</span>
+            <span class="s2">&quot;relatives and siblings from parent-child pairs.&quot;</span>
+        <span class="p">),</span>
+        <span class="n">default</span><span class="o">=</span><span class="mf">5.8e-4</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">float</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">finalize</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--second-degree-upper-sibling-lower-cutoff-slope&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="p">(</span>
+            <span class="s2">&quot;Slope of the line to use as an upper cutoff for second degree relatives &quot;</span>
+            <span class="s2">&quot;and a lower cutoff for siblings.&quot;</span>
+        <span class="p">),</span>
+        <span class="n">default</span><span class="o">=-</span><span class="mf">1e-2</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">float</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">finalize</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--second-degree-upper-sibling-lower-cutoff-intercept&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="p">(</span>
+            <span class="s2">&quot;Intercept of the line to use as an upper cutoff for second degree &quot;</span>
+            <span class="s2">&quot;relatives and a lower cutoff for siblings.&quot;</span>
+        <span class="p">),</span>
+        <span class="n">default</span><span class="o">=</span><span class="mf">2.2e-3</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">float</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">finalize</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--duplicate-twin-min-kin&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Minimum kinship for duplicate or twin pairs.&quot;</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="mf">0.42</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">float</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">finalize</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--duplicate-twin-ibd1-min&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="p">(</span>
+            <span class="s2">&quot;Minimum IBD1 cutoff for duplicate or twin pairs. Only used when &quot;</span>
+            <span class="s2">&quot;&#39;--finalize-relatedness-method&#39; is &#39;pc_relate&#39;. Note: the min is used &quot;</span>
+            <span class="s2">&quot;because pc_relate can output large negative values in some corner cases.&quot;</span>
+        <span class="p">),</span>
+        <span class="n">default</span><span class="o">=-</span><span class="mf">0.15</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">float</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">finalize</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--duplicate-twin-ibd1-max&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="p">(</span>
+            <span class="s2">&quot;Maximum IBD1 cutoff for duplicate or twin pairs. Only used when &quot;</span>
+            <span class="s2">&quot;&#39;--finalize-relatedness-method&#39; is &#39;pc_relate&#39;.&quot;</span>
+        <span class="p">),</span>
+        <span class="n">default</span><span class="o">=</span><span class="mf">0.1</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">float</span><span class="p">,</span>
+    <span class="p">)</span>
+
+    <span class="n">drop_related_samples</span> <span class="o">=</span> <span class="n">parser</span><span class="o">.</span><span class="n">add_argument_group</span><span class="p">(</span>
+        <span class="s2">&quot;Compute related samples to drop&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;Arguments used to determine related samples that should be dropped from &quot;</span>
+        <span class="s2">&quot;the ancestry PCA or release.&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">drop_related_samples</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--compute-related-samples-to-drop&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="p">(</span>
+            <span class="s2">&quot;Determine the minimal set of related samples to prune for ancestry PCA or &quot;</span>
+            <span class="s2">&quot;release if &#39;--release&#39; is used.&quot;</span>
+        <span class="p">),</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">drop_related_samples</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--release&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="p">(</span>
+            <span class="s2">&quot;Whether to determine related samples to drop for the release based on &quot;</span>
+            <span class="s2">&quot;outlier filtering of sample QC metrics.&quot;</span>
+        <span class="p">),</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--slack-channel&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Slack channel to post results and notifications to.&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">parser</span>
+
+
+<span class="k">if</span> <span class="vm">__name__</span> <span class="o">==</span> <span class="s2">&quot;__main__&quot;</span><span class="p">:</span>
+    <span class="n">parser</span> <span class="o">=</span> <span class="n">get_script_argument_parser</span><span class="p">()</span>
+    <span class="n">args</span> <span class="o">=</span> <span class="n">parser</span><span class="o">.</span><span class="n">parse_args</span><span class="p">()</span>
+
+    <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">print_cuking_command</span> <span class="ow">and</span> <span class="p">(</span>
+        <span class="n">args</span><span class="o">.</span><span class="n">prepare_cuking_inputs</span>
+        <span class="ow">or</span> <span class="n">args</span><span class="o">.</span><span class="n">create_cuking_relatedness_table</span>
+        <span class="ow">or</span> <span class="n">args</span><span class="o">.</span><span class="n">run_ibd_on_cuking_pairs</span>
+        <span class="ow">or</span> <span class="n">args</span><span class="o">.</span><span class="n">run_pc_relate_pca</span>
+        <span class="ow">or</span> <span class="n">args</span><span class="o">.</span><span class="n">create_pc_relate_relatedness_table</span>
+        <span class="ow">or</span> <span class="n">args</span><span class="o">.</span><span class="n">finalize_relatedness_ht</span>
+        <span class="ow">or</span> <span class="n">args</span><span class="o">.</span><span class="n">compute_related_samples_to_drop</span>
+    <span class="p">):</span>
+        <span class="n">parser</span><span class="o">.</span><span class="n">error</span><span class="p">(</span>
+            <span class="s2">&quot;--print-cuking-command can&#39;t be used simultaneously with other run modes.&quot;</span>
+        <span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">slack_channel</span><span class="p">:</span>
+        <span class="k">with</span> <span class="n">slack_notifications</span><span class="p">(</span><span class="n">slack_token</span><span class="p">,</span> <span class="n">args</span><span class="o">.</span><span class="n">slack_channel</span><span class="p">):</span>
+            <span class="n">main</span><span class="p">(</span><span class="n">args</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">main</span><span class="p">(</span><span class="n">args</span><span class="p">)</span>
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p></p>
+  </div>
+
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

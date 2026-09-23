@@ -1,0 +1,21 @@
+gnomad_qc.v4.variant_qc.vqsr
+============================
+
+Script to run VQSR on an AS-annotated Sites VCF.
+
+
+
+
+.. argparse::
+   :ref: gnomad_qc.v4.variant_qc.vqsr.get_script_argument_parser
+   :prog: gnomad_qc.v4.variant_qc.vqsr.py
+
+
+
+Module Functions
+****************
+
+.. gnomad_automodulesummary:: gnomad_qc.v4.variant_qc.vqsr
+
+.. automodule:: gnomad_qc.v4.variant_qc.vqsr
+    :exclude-members: get_script_argument_parser
