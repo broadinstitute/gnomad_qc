@@ -2834,13 +2834,17 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
     chunk_args.add_argument(
         "--read-subintervals-scale",
         help=(
-            "Derive the total sub-interval count automatically as this multiplier "
-            "times the number of VDS partitions in the chunk (e.g. 15 with a "
-            "3-partition chunk gives ~45 sub-intervals), allocated across contigs "
-            "proportionally to their position span. Use instead of "
-            "--read-subintervals-per-chunk when the chunk's partition count is not "
-            "known up front (e.g. a --chrom run). Mutually exclusive with "
-            "--read-subintervals-per-chunk."
+            "Derive the sub-interval count automatically from the VDS partition "
+            "count instead of stating a total. In chunk mode (--chunk-start/"
+            "--chunk-stop) the total is this multiplier times the chunk's "
+            "partition count (e.g. 15 over a 3-partition chunk gives ~45), "
+            "allocated across contigs proportionally to their position span. In "
+            "contig mode (--chrom without --explode-partitions) each of the "
+            "contig's VDS partition spans is sliced into ceil(scale) intervals, "
+            "so fractional values round up and the realized total is ceil(scale) "
+            "times the number of spans. Use instead of "
+            "--read-subintervals-per-chunk when the partition count is not known "
+            "up front. Mutually exclusive with --read-subintervals-per-chunk."
         ),
         type=float,
         default=None,
@@ -2896,7 +2900,12 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         "--scout-byte-weight-cap",
         help=(
             "Maximum byte-weight up-weighting (minimum chunk shrink factor) per "
-            "partition. Default is 16."
+            "partition. Default is 16. A partition denser than this many times "
+            "the median is clamped here, so its chunks stay larger than its "
+            "density warrants; if a run still has slow stragglers in a known "
+            "entry-dense region, raise the cap to let that partition shrink "
+            "further, or lower --scout-rows-per-partition to shrink every chunk. "
+            "Only meaningful with --scout-byte-weight."
         ),
         type=float,
         default=16.0,
