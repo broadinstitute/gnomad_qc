@@ -2,9 +2,10 @@
 
 import argparse
 import functools
+import json
 import logging
 import math
-from typing import Dict, List
+from typing import Dict, List, Tuple
 
 import hail as hl
 from gnomad.resources.grch38.gnomad import GROUPS
@@ -43,6 +44,7 @@ from gnomad_qc.v5.resources.basics import (
     _check_resource_existence,
     _get_batch_resource_kwargs,
     _init_hail,
+    aou_genotypes,
     get_aou_vds,
     get_logging_path,
 )
@@ -1218,7 +1220,9 @@ def group_scout_loci_into_intervals(
     target_ht: hl.Table,
     n_partitions: int = None,
     rows_per_partition: int = None,
-) -> List[hl.utils.Interval]:
+    parent_sizes: List[Dict] = None,
+    byte_weight_cap: float = 16.0,
+) -> Tuple[List[hl.utils.Interval], Dict]:
     """
     Group scouted target loci into a bounded set of locus intervals.
 
@@ -1235,6 +1239,18 @@ def group_scout_loci_into_intervals(
     raise `rows_per_partition` (or set `n_partitions`) to keep the boundary
     collect and the interval count bounded.
 
+    With `parent_sizes` (from `_partition_entry_sizes`), chunking is
+    byte-weighted: each locus is assigned to its parent VDS partition, each
+    parent's entries-bytes-per-target-locus is compared to the median parent,
+    and parents above the median get proportionally smaller chunks (down to
+    ``chunk / byte_weight_cap``). Equal-locus chunks alone leave a residual
+    skew -- a locus in an entry-dense (e.g. pericentromeric) parent carries up
+    to ~17x the genotype volume of a median locus -- and the part-file size is
+    a free storage-metadata proxy for exactly that density. Weighted intervals
+    additionally never span parent partitions, so reads align to storage
+    boundaries. A locus at a parent boundary may be assigned the neighboring
+    parent's weight; the signal is regional, so this is immaterial.
+
     Intervals never span contigs.
 
     :param target_ht: Table of target loci (e.g. from `scout_target_loci`).
@@ -1243,20 +1259,65 @@ def group_scout_loci_into_intervals(
     :param rows_per_partition: Target number of loci per interval/partition. Used
         only when `n_partitions` is None. Defaults to 20 if neither is set,
         calibrated for the heavy high-allele strata scout mode targets.
-    :return: List of `hl.Interval` objects, in genomic order, each covering a
-        contiguous chunk of target loci within a single contig.
+    :param parent_sizes: Optional per-parent-partition spans and entries
+        part-file sizes from `_partition_entry_sizes`, enabling byte-weighted
+        chunking. Default is None (uniform equal-locus chunks).
+    :param byte_weight_cap: Maximum up-weighting (minimum chunk shrink factor)
+        for a dense parent. Default is 16.
+    :return: Tuple of the `hl.Interval` list (genomic order, each interval a
+        contiguous chunk of target loci within one contig) and, when
+        `parent_sizes` was given, a dict with the weighting provenance
+        (`median_bytes_per_locus`, `cap`, and `weights`: one entry per
+        up-weighted parent with its global `parent_index`, `n_target_loci`,
+        `weight`, and `chunk_size`); None otherwise.
     """
     # Keyed by locus, so the table is globally sorted in genomic order.
     loci = target_ht.key_by("locus").select().distinct()
 
+    weighted = parent_sizes is not None
+    if weighted:
+        # Give each (contig, parent partition) overlap a dense id in genomic
+        # order; a locus finds its parent by lower-bound search over the
+        # parents' inclusive end positions on its contig.
+        rg = hl.get_reference("GRCh38")
+        order = _grch38_contig_order()
+        contigs = rg.contigs
+        ends_by_contig: Dict[str, List[int]] = {}
+        dense_offset: Dict[str, int] = {}
+        parent_meta: List[Tuple[int, int]] = []  # dense id -> (global idx, bytes)
+        for p in parent_sizes:
+            (s_c, _), (e_c, e_pos) = p["start"], p["end"]
+            for ci in range(order[s_c], order[e_c] + 1):
+                c = contigs[ci]
+                dense_offset.setdefault(c, len(parent_meta))
+                ends_by_contig.setdefault(c, []).append(
+                    e_pos if c == e_c else rg.contig_length(c)
+                )
+                parent_meta.append((p["index"], p["bytes"]))
+        ends_lit = hl.literal(ends_by_contig)
+        off_lit = hl.literal(dense_offset)
+        n_slots_lit = hl.literal({c: len(v) for c, v in ends_by_contig.items()})
+        loci = loci.annotate(
+            parent=off_lit[loci.locus.contig]
+            + hl.min(
+                hl.binary_search(ends_lit[loci.locus.contig], loci.locus.position),
+                n_slots_lit[loci.locus.contig] - 1,
+            )
+        )
+
     # One distributed pass: total count + per-contig counts (for within-contig
-    # chunking, so no interval spans a contig boundary).
+    # chunking, so no interval spans a contig boundary) + per-parent counts
+    # when byte-weighting.
     stats = loci.aggregate(
-        hl.struct(n=hl.agg.count(), per_contig=hl.agg.counter(loci.locus.contig))
+        hl.struct(
+            n=hl.agg.count(),
+            per_contig=hl.agg.counter(loci.locus.contig),
+            **({"per_parent": hl.agg.counter(loci.parent)} if weighted else {}),
+        )
     )
     n_loci = stats.n
     if n_loci == 0:
-        return []
+        return [], None
 
     if n_partitions is None:
         # Default calibrated on the min10-max100 stratum (~365k samples), where
@@ -1276,24 +1337,70 @@ def group_scout_loci_into_intervals(
             2 * n_partitions,
         )
 
-    # Each contig's global-index offset, from cumulative counts in genomic order.
-    per_contig = dict(stats.per_contig)
-    offset = 0
-    offsets = {}
-    for contig in sorted(per_contig, key=lambda c: _grch38_contig_order()[c]):
-        offsets[contig] = offset
-        offset += per_contig[contig]
-
-    # Keep only the chunk-boundary loci: within-contig index at a chunk start,
-    # a chunk end, or the contig's last locus. A locus can be both start and
-    # end (chunk of size 1).
+    weight_info = None
     loci = loci.add_index("idx")
-    within = loci.idx - hl.literal(offsets)[loci.locus.contig]
-    contig_n = hl.literal(per_contig)[loci.locus.contig]
-    loci = loci.annotate(
-        is_start=within % chunk == 0,
-        is_end=(within % chunk == chunk - 1) | (within == contig_n - 1),
-    )
+    if weighted:
+        # Bytes per target locus, relative to the median parent, sets each
+        # parent's chunk size; parents at or below the median keep the base
+        # chunk (weights never enlarge a chunk).
+        counts = {int(p): int(c) for p, c in stats.per_parent.items()}
+        densities = {p: parent_meta[p][1] / counts[p] for p in counts}
+        dens_sorted = sorted(densities.values())
+        median_density = dens_sorted[len(dens_sorted) // 2]
+        chunk_by_parent = {}
+        up_weighted = []
+        for p in sorted(counts):
+            weight = min(byte_weight_cap, max(1.0, densities[p] / median_density))
+            chunk_by_parent[p] = max(1, math.ceil(chunk / weight))
+            if weight > 1.0:
+                up_weighted.append(
+                    {
+                        "parent_index": parent_meta[p][0],
+                        "n_target_loci": counts[p],
+                        "weight": weight,
+                        "chunk_size": chunk_by_parent[p],
+                    }
+                )
+        weight_info = {
+            "median_bytes_per_locus": median_density,
+            "cap": byte_weight_cap,
+            "weights": up_weighted,
+        }
+
+        # Within-parent chunking: parents partition each contig, so ending
+        # every parent's last locus also keeps intervals within one contig.
+        offsets_p = {}
+        offset = 0
+        for p in sorted(counts):
+            offsets_p[p] = offset
+            offset += counts[p]
+        within = loci.idx - hl.literal(offsets_p)[loci.parent]
+        parent_chunk = hl.literal(chunk_by_parent)[loci.parent]
+        parent_n = hl.literal(counts)[loci.parent]
+        loci = loci.annotate(
+            is_start=within % parent_chunk == 0,
+            is_end=(within % parent_chunk == parent_chunk - 1)
+            | (within == parent_n - 1),
+        )
+    else:
+        # Each contig's global-index offset, from cumulative counts in genomic
+        # order.
+        per_contig = dict(stats.per_contig)
+        offset = 0
+        offsets = {}
+        for contig in sorted(per_contig, key=lambda c: _grch38_contig_order()[c]):
+            offsets[contig] = offset
+            offset += per_contig[contig]
+
+        # Keep only the chunk-boundary loci: within-contig index at a chunk
+        # start, a chunk end, or the contig's last locus. A locus can be both
+        # start and end (chunk of size 1).
+        within = loci.idx - hl.literal(offsets)[loci.locus.contig]
+        contig_n = hl.literal(per_contig)[loci.locus.contig]
+        loci = loci.annotate(
+            is_start=within % chunk == 0,
+            is_end=(within % chunk == chunk - 1) | (within == contig_n - 1),
+        )
     bounds = loci.filter(loci.is_start | loci.is_end).collect()
 
     # `collect` on a keyed table returns rows in key (genomic) order, so starts
@@ -1312,15 +1419,16 @@ def group_scout_loci_into_intervals(
                     includes_end=True,
                 )
             )
-    return intervals
+    return intervals, weight_info
 
 
-def compute_scout_intervals(args) -> List[hl.utils.Interval]:
+def compute_scout_intervals(args) -> Tuple[List[hl.utils.Interval], Dict]:
     """
     Run the scout pass and derive partition-scaled re-read intervals.
 
     :param args: Parsed CLI args.
-    :return: List of locus intervals covering the scouted target loci.
+    :return: Tuple of the locus intervals covering the scouted target loci and
+        the byte-weighting provenance dict (None unless --scout-byte-weight).
     """
     environment = args.environment
 
@@ -1356,17 +1464,60 @@ def compute_scout_intervals(args) -> List[hl.utils.Interval]:
     n_targets = target_ht.count()
     logger.info("Scout found %d target loci", n_targets)
 
-    intervals = group_scout_loci_into_intervals(
+    parent_sizes = None
+    if args.scout_byte_weight:
+        parent_sizes = _partition_entry_sizes(contig=args.chrom)
+        logger.info(
+            "Byte-weighting scout chunks over %d parent partition entries "
+            "part-file sizes%s.",
+            len(parent_sizes),
+            f" on {args.chrom}" if args.chrom else "",
+        )
+
+    intervals, byte_weight_info = group_scout_loci_into_intervals(
         target_ht,
         n_partitions=args.scout_n_partitions,
         rows_per_partition=args.scout_rows_per_partition,
+        parent_sizes=parent_sizes,
+        byte_weight_cap=args.scout_byte_weight_cap,
     )
+    if byte_weight_info is not None:
+        # Only the up-weighted parents are listed; every other parent has
+        # weight 1.0 and the base chunk size, and the full per-partition byte
+        # map is re-derivable anytime from the (static) VDS metadata.
+        weights = byte_weight_info["weights"]
+        logger.info(
+            "Byte-weighted scout: median %.0f entry bytes/target locus, cap "
+            "%.1fx; %d parents up-weighted (all others weight 1.0):",
+            byte_weight_info["median_bytes_per_locus"],
+            byte_weight_info["cap"],
+            len(weights),
+        )
+        for w in weights:
+            logger.info(
+                "  parent %d: %d target loci, weight %.1fx, chunk %d",
+                w["parent_index"],
+                w["n_target_loci"],
+                w["weight"],
+                w["chunk_size"],
+            )
     logger.info(
         "Scout derived %d intervals for re-read (avg ~%.1f target loci/interval)",
         len(intervals),
         (n_targets / len(intervals)) if intervals else 0.0,
     )
-    return intervals
+    limit = args.scout_limit_intervals
+    if limit is not None and len(intervals) > limit:
+        logger.warning(
+            "TEST: truncating %d scout intervals to the first %d; the re-read "
+            "and output cover only %s through %s.",
+            len(intervals),
+            limit,
+            intervals[0].start,
+            intervals[limit - 1].end,
+        )
+        intervals = intervals[:limit]
+    return intervals, byte_weight_info
 
 
 def compute_chunks(args):
@@ -1413,67 +1564,212 @@ def compute_chunks(args):
     return sub_intervals
 
 
+def _contig_partition_spans(contig: str, contig_len: int) -> List[Tuple[int, int]]:
+    """
+    Get disjoint per-partition position spans on `contig` from the AoU VDS metadata.
+
+    Reads only the variant-data table spec (one small JSON, never variant rows) for
+    the partition range bounds. Each returned pair is a half-open [start, end)
+    position span holding one partition's rows on the contig, clamped to
+    [1, contig_len + 1). A boundary locus shared by two adjacent partitions is
+    assigned to the later partition's span so spans stay disjoint; regions between
+    spans hold no variant rows.
+
+    :param contig: Contig whose partition spans are returned.
+    :param contig_len: Reference length of `contig`.
+    :return: List of half-open (start, end) position spans in genomic order.
+    """
+    url = f"{aou_genotypes.path}/variant_data/rows/rows/metadata.json.gz"
+    # hl.hadoop_open carries the requester-pays billing project configured at
+    # init and transparently gunzips .gz files.
+    with hl.hadoop_open(url) as f:
+        meta = json.load(f)
+    # The key is "_jRangeBounds" in current table specs, "jRangeBounds" in older.
+    bounds = meta.get("_jRangeBounds", meta.get("jRangeBounds"))
+    if bounds is None:
+        raise ValueError(
+            f"jRangeBounds not found in {url}; metadata keys: {list(meta)}"
+        )
+
+    order = {c: i for i, c in enumerate(hl.get_reference("GRCh38").contigs)}
+    c_idx = order[contig]
+    raw: List[Tuple[int, int]] = []
+    for b in bounds:
+        s = b["start"].get("locus", b["start"])
+        e = b["end"].get("locus", b["end"])
+        s_idx, e_idx = order.get(s["contig"]), order.get(e["contig"])
+        if s_idx is None or e_idx is None or s_idx > c_idx or e_idx < c_idx:
+            continue
+        lo = s["position"] if s_idx == c_idx else 1
+        hi = e["position"] + 1 if e_idx == c_idx else contig_len + 1
+        raw.append((lo, hi))
+
+    spans: List[Tuple[int, int]] = []
+    for i, (lo, hi) in enumerate(raw):
+        if i + 1 < len(raw):
+            hi = min(hi, raw[i + 1][0])
+        if hi > lo:
+            spans.append((lo, hi))
+    return spans
+
+
+def _partition_entry_sizes(contig: str = None) -> List[Dict]:
+    """
+    Get each VDS variant-data partition's locus span and entries part-file size.
+
+    Reads only storage metadata (the rows spec's partition range bounds, the
+    entries spec's part-file list, and one listing of the entries parts
+    directory) -- no variant or entry data. A partition's compressed entries
+    part-file size is a free proxy for its genotype-entry volume, the quantity
+    that actually drives per-partition aggregation cost; it is the signal the
+    keys-only scout pass cannot see (entries-per-variant density).
+
+    :param contig: Optional contig to restrict to (partitions overlapping it).
+        Default is None (all partitions).
+    :return: List (in global partition order) of dicts with keys `index`
+        (global partition index), `start`/`end` ((contig, position) tuples of
+        the partition's key bounds), and `bytes` (entries part-file size).
+    """
+    base = f"{aou_genotypes.path}/variant_data"
+    with hl.hadoop_open(f"{base}/rows/rows/metadata.json.gz") as f:
+        rows_meta = json.load(f)
+    bounds = rows_meta.get("_jRangeBounds", rows_meta.get("jRangeBounds"))
+    if bounds is None:
+        raise ValueError(f"jRangeBounds not found; metadata keys: {list(rows_meta)}")
+    with hl.hadoop_open(f"{base}/entries/rows/metadata.json.gz") as f:
+        entries_meta = json.load(f)
+    part_files = entries_meta.get("_partFiles", entries_meta.get("partFiles"))
+    if part_files is None:
+        raise ValueError(f"partFiles not found; metadata keys: {list(entries_meta)}")
+    if len(part_files) != len(bounds):
+        raise ValueError(
+            f"partition count mismatch: {len(bounds)} range bounds vs "
+            f"{len(part_files)} entries part files."
+        )
+
+    listing = hl.hadoop_ls(f"{base}/entries/rows/parts")
+    size_by_name = {
+        e["path"].rsplit("/", 1)[-1]: e["size_bytes"]
+        for e in listing
+        if not e.get("is_dir")
+    }
+
+    order = _grch38_contig_order()
+    c_idx = order[contig] if contig is not None else None
+    out: List[Dict] = []
+    for gi, (b, name) in enumerate(zip(bounds, part_files)):
+        s = b["start"].get("locus", b["start"])
+        e = b["end"].get("locus", b["end"])
+        s_idx, e_idx = order.get(s["contig"]), order.get(e["contig"])
+        if s_idx is None or e_idx is None:
+            continue
+        if contig is not None and (s_idx > c_idx or e_idx < c_idx):
+            continue
+        size = size_by_name.get(name)
+        if size is None:
+            # Dropping the partition would leave its target loci in the scout
+            # table with no parent of their own; the lower-bound search would
+            # fold them into a neighbor and chunk them at the wrong density.
+            raise ValueError(
+                f"No entries parts listing entry for partition {gi} ({name}); "
+                "the parent byte map would be incomplete."
+            )
+        out.append(
+            {
+                "index": gi,
+                "start": (s["contig"], s["position"]),
+                "end": (e["contig"], e["position"]),
+                "bytes": size,
+            }
+        )
+    return out
+
+
 def compute_contig_intervals(args) -> List[hl.utils.Interval]:
     """
-    Derive equal-width read intervals covering a single contig.
+    Derive ~equal-data read intervals covering a single contig.
 
-    The contig's span is known from the reference genome, so unlike chunk mode no
-    bounds aggregation over the VDS reference data is needed. With
-    --read-subintervals-scale, the sub-interval count is the scale times the
-    number of VDS partitions overlapping the contig (a metadata-only lookup);
-    otherwise --read-subintervals-per-chunk gives the absolute count.
+    Each VDS partition's position span on the contig (from the partition bounds
+    in the table metadata, a metadata-only lookup) is subdivided into equal-width
+    slices, so interval width adapts to data density: every interval holds about
+    1/scale of one ~equal-data partition. Equal-width slicing of the full contig
+    span instead gives severely skewed jobs on contigs with large variant-free
+    regions (empty sub-second reads over the p-arm/centromere next to
+    multi-partition slices in dense pockets). Regions between partition spans
+    hold no variant rows and get no interval, matching chunk mode's
+    variant-bounds semantics.
+
+    With --read-subintervals-scale, each partition span gets `scale` slices;
+    otherwise --read-subintervals-per-chunk gives a total spread evenly across
+    the contig's partition spans.
 
     :param args: Parsed CLI args.
-    :return: List of locus intervals covering the contig, in genomic order.
+    :return: List of locus intervals covering the contig's data, in genomic order.
     """
     contig = args.chrom
     reference_genome = "GRCh38"
     rg = hl.get_reference(reference_genome)
     contig_len = rg.contig_length(contig)
 
-    if args.read_subintervals_scale is not None:
-        vds_probe = get_aou_vds(
-            environment=args.environment,
-            remove_hard_filtered_samples=False,
-            log_sample_counts=False,
+    spans = _contig_partition_spans(contig, contig_len)
+    n_parts = len(spans)
+    if n_parts == 0:
+        logger.warning(
+            "No %s variant-data partition spans found; deriving no intervals.",
+            contig,
         )
-        n_parts = hl.vds.filter_intervals(
-            vds_probe,
-            [hl.parse_locus_interval(contig, reference_genome=reference_genome)],
-        ).variant_data.n_partitions()
-        n_sub = max(1, math.ceil(args.read_subintervals_scale * n_parts))
+        return []
+
+    if args.read_subintervals_scale is not None:
+        per_part = max(1, math.ceil(args.read_subintervals_scale))
         logger.info(
-            "Scaling explode: %d %s partitions x %s = %d total sub-intervals",
+            "Scaling explode: %d %s partition spans x %s = up to %d total "
+            "sub-intervals",
             n_parts,
             contig,
             args.read_subintervals_scale,
-            n_sub,
+            per_part * n_parts,
         )
     else:
-        n_sub = max(args.read_subintervals_per_chunk or 1, 1)
-        if n_sub == 1:
+        total_sub = max(args.read_subintervals_per_chunk or 1, 1)
+        per_part = max(1, math.ceil(total_sub / n_parts))
+        if per_part == 1:
             logger.warning(
-                "Deriving a single read interval for all of %s (one interval = one "
-                "partition on re-read); pass --read-subintervals-per-chunk or "
-                "--read-subintervals-scale to subdivide it.",
+                "Deriving one read interval per %s partition span (one interval "
+                "= one partition on re-read); raise "
+                "--read-subintervals-per-chunk or pass "
+                "--read-subintervals-scale to subdivide further.",
                 contig,
             )
 
-    n_sub = min(n_sub, contig_len)
-    step = max(contig_len // n_sub, 1)
     intervals: List[hl.utils.Interval] = []
-    for i in range(n_sub):
-        sub_lo = 1 + i * step
-        last = i == n_sub - 1
-        sub_hi = contig_len if last else 1 + (i + 1) * step
-        intervals.append(
-            hl.Interval(
-                hl.Locus(contig, sub_lo, reference_genome=reference_genome),
-                hl.Locus(contig, sub_hi, reference_genome=reference_genome),
-                includes_start=True,
-                includes_end=last,
+    for lo, hi in spans:
+        n = min(per_part, hi - lo)
+        step = max((hi - lo) // n, 1)
+        for i in range(n):
+            sub_lo = lo + i * step
+            sub_hi = hi if i == n - 1 else lo + (i + 1) * step
+            # A span's exclusive end can be contig_len + 1, which is not a valid
+            # locus; close that interval at contig_len inclusively instead.
+            past_end = sub_hi > contig_len
+            intervals.append(
+                hl.Interval(
+                    hl.Locus(contig, sub_lo, reference_genome=reference_genome),
+                    hl.Locus(
+                        contig,
+                        contig_len if past_end else sub_hi,
+                        reference_genome=reference_genome,
+                    ),
+                    includes_start=True,
+                    includes_end=past_end,
+                )
             )
-        )
+    logger.info(
+        "Derived %d ~equal-data read intervals from %d %s partition spans.",
+        len(intervals),
+        n_parts,
+        contig,
+    )
     return intervals
 
 
@@ -1575,6 +1871,38 @@ def _validate_args(args) -> None:
             "--scout-alleles requires at least one of --min-alleles or --max-alleles"
         )
 
+    if args.scout_byte_weight:
+        if not args.scout_alleles:
+            raise ValueError("--scout-byte-weight requires --scout-alleles.")
+        if args.test:
+            # Rejected rather than ignored: a silently dropped flag would make
+            # a --test run look like it exercised the weighted path.
+            raise ValueError(
+                "--scout-byte-weight cannot be combined with --test: the test "
+                "VDS's entries part-file sizes do not reflect the full VDS, so "
+                "the derived weights would be meaningless."
+            )
+        cap = args.scout_byte_weight_cap
+        if not math.isfinite(cap) or cap < 1.0:
+            # The cap divides the base chunk size, so 0 raises, NaN breaks the
+            # ceiling, and anything in (0, 1) enlarges chunks despite the flag
+            # being an up-weight ceiling.
+            raise ValueError(
+                f"--scout-byte-weight-cap must be a finite value >= 1.0; got {cap}."
+            )
+
+    if args.scout_limit_intervals is not None:
+        if not args.scout_alleles:
+            raise ValueError("--scout-limit-intervals requires --scout-alleles.")
+        if args.scout_limit_intervals < 1:
+            raise ValueError("--scout-limit-intervals must be >= 1.")
+        if not args.ac_info_ht_checkpoint_path_override:
+            raise ValueError(
+                "--scout-limit-intervals writes a partial-contig output; provide "
+                "--ac-info-ht-checkpoint-path-override so it cannot land on a "
+                "derived production path."
+            )
+
     if args.export_true_positive_vcfs and not (
         args.transmitted_singletons or args.sibling_singletons
     ):
@@ -1614,7 +1942,8 @@ def _derive_read_intervals(args, need_intervals: bool):
 
     :param args: Parsed CLI args.
     :param need_intervals: Whether any selected step reads the VDS.
-    :return: List of locus intervals, or None.
+    :return: Tuple of (locus interval list or None, scout byte-weighting
+        provenance dict or None).
     """
     # Early return so read-restriction flags never trigger derivation for
     # invocations that don't read the VDS -- in particular, --chrom on a
@@ -1625,16 +1954,17 @@ def _derive_read_intervals(args, need_intervals: bool):
                 "Skipping interval derivation: the selected steps read neither "
                 "the VDS nor the VCF by interval."
             )
-        return None
+        return None, None
 
     sub_intervals = None
+    scout_byte_weight_info = None
     if args.explode_partitions:
         logger.info("Explode partitions...")
         sub_intervals = compute_chunks(args)
         logger.info("Derived %d sub-intervals from chunk", len(sub_intervals))
     elif args.scout_alleles:
         logger.info("Scouting target loci by allele count...")
-        sub_intervals = compute_scout_intervals(args)
+        sub_intervals, scout_byte_weight_info = compute_scout_intervals(args)
         logger.info("Derived %d scout intervals", len(sub_intervals))
     elif args.chrom:
         logger.info("Deriving read intervals for contig %s...", args.chrom)
@@ -1652,7 +1982,7 @@ def _derive_read_intervals(args, need_intervals: bool):
             "Interval derivation returned no intervals; writing an empty AC "
             "info HT for this run."
         )
-    return sub_intervals
+    return sub_intervals, scout_byte_weight_info
 
 
 def _resolve_union_inputs(args, test: bool, environment: str):
@@ -1808,7 +2138,9 @@ def main(args):
     # sibling-stats steps; the union, sites-VCF, and final-join steps never
     # read the VDS.
     need_vds = args.generate_ac_info_ht or args.generate_sibling_stats
-    sub_intervals = _derive_read_intervals(args, need_intervals=need_vds)
+    sub_intervals, scout_byte_weight_info = _derive_read_intervals(
+        args, need_intervals=need_vds
+    )
     vds = None
     if need_vds:
         # NOTE: VDS will have 'aou_' prefix on sample IDs.
@@ -1872,6 +2204,37 @@ def main(args):
                     ),
                     scout_rows_per_partition=_optional_global(
                         args.scout_rows_per_partition, hl.tint32
+                    ),
+                    # TEST ONLY: when set, the output covers only the first N
+                    # scout intervals of the contig, not the full contig.
+                    scout_limit_intervals=_optional_global(
+                        args.scout_limit_intervals, hl.tint32
+                    ),
+                    # Byte-weighting provenance: only up-weighted parents are
+                    # recorded; absent parents are implicitly weight 1.0 at the
+                    # base chunk size, and the full byte map is re-derivable
+                    # from the static VDS metadata.
+                    scout_byte_weight=args.scout_byte_weight,
+                    scout_byte_weight_cap=_optional_global(
+                        scout_byte_weight_info and scout_byte_weight_info["cap"],
+                        hl.tfloat64,
+                    ),
+                    scout_byte_weight_median_bytes_per_locus=_optional_global(
+                        scout_byte_weight_info
+                        and scout_byte_weight_info["median_bytes_per_locus"],
+                        hl.tfloat64,
+                    ),
+                    scout_byte_weights=_optional_global(
+                        scout_byte_weight_info
+                        and [hl.Struct(**w) for w in scout_byte_weight_info["weights"]],
+                        hl.tarray(
+                            hl.tstruct(
+                                parent_index=hl.tint32,
+                                n_target_loci=hl.tint32,
+                                weight=hl.tfloat64,
+                                chunk_size=hl.tint32,
+                            )
+                        ),
                     ),
                     min_alleles=_optional_global(args.min_alleles, hl.tint32),
                     max_alleles=_optional_global(args.max_alleles, hl.tint32),
@@ -2459,7 +2822,11 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         help=(
             "Number of locus sub-intervals to subdivide each chunk into, per "
             "contig. Default is None (1 sub-interval per contig, legacy "
-            "behavior). Mutually exclusive with --read-subintervals-scale."
+            "behavior). In contig mode (--chrom without --explode-partitions) "
+            "this count is spread across the contig's VDS partition spans "
+            "with a floor of one interval per span, so the realized total is "
+            "at least the number of spans regardless of this value. Mutually "
+            "exclusive with --read-subintervals-scale."
         ),
         type=int,
         default=None,
@@ -2467,13 +2834,17 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
     chunk_args.add_argument(
         "--read-subintervals-scale",
         help=(
-            "Derive the total sub-interval count automatically as this multiplier "
-            "times the number of VDS partitions in the chunk (e.g. 15 with a "
-            "3-partition chunk gives ~45 sub-intervals), allocated across contigs "
-            "proportionally to their position span. Use instead of "
-            "--read-subintervals-per-chunk when the chunk's partition count is not "
-            "known up front (e.g. a --chrom run). Mutually exclusive with "
-            "--read-subintervals-per-chunk."
+            "Derive the sub-interval count automatically from the VDS partition "
+            "count instead of stating a total. In chunk mode (--chunk-start/"
+            "--chunk-stop) the total is this multiplier times the chunk's "
+            "partition count (e.g. 15 over a 3-partition chunk gives ~45), "
+            "allocated across contigs proportionally to their position span. In "
+            "contig mode (--chrom without --explode-partitions) each of the "
+            "contig's VDS partition spans is sliced into ceil(scale) intervals, "
+            "so fractional values round up and the realized total is ceil(scale) "
+            "times the number of spans. Use instead of "
+            "--read-subintervals-per-chunk when the partition count is not known "
+            "up front. Mutually exclusive with --read-subintervals-per-chunk."
         ),
         type=float,
         default=None,
@@ -2510,6 +2881,44 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
             "only when --scout-n-partitions is not set. Default is 20, calibrated "
             "for heavy high-allele strata; raise it when scouting cheap low-allele "
             "loci."
+        ),
+        type=int,
+        default=None,
+    )
+    scout_args.add_argument(
+        "--scout-byte-weight",
+        help=(
+            "Shrink scout chunks inside VDS partitions whose entries part-file "
+            "is disproportionately large (bytes per target locus vs the median "
+            "partition), so entry-dense regions get proportionally more, smaller "
+            "intervals. Uses only storage metadata (one JSON read + one parts "
+            "listing). Requires --scout-alleles; incompatible with --test."
+        ),
+        action="store_true",
+    )
+    scout_args.add_argument(
+        "--scout-byte-weight-cap",
+        help=(
+            "Maximum byte-weight up-weighting (minimum chunk shrink factor) per "
+            "partition. Default is 16. A partition denser than this many times "
+            "the median is clamped here, so its chunks stay larger than its "
+            "density warrants; if a run still has slow stragglers in a known "
+            "entry-dense region, raise the cap to let that partition shrink "
+            "further, or lower --scout-rows-per-partition to shrink every chunk. "
+            "Only meaningful with --scout-byte-weight."
+        ),
+        type=float,
+        default=16.0,
+    )
+    scout_args.add_argument(
+        "--scout-limit-intervals",
+        help=(
+            "TEST ONLY: truncate the scout-derived interval list to the first N "
+            "intervals (genomic order), so the re-read covers only the start of "
+            "the contig's target loci. The scout pass and byte-weighting still "
+            "run over the full contig. Requires --scout-alleles and "
+            "--ac-info-ht-checkpoint-path-override (a partial-contig output "
+            "must not land on a derived production path)."
         ),
         type=int,
         default=None,
