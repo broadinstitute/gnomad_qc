@@ -1357,7 +1357,9 @@ def group_scout_loci_into_intervals(
                     {
                         "parent_index": parent_meta[p][0],
                         "n_target_loci": counts[p],
-                        "weight": weight,
+                        # Rounded for readability; chunk_size below is the value
+                        # actually applied, so the exact ratio adds nothing.
+                        "weight": round(weight, 2),
                         "chunk_size": chunk_by_parent[p],
                     }
                 )
@@ -1495,7 +1497,7 @@ def compute_scout_intervals(args) -> Tuple[List[hl.utils.Interval], Dict]:
         )
         for w in weights:
             logger.info(
-                "  parent %d: %d target loci, weight %.1fx, chunk %d",
+                "  parent %d: %d target loci, weight %.2fx, chunk %d",
                 w["parent_index"],
                 w["n_target_loci"],
                 w["weight"],
