@@ -155,11 +155,13 @@ BATCH_REGIONS = ["us-central1"]
 #     coverage ever computed; v4 reused it) -> 849 consent-drop samples.
 # 845 samples are in both sets; 21 are AN-only (added after v3.0) and 4 are
 # coverage-only (not in the v4 release).
-# coverage_stats is computed over the 849 via the GNOMAD_COVERAGE_GROUP stratum.
+# coverage_stats is computed over the 849 via the raw GNOMAD_COVERAGE_GROUP
+# stratum: the 3.0.1 coverage release was not adj filtered, so the subtraction
+# isn't either.
 GNOMAD_COVERAGE_RELEASE_SAMPLE_COUNT = 71702
 GNOMAD_CONSENT_DROP_COVERAGE_SAMPLE_COUNT = 849
 V3_RELEASE_STRATUM_KEY = "v3_release"
-GNOMAD_COVERAGE_GROUP = {"group": "adj", V3_RELEASE_STRATUM_KEY: "true"}
+GNOMAD_COVERAGE_GROUP = {"group": "raw", V3_RELEASE_STRATUM_KEY: "true"}
 
 # chrM is called by a separate pipeline, so it is excluded here even though
 # vep_context v105 has it. Both the sites HT and the chunk intervals must drop
@@ -210,8 +212,8 @@ def get_group_membership_ht(
     (qual_hists) to a single group via ``entry_agg_group_membership``.
 
     gnomAD: consent-drop samples only. The AN groups contain the samples that
-    were in the v4 release; the coverage group (``GNOMAD_COVERAGE_GROUP``)
-    contains the samples that were in the v3.0 release.
+    were in the v4 release; the raw coverage group (``GNOMAD_COVERAGE_GROUP``,
+    appended last) contains the samples that were in the v3.0 release.
 
     :param meta_ht: Meta HT (v5 project meta for AoU, v4 genomes meta for gnomAD).
     :param project: "aou" or "gnomad".
@@ -266,14 +268,20 @@ def get_group_membership_ht(
             build_freq_stratification_list(
                 sex_expr=ht.sex_imputation.sex_karyotype,
                 gen_anc_expr=ht.population_inference.pop,
-                additional_strata_expr={V3_RELEASE_STRATUM_KEY: ht.in_v3_release},
             ),
         )
+        # Append the raw coverage group by hand; every stratum the builder
+        # emits is adj.
+        gm_ht = gm_ht.annotate(
+            group_membership=gm_ht.group_membership.append(
+                hl.is_defined(ht[gm_ht.key].in_v3_release)
+            )
+        )
+        gm_ht = gm_ht.annotate_globals(
+            freq_meta=gm_ht.freq_meta.append(hl.dict(GNOMAD_COVERAGE_GROUP))
+        )
         # Overwrite the membership of samples not in the v4 release so they
-        # count only toward the coverage group, then recount every group. The
-        # recount is localized so the global is an int32 literal like the one
-        # generate_freq_group_membership_array writes; the release HTs' counts
-        # are int32 and the AN merge refuses to zip int32 with int64.
+        # count only toward the coverage group, then recount every group.
         v3_idx = hl.eval(gm_ht.freq_meta).index(GNOMAD_COVERAGE_GROUP)
         gm_ht = gm_ht.annotate(
             group_membership=hl.if_else(
@@ -729,7 +737,7 @@ def compute_all_release_stats_per_ref_site(
         AoU HT it is aggregated once per cell and every group is rebuilt by
         summing cells; on the gnomAD HT it is aggregated per group.
     :return: HT keyed by locus with per-stratum ``AN``; flat coverage fields
-        (adj, over the ``GNOMAD_COVERAGE_GROUP`` samples) for gnomAD;
+        (raw, over the ``GNOMAD_COVERAGE_GROUP`` samples) for gnomAD;
         ``qual_hists`` (adj GQ histogram only)
         for AoU. AoU reference blocks carry no DP, so its coverage would
         measure ~0 genome-wide (chr1:55.06-55.16Mb: mean 0.048x, ``over_1``
@@ -764,7 +772,7 @@ def compute_all_release_stats_per_ref_site(
     # AN is omitted from entry_agg_group_membership so it fans out across all strata.
     entry_agg_group_membership = {}
     # Coverage stats are gnomAD-only: AoU ref blocks carry no DP (see docstring).
-    # Pin coverage_stats to the single adj group of consent-drop samples that
+    # Pin coverage_stats to the single raw group of consent-drop samples that
     # were in the v3.0 release (see GNOMAD_COVERAGE_GROUP): downstream uses
     # coverage_stats[0] exclusively, so per-strata coverage is wasted work.
     if project == "gnomad":
@@ -1247,7 +1255,8 @@ def _load_project_vds(
     (read-time co-partitioning) over ``partition_range``, synthesizes AoU DP
     from LAD (the AoU v8 VDS lacks DP), annotates AoU adj (standard cutoffs at
     variant sites; all ref-site genotypes pass), and applies the optional AoU
-    test subsample.
+    test subsample. gnomAD is filtered to the group membership HT's samples,
+    which include 4 in the v3.0 release but not the v4 release.
 
     :param project: "aou" or "gnomad".
     :param environment: Compute environment.
@@ -1313,9 +1322,13 @@ def _load_project_vds(
             vds = hl.vds.filter_samples(vds, meta_ht)
     else:
         sex_karyotype_field = "meta.sex_imputation.sex_karyotype"
+        # Filter to the group membership HT's samples, not release_only: the
+        # coverage group's sample count comes from that HT's globals, so the
+        # VDS columns must match it.
+        gm_ht = hl.read_table(_group_membership_ht_path(project, environment, test))
         vds = get_gnomad_v5_genomes_vds(
-            release_only=True,
             consent_drop_only=True,
+            filter_samples_ht=gm_ht.select(),
             filter_partitions=(
                 None if (sub_intervals or filter_intervals) else partition_range
             ),
@@ -1324,6 +1337,13 @@ def _load_project_vds(
             annotate_meta=True,
             chrom=chrom,
         )
+        n_vds = vds.variant_data.count_cols()
+        n_gm = gm_ht.count()
+        if n_vds != n_gm:
+            raise ValueError(
+                f"gnomAD VDS has {n_vds} samples but the group membership HT has"
+                f" {n_gm}."
+            )
     return vds, sex_karyotype_field
 
 
