@@ -1,0 +1,873 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+  <meta charset="utf-8" /><meta name="generator" content="Docutils 0.18.1: http://docutils.sourceforge.net/" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>gnomad_qc.v5.annotations.compute_coverage &mdash; gnomad_qc master documentation</title>
+      <link rel="stylesheet" href="../../../_static/pygments.css" type="text/css" />
+      <link rel="stylesheet" href="../../../_static/css/theme.css" type="text/css" />
+      <link rel="stylesheet" href="../../../_static/theme_overrides.css" type="text/css" />
+  <!--[if lt IE 9]>
+    <script src="../../../_static/js/html5shiv.min.js"></script>
+  <![endif]-->
+  
+        <script src="../../../_static/jquery.js"></script>
+        <script src="../../../_static/_sphinx_javascript_frameworks_compat.js"></script>
+        <script data-url_root="../../../" id="documentation_options" src="../../../_static/documentation_options.js"></script>
+        <script src="../../../_static/doctools.js"></script>
+        <script src="../../../_static/sphinx_highlight.js"></script>
+    <script src="../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" />
+    <link rel="next" title="gnomad_qc.v5.annotations.generate_frequency" href="generate_frequency.html" />
+    <link rel="prev" title="gnomad_qc.v5.annotations.annotation_utils" href="annotation_utils.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../index.html" class="icon icon-home">
+            gnomad_qc
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul class="current">
+<li class="toctree-l1 current"><a class="reference internal" href="../../index.html">API Reference</a><ul class="current">
+<li class="toctree-l2"><a class="reference internal" href="../../analyses/index.html">analyses</a></li>
+<li class="toctree-l2 current"><a class="reference internal" href="../index.html">v5</a><ul class="current">
+<li class="toctree-l3 current"><a class="reference internal" href="index.html">annotations</a><ul class="current">
+<li class="toctree-l4"><a class="reference internal" href="annotation_utils.html">annotation_utils</a></li>
+<li class="toctree-l4 current"><a class="current reference internal" href="#">compute_coverage</a></li>
+<li class="toctree-l4"><a class="reference internal" href="generate_frequency.html">generate_frequency</a></li>
+<li class="toctree-l4"><a class="reference internal" href="generate_variant_qc_annotations.html">generate_variant_qc_annotations</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../resources/index.html">resources</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../variant_qc/index.html">variant_qc</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../../federated/index.html">federated</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../v4/index.html">v4</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/broadinstitute/gnomad_qc/tags">Change Log</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../index.html">gnomad_qc</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../index.html">gnomad_qc</a></li>
+          <li class="breadcrumb-item"><a href="../index.html">gnomad_qc.v5</a></li>
+          <li class="breadcrumb-item"><a href="index.html">gnomad_qc.v5.annotations</a></li>
+      <li class="breadcrumb-item active">gnomad_qc.v5.annotations.compute_coverage</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="../../../_sources/api_reference/v5/annotations/compute_coverage.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="gnomad-qc-v5-annotations-compute-coverage">
+<h1>gnomad_qc.v5.annotations.compute_coverage<a class="headerlink" href="#gnomad-qc-v5-annotations-compute-coverage" title="Permalink to this heading"></a></h1>
+<p>Compute coverage, allele number, and quality histograms for gnomAD v5 genomes.</p>
+<p>v5 genomes = AoU v8 (new) + gnomAD v4 genomes minus the consent-drop set. This
+script computes per-reference-site AN per project, coverage (gnomAD only), and qual
+histograms (AoU only) and joins them into the v5 release HT/TSVs.</p>
+<p>Execution roles (mutually exclusive; dispatched by early return in <code class="docutils literal notranslate"><span class="pre">main</span></code>):</p>
+<ol class="arabic simple">
+<li><p>ORCHESTRATOR (<code class="docutils literal notranslate"><span class="pre">--use-batch-fanout</span></code> / <code class="docutils literal notranslate"><span class="pre">--merge-cov-chunks</span></code>): never
+initializes Hail; submits a Hail Batch of relay jobs and returns. Used for
+the prod-scale AoU compute.</p></li>
+<li><p>WORKER (<code class="docutils literal notranslate"><span class="pre">--run-chunk</span></code> / <code class="docutils literal notranslate"><span class="pre">--run-merge</span></code>): one relay container; initializes
+Hail and runs exactly one chunk/merge unit. The chunk worker is what calls
+<code class="docutils literal notranslate"><span class="pre">compute_all_release_stats_per_ref_site</span></code>.</p></li>
+<li><p>IN-PROCESS PIPELINE (neither): the strict single-job compute (gnomAD
+consent-drop, dev/test AoU), the setup writers, and the release assembly.</p></li>
+</ol>
+<p>A full prod AoU release is three separate invocations: fan-out compute,
+merge-cov-chunks, then the in-process assembly. The setup HTs (downsampling,
+group membership, sites, chunk intervals) are written by their own
+in-process invocations first; the fan-out reads them from disk. The AoU sample
+artifact JSONs (release samples, ID collisions) come from
+<code class="docutils literal notranslate"><span class="pre">create_sample_qc_metadata_ht.py</span> <span class="pre">--write-vds-sample-artifact-jsons</span></code> and are
+read inside <code class="docutils literal notranslate"><span class="pre">get_aou_vds</span></code>.</p>
+<p>Workflow:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="mf">1.</span> <span class="p">(</span><span class="n">AoU</span><span class="p">)</span> <span class="o">--</span><span class="n">write</span><span class="o">-</span><span class="n">aou</span><span class="o">-</span><span class="n">downsampling</span><span class="o">-</span><span class="n">ht</span>
+<span class="mf">2.</span> <span class="o">--</span><span class="n">write</span><span class="o">-</span><span class="n">group</span><span class="o">-</span><span class="n">membership</span><span class="o">-</span><span class="n">ht</span><span class="o">.</span> <span class="n">AoU</span><span class="p">:</span> <span class="n">one</span> <span class="n">aggregation</span> <span class="n">cell</span> <span class="n">per</span> <span class="n">distinct</span>
+   <span class="n">membership</span> <span class="n">pattern</span><span class="p">;</span> <span class="n">every</span> <span class="n">AN</span> <span class="n">group</span> <span class="ow">is</span> <span class="n">reconstructed</span> <span class="n">by</span> <span class="n">summing</span> <span class="n">cells</span><span class="o">.</span>
+   <span class="n">gnomAD</span><span class="p">:</span> <span class="n">the</span> <span class="n">consent</span><span class="o">-</span><span class="n">drop</span> <span class="n">samples</span><span class="p">,</span> <span class="n">one</span> <span class="n">boolean</span> <span class="n">per</span> <span class="n">group</span><span class="o">.</span>
+<span class="mf">3.</span> <span class="o">--</span><span class="n">write</span><span class="o">-</span><span class="n">vep</span><span class="o">-</span><span class="n">context</span><span class="o">-</span><span class="n">sites</span><span class="p">:</span> <span class="n">deduped</span><span class="p">,</span> <span class="n">telomere</span><span class="o">/</span><span class="n">centromere</span><span class="o">/</span><span class="n">chrM</span><span class="o">-</span><span class="n">stripped</span>
+   <span class="n">sites</span> <span class="n">HT</span> <span class="o">--</span> <span class="n">the</span> <span class="n">definition</span> <span class="n">of</span> <span class="s2">&quot;every site the compute must cover&quot;</span><span class="o">.</span>
+<span class="mf">4.</span> <span class="n">Compute</span><span class="p">:</span> <span class="o">--</span><span class="n">compute</span><span class="o">-</span><span class="nb">all</span><span class="o">-</span><span class="n">cov</span><span class="o">-</span><span class="n">release</span><span class="o">-</span><span class="n">stats</span><span class="o">-</span><span class="n">ht</span> <span class="p">(</span><span class="n">strict</span> <span class="n">single</span> <span class="n">job</span><span class="p">),</span> <span class="ow">or</span>
+   <span class="o">--</span><span class="n">write</span><span class="o">-</span><span class="n">chunk</span><span class="o">-</span><span class="n">intervals</span><span class="p">,</span> <span class="n">then</span> <span class="o">--</span><span class="n">use</span><span class="o">-</span><span class="n">batch</span><span class="o">-</span><span class="n">fanout</span><span class="p">,</span> <span class="n">then</span>
+   <span class="o">--</span><span class="n">merge</span><span class="o">-</span><span class="n">cov</span><span class="o">-</span><span class="n">chunks</span><span class="o">.</span> <span class="n">Chunk</span> <span class="n">outputs</span> <span class="n">are</span> <span class="n">namespaced</span> <span class="n">by</span> <span class="n">a</span> <span class="n">content</span> <span class="nb">hash</span> <span class="n">of</span>
+   <span class="n">the</span> <span class="n">intervals</span> <span class="n">JSON</span><span class="p">:</span> <span class="n">rerunning</span> <span class="n">the</span> <span class="n">fan</span><span class="o">-</span><span class="n">out</span> <span class="n">retries</span> <span class="n">only</span> <span class="n">missing</span> <span class="n">chunks</span><span class="p">,</span>
+   <span class="ow">and</span> <span class="n">a</span> <span class="n">regenerated</span> <span class="n">JSON</span> <span class="p">(</span><span class="n">new</span> <span class="n">layout</span><span class="p">,</span> <span class="n">new</span> <span class="nb">hash</span><span class="p">)</span> <span class="n">never</span> <span class="n">mixes</span> <span class="k">with</span> <span class="n">old</span>
+   <span class="n">chunks</span><span class="o">.</span>
+<span class="mf">5.</span> <span class="o">--</span><span class="n">validate</span><span class="o">-</span><span class="n">cov</span><span class="o">-</span><span class="ow">and</span><span class="o">-</span><span class="n">an</span><span class="p">:</span> <span class="n">the</span> <span class="n">merged</span> <span class="n">HT</span> <span class="n">must</span> <span class="n">cover</span> <span class="n">every</span> <span class="n">site</span> <span class="n">exactly</span><span class="o">.</span>
+<span class="mf">6.</span> <span class="p">(</span><span class="n">gnomad</span><span class="p">)</span> <span class="o">--</span><span class="n">merge</span><span class="o">-</span><span class="n">gnomad</span><span class="o">-</span><span class="n">coverage</span> <span class="o">/</span> <span class="o">--</span><span class="n">merge</span><span class="o">-</span><span class="n">gnomad</span><span class="o">-</span><span class="n">an</span><span class="p">:</span> <span class="n">subtract</span> <span class="n">the</span>
+   <span class="n">consent</span><span class="o">-</span><span class="n">drop</span> <span class="n">samples</span> <span class="kn">from</span> <span class="nn">the</span> <span class="n">release</span> <span class="n">HTs</span><span class="o">.</span> <span class="n">AN</span><span class="p">:</span> <span class="n">the</span> <span class="n">samples</span> <span class="ow">in</span> <span class="n">the</span> <span class="n">v4</span>
+   <span class="n">release</span><span class="p">,</span> <span class="kn">from</span> <span class="nn">the</span> <span class="n">v4</span><span class="mf">.1</span> <span class="n">AN</span> <span class="n">release</span><span class="o">.</span> <span class="n">Coverage</span><span class="p">:</span> <span class="n">the</span> <span class="n">samples</span> <span class="ow">in</span> <span class="n">the</span> <span class="n">v3</span><span class="mf">.0</span>
+   <span class="n">release</span><span class="p">,</span> <span class="kn">from</span> <span class="nn">the</span> <span class="mf">3.0.1</span> <span class="n">coverage</span> <span class="n">release</span> <span class="p">(</span><span class="n">the</span> <span class="n">only</span> <span class="n">genomes</span> <span class="n">coverage</span>
+   <span class="n">ever</span> <span class="n">computed</span><span class="p">;</span> <span class="n">v4</span> <span class="n">reused</span> <span class="n">it</span><span class="p">)</span><span class="o">.</span>
+<span class="mf">7.</span> <span class="p">(</span><span class="n">aou</span><span class="p">)</span> <span class="n">Release</span><span class="p">:</span> <span class="o">--</span><span class="n">export</span><span class="o">-</span><span class="n">coverage</span><span class="o">-</span><span class="n">release</span><span class="o">-</span><span class="n">files</span> <span class="p">(</span><span class="n">gnomAD</span><span class="o">-</span><span class="n">only</span><span class="p">;</span> <span class="n">AoU</span>
+   <span class="n">computes</span> <span class="n">no</span> <span class="n">coverage</span> <span class="n">stats</span><span class="p">),</span> <span class="o">--</span><span class="n">export</span><span class="o">-</span><span class="n">an</span><span class="o">-</span><span class="n">release</span><span class="o">-</span><span class="n">files</span><span class="p">,</span>
+   <span class="o">--</span><span class="n">merge</span><span class="o">-</span><span class="n">qual</span><span class="o">-</span><span class="n">hists</span> <span class="p">(</span><span class="n">gnomAD</span> <span class="n">v4</span> <span class="n">hists</span> <span class="n">reused</span> <span class="k">as</span><span class="o">-</span><span class="ow">is</span><span class="p">)</span><span class="o">.</span>
+</pre></div>
+</div>
+<p>Usage Examples:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="c1"># Per-chunk fan-out compute + merge (on batch). Run setup steps 1-3 +</span>
+<span class="c1"># --write-chunk-intervals first; the fan-out reads those outputs:</span>
+<span class="n">python</span> <span class="n">compute_coverage</span><span class="o">.</span><span class="n">py</span> <span class="o">--</span><span class="n">project</span><span class="o">-</span><span class="n">name</span> <span class="n">aou</span> <span class="o">--</span><span class="n">environment</span> <span class="n">batch</span> \\
+    <span class="o">--</span><span class="n">use</span><span class="o">-</span><span class="n">batch</span><span class="o">-</span><span class="n">fanout</span> <span class="o">--</span><span class="n">partitions</span><span class="o">-</span><span class="n">per</span><span class="o">-</span><span class="n">chunk</span> <span class="mi">3</span>
+<span class="n">python</span> <span class="n">compute_coverage</span><span class="o">.</span><span class="n">py</span> <span class="o">--</span><span class="n">project</span><span class="o">-</span><span class="n">name</span> <span class="n">aou</span> <span class="o">--</span><span class="n">environment</span> <span class="n">batch</span> \\
+    <span class="o">--</span><span class="n">merge</span><span class="o">-</span><span class="n">cov</span><span class="o">-</span><span class="n">chunks</span> <span class="o">--</span><span class="n">n</span><span class="o">-</span><span class="n">partitions</span> <span class="mi">10000</span>
+
+<span class="c1"># gnomAD v4 consent-drop subtraction (on dataproc):</span>
+<span class="n">hailctl</span> <span class="n">dataproc</span> <span class="n">submit</span> <span class="n">cluster</span><span class="o">-</span><span class="n">name</span> <span class="n">compute_coverage</span><span class="o">.</span><span class="n">py</span> \\
+    <span class="o">--</span><span class="n">project</span><span class="o">-</span><span class="n">name</span> <span class="n">gnomad</span> <span class="o">--</span><span class="n">environment</span> <span class="n">dataproc</span> \\
+    <span class="o">--</span><span class="n">merge</span><span class="o">-</span><span class="n">gnomad</span><span class="o">-</span><span class="n">coverage</span> <span class="o">--</span><span class="n">merge</span><span class="o">-</span><span class="n">gnomad</span><span class="o">-</span><span class="n">an</span>
+
+<span class="c1"># AoU/gnomAD release assembly (on batch):</span>
+<span class="n">python</span> <span class="n">compute_coverage</span><span class="o">.</span><span class="n">py</span> <span class="o">--</span><span class="n">project</span><span class="o">-</span><span class="n">name</span> <span class="n">aou</span> <span class="o">--</span><span class="n">environment</span> <span class="n">batch</span> \\
+    <span class="o">--</span><span class="n">export</span><span class="o">-</span><span class="n">coverage</span><span class="o">-</span><span class="n">release</span><span class="o">-</span><span class="n">files</span> <span class="o">--</span><span class="n">export</span><span class="o">-</span><span class="n">an</span><span class="o">-</span><span class="n">release</span><span class="o">-</span><span class="n">files</span> \\
+    <span class="o">--</span><span class="n">merge</span><span class="o">-</span><span class="n">qual</span><span class="o">-</span><span class="n">hists</span>
+</pre></div>
+</div>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">usage</span><span class="p">:</span> <span class="n">gnomad_qc</span><span class="o">.</span><span class="n">v5</span><span class="o">.</span><span class="n">annotations</span><span class="o">.</span><span class="n">compute_coverage</span><span class="o">.</span><span class="n">py</span> <span class="p">[</span><span class="o">-</span><span class="n">h</span><span class="p">]</span>
+                                                    <span class="p">[</span><span class="o">--</span><span class="n">project</span><span class="o">-</span><span class="n">name</span> <span class="p">{</span><span class="n">aou</span><span class="p">,</span><span class="n">gnomad</span><span class="p">}]</span>
+                                                    <span class="p">[</span><span class="o">--</span><span class="n">overwrite</span><span class="p">]</span>
+                                                    <span class="p">[</span><span class="o">--</span><span class="n">environment</span> <span class="p">{</span><span class="n">rwb</span><span class="p">,</span><span class="n">batch</span><span class="p">,</span><span class="n">dataproc</span><span class="p">}]</span>
+                                                    <span class="p">[</span><span class="o">--</span><span class="n">results</span><span class="o">-</span><span class="n">environment</span> <span class="p">{</span><span class="n">rwb</span><span class="p">,</span><span class="n">batch</span><span class="p">,</span><span class="n">dataproc</span><span class="p">}]</span>
+                                                    <span class="p">[</span><span class="o">--</span><span class="n">tmp</span><span class="o">-</span><span class="nb">dir</span><span class="o">-</span><span class="n">days</span> <span class="n">TMP_DIR_DAYS</span><span class="p">]</span>
+                                                    <span class="p">[</span><span class="o">--</span><span class="n">gcp</span><span class="o">-</span><span class="n">billing</span><span class="o">-</span><span class="n">project</span> <span class="n">GCP_BILLING_PROJECT</span><span class="p">]</span>
+                                                    <span class="p">[</span><span class="o">--</span><span class="n">experimental</span><span class="p">]</span>
+                                                    <span class="p">[</span><span class="o">--</span><span class="n">app</span><span class="o">-</span><span class="n">name</span> <span class="n">APP_NAME</span><span class="p">]</span>
+                                                    <span class="p">[</span><span class="o">--</span><span class="n">driver</span><span class="o">-</span><span class="n">cores</span> <span class="n">DRIVER_CORES</span><span class="p">]</span>
+                                                    <span class="p">[</span><span class="o">--</span><span class="n">driver</span><span class="o">-</span><span class="n">memory</span> <span class="p">{</span><span class="n">standard</span><span class="p">,</span><span class="n">highmem</span><span class="p">}]</span>
+                                                    <span class="p">[</span><span class="o">--</span><span class="n">jvm</span><span class="o">-</span><span class="n">heap</span><span class="o">-</span><span class="n">size</span> <span class="n">JVM_HEAP_SIZE</span><span class="p">]</span>
+                                                    <span class="p">[</span><span class="o">--</span><span class="n">worker</span><span class="o">-</span><span class="n">cores</span> <span class="n">WORKER_CORES</span><span class="p">]</span>
+                                                    <span class="p">[</span><span class="o">--</span><span class="n">worker</span><span class="o">-</span><span class="n">memory</span> <span class="p">{</span><span class="n">standard</span><span class="p">,</span><span class="n">highmem</span><span class="p">}]</span>
+                                                    <span class="p">[</span><span class="o">--</span><span class="n">n</span><span class="o">-</span><span class="n">partitions</span> <span class="n">N_PARTITIONS</span><span class="p">]</span>
+                                                    <span class="p">[</span><span class="o">--</span><span class="n">cov</span><span class="o">-</span><span class="ow">and</span><span class="o">-</span><span class="n">an</span><span class="o">-</span><span class="n">output</span><span class="o">-</span><span class="n">suffix</span> <span class="n">COV_AND_AN_OUTPUT_SUFFIX</span><span class="p">]</span>
+                                                    <span class="p">[</span><span class="o">--</span><span class="n">qual</span><span class="o">-</span><span class="n">hists</span><span class="o">-</span><span class="n">output</span><span class="o">-</span><span class="n">suffix</span> <span class="n">QUAL_HISTS_OUTPUT_SUFFIX</span><span class="p">]</span>
+                                                    <span class="p">[</span><span class="o">--</span><span class="n">test</span><span class="p">]</span>
+                                                    <span class="p">[</span><span class="o">--</span><span class="n">test</span><span class="o">-</span><span class="n">sample</span><span class="o">-</span><span class="n">subset</span><span class="p">]</span>
+                                                    <span class="p">[</span><span class="o">--</span><span class="n">test</span><span class="o">-</span><span class="n">n</span><span class="o">-</span><span class="n">partitions</span> <span class="n">TEST_N_PARTITIONS</span><span class="p">]</span>
+                                                    <span class="p">[</span><span class="o">--</span><span class="n">chrom</span> <span class="n">CHROM</span><span class="p">]</span>
+                                                    <span class="p">[</span><span class="o">--</span><span class="n">test</span><span class="o">-</span><span class="n">region</span> <span class="n">TEST_REGION</span> <span class="p">[</span><span class="n">TEST_REGION</span> <span class="o">...</span><span class="p">]]</span>
+                                                    <span class="p">[</span><span class="o">--</span><span class="n">write</span><span class="o">-</span><span class="n">group</span><span class="o">-</span><span class="n">membership</span><span class="o">-</span><span class="n">ht</span><span class="p">]</span>
+                                                    <span class="p">[</span><span class="o">--</span><span class="n">write</span><span class="o">-</span><span class="n">aou</span><span class="o">-</span><span class="n">downsampling</span><span class="o">-</span><span class="n">ht</span><span class="p">]</span>
+                                                    <span class="p">[</span><span class="o">--</span><span class="n">write</span><span class="o">-</span><span class="n">vep</span><span class="o">-</span><span class="n">context</span><span class="o">-</span><span class="n">sites</span><span class="p">]</span>
+                                                    <span class="p">[</span><span class="o">--</span><span class="n">write</span><span class="o">-</span><span class="n">chunk</span><span class="o">-</span><span class="n">intervals</span><span class="p">]</span>
+                                                    <span class="p">[</span><span class="o">--</span><span class="n">validate</span><span class="o">-</span><span class="n">cov</span><span class="o">-</span><span class="ow">and</span><span class="o">-</span><span class="n">an</span><span class="p">]</span>
+                                                    <span class="p">[</span><span class="o">--</span><span class="n">compute</span><span class="o">-</span><span class="nb">all</span><span class="o">-</span><span class="n">cov</span><span class="o">-</span><span class="n">release</span><span class="o">-</span><span class="n">stats</span><span class="o">-</span><span class="n">ht</span><span class="p">]</span>
+                                                    <span class="p">[</span><span class="o">--</span><span class="n">partitions</span><span class="o">-</span><span class="k">for</span><span class="o">-</span><span class="n">rep</span><span class="o">-</span><span class="n">on</span><span class="o">-</span><span class="n">read</span> <span class="p">[</span><span class="n">PARTITIONS_FOR_REP_ON_READ</span><span class="p">]]</span>
+                                                    <span class="p">[</span><span class="o">--</span><span class="n">merge</span><span class="o">-</span><span class="n">gnomad</span><span class="o">-</span><span class="n">coverage</span><span class="p">]</span>
+                                                    <span class="p">[</span><span class="o">--</span><span class="n">export</span><span class="o">-</span><span class="n">coverage</span><span class="o">-</span><span class="n">release</span><span class="o">-</span><span class="n">files</span><span class="p">]</span>
+                                                    <span class="p">[</span><span class="o">--</span><span class="n">merge</span><span class="o">-</span><span class="n">gnomad</span><span class="o">-</span><span class="n">an</span><span class="p">]</span>
+                                                    <span class="p">[</span><span class="o">--</span><span class="n">export</span><span class="o">-</span><span class="n">an</span><span class="o">-</span><span class="n">release</span><span class="o">-</span><span class="n">files</span><span class="p">]</span>
+                                                    <span class="p">[</span><span class="o">--</span><span class="n">merge</span><span class="o">-</span><span class="n">qual</span><span class="o">-</span><span class="n">hists</span><span class="p">]</span>
+                                                    <span class="p">[</span><span class="o">--</span><span class="n">use</span><span class="o">-</span><span class="n">batch</span><span class="o">-</span><span class="n">fanout</span><span class="p">]</span>
+                                                    <span class="p">[</span><span class="o">--</span><span class="n">submit</span><span class="o">-</span><span class="n">orchestrator</span><span class="p">]</span>
+                                                    <span class="p">[</span><span class="o">--</span><span class="n">fanout</span><span class="o">-</span><span class="n">retry</span><span class="o">-</span><span class="n">passes</span> <span class="n">FANOUT_RETRY_PASSES</span><span class="p">]</span>
+                                                    <span class="p">[</span><span class="o">--</span><span class="n">merge</span><span class="o">-</span><span class="n">cov</span><span class="o">-</span><span class="n">chunks</span><span class="p">]</span>
+                                                    <span class="p">[</span><span class="o">--</span><span class="n">assemble</span><span class="o">-</span><span class="n">chrom</span><span class="o">-</span><span class="n">coverage</span><span class="p">]</span>
+                                                    <span class="p">[</span><span class="o">--</span><span class="n">partitions</span><span class="o">-</span><span class="n">per</span><span class="o">-</span><span class="n">chunk</span> <span class="n">PARTITIONS_PER_CHUNK</span><span class="p">]</span>
+                                                    <span class="p">[</span><span class="o">--</span><span class="n">read</span><span class="o">-</span><span class="n">subintervals</span><span class="o">-</span><span class="n">per</span><span class="o">-</span><span class="n">chunk</span> <span class="n">READ_SUBINTERVALS_PER_CHUNK</span><span class="p">]</span>
+                                                    <span class="p">[</span><span class="o">--</span><span class="n">total</span><span class="o">-</span><span class="n">partitions</span> <span class="n">TOTAL_PARTITIONS</span><span class="p">]</span>
+                                                    <span class="p">[</span><span class="o">--</span><span class="n">wave</span><span class="o">-</span><span class="n">size</span> <span class="n">WAVE_SIZE</span><span class="p">]</span>
+                                                    <span class="p">[</span><span class="o">--</span><span class="n">merge</span><span class="o">-</span><span class="n">group</span><span class="o">-</span><span class="n">size</span> <span class="n">MERGE_GROUP_SIZE</span><span class="p">]</span>
+                                                    <span class="p">[</span><span class="o">--</span><span class="n">methods</span><span class="o">-</span><span class="n">branch</span> <span class="n">METHODS_BRANCH</span><span class="p">]</span>
+                                                    <span class="p">[</span><span class="o">--</span><span class="n">batch</span><span class="o">-</span><span class="n">image</span> <span class="n">BATCH_IMAGE</span><span class="p">]</span>
+                                                    <span class="p">[</span><span class="o">--</span><span class="n">batch</span><span class="o">-</span><span class="n">billing</span><span class="o">-</span><span class="n">project</span> <span class="n">BATCH_BILLING_PROJECT</span><span class="p">]</span>
+                                                    <span class="p">[</span><span class="o">--</span><span class="n">batch</span><span class="o">-</span><span class="n">remote</span><span class="o">-</span><span class="n">tmpdir</span> <span class="n">BATCH_REMOTE_TMPDIR</span><span class="p">]</span>
+                                                    <span class="p">[</span><span class="o">--</span><span class="n">chunk</span><span class="o">-</span><span class="n">cpu</span> <span class="n">CHUNK_CPU</span><span class="p">]</span>
+                                                    <span class="p">[</span><span class="o">--</span><span class="n">chunk</span><span class="o">-</span><span class="n">memory</span> <span class="p">{</span><span class="n">lowmem</span><span class="p">,</span><span class="n">standard</span><span class="p">,</span><span class="n">highmem</span><span class="p">}]</span>
+                                                    <span class="p">[</span><span class="o">--</span><span class="n">chunk</span><span class="o">-</span><span class="n">storage</span> <span class="n">CHUNK_STORAGE</span><span class="p">]</span>
+                                                    <span class="p">[</span><span class="o">--</span><span class="n">chunk</span><span class="o">-</span><span class="n">driver</span><span class="o">-</span><span class="n">cores</span> <span class="n">CHUNK_DRIVER_CORES</span><span class="p">]</span>
+                                                    <span class="p">[</span><span class="o">--</span><span class="n">chunk</span><span class="o">-</span><span class="n">driver</span><span class="o">-</span><span class="n">memory</span> <span class="p">{</span><span class="n">standard</span><span class="p">,</span><span class="n">highmem</span><span class="p">}]</span>
+                                                    <span class="p">[</span><span class="o">--</span><span class="n">chunk</span><span class="o">-</span><span class="n">worker</span><span class="o">-</span><span class="n">cores</span> <span class="n">CHUNK_WORKER_CORES</span><span class="p">]</span>
+                                                    <span class="p">[</span><span class="o">--</span><span class="n">chunk</span><span class="o">-</span><span class="n">worker</span><span class="o">-</span><span class="n">memory</span> <span class="p">{</span><span class="n">standard</span><span class="p">,</span><span class="n">highmem</span><span class="p">}]</span>
+                                                    <span class="p">[</span><span class="o">--</span><span class="n">chunk</span><span class="o">-</span><span class="n">attempts</span> <span class="n">CHUNK_ATTEMPTS</span><span class="p">]</span>
+                                                    <span class="p">[</span><span class="o">--</span><span class="n">merge</span><span class="o">-</span><span class="n">cpu</span> <span class="n">MERGE_CPU</span><span class="p">]</span>
+                                                    <span class="p">[</span><span class="o">--</span><span class="n">merge</span><span class="o">-</span><span class="n">memory</span> <span class="n">MERGE_MEMORY</span><span class="p">]</span>
+                                                    <span class="p">[</span><span class="o">--</span><span class="n">merge</span><span class="o">-</span><span class="n">storage</span> <span class="n">MERGE_STORAGE</span><span class="p">]</span>
+                                                    <span class="p">[</span><span class="o">--</span><span class="n">final</span><span class="o">-</span><span class="n">merge</span><span class="o">-</span><span class="n">storage</span> <span class="n">FINAL_MERGE_STORAGE</span><span class="p">]</span>
+                                                    <span class="p">[</span><span class="o">--</span><span class="n">batch</span><span class="o">-</span><span class="n">dry</span><span class="o">-</span><span class="n">run</span><span class="p">]</span>
+                                                    <span class="p">[</span><span class="o">--</span><span class="n">run</span><span class="o">-</span><span class="n">chunk</span><span class="p">]</span>
+                                                    <span class="p">[</span><span class="o">--</span><span class="n">chunk</span><span class="o">-</span><span class="n">start</span> <span class="n">CHUNK_START</span><span class="p">]</span>
+                                                    <span class="p">[</span><span class="o">--</span><span class="n">chunk</span><span class="o">-</span><span class="n">stop</span> <span class="n">CHUNK_STOP</span><span class="p">]</span>
+                                                    <span class="p">[</span><span class="o">--</span><span class="n">chunk</span><span class="o">-</span><span class="n">output</span> <span class="n">CHUNK_OUTPUT</span><span class="p">]</span>
+                                                    <span class="p">[</span><span class="o">--</span><span class="n">run</span><span class="o">-</span><span class="n">merge</span><span class="p">]</span>
+                                                    <span class="p">[</span><span class="o">--</span><span class="n">merge</span><span class="o">-</span><span class="n">inputs</span> <span class="n">MERGE_INPUTS</span> <span class="p">[</span><span class="n">MERGE_INPUTS</span> <span class="o">...</span><span class="p">]]</span>
+                                                    <span class="p">[</span><span class="o">--</span><span class="n">merge</span><span class="o">-</span><span class="n">output</span> <span class="n">MERGE_OUTPUT</span><span class="p">]</span>
+                                                    <span class="p">[</span><span class="o">--</span><span class="n">merge</span><span class="o">-</span><span class="n">coalesce</span><span class="o">-</span><span class="n">to</span> <span class="n">MERGE_COALESCE_TO</span><span class="p">]</span>
+</pre></div>
+</div>
+<section id="named-arguments">
+<h2>Named Arguments<a class="headerlink" href="#named-arguments" title="Permalink to this heading"></a></h2>
+<dl class="option-list">
+<dt><kbd>--project-name</kbd></dt>
+<dd><p>Possible choices: aou, gnomad</p>
+<p>Project name.</p>
+<p>Default: “aou”</p>
+</dd>
+<dt><kbd>--overwrite</kbd></dt>
+<dd><p>Overwrite existing hail Tables.</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--n-partitions</kbd></dt>
+<dd><p>Partitions for the output Table. Default None: no final naive_coalesce.</p>
+</dd>
+<dt><kbd>--cov-and-an-output-suffix</kbd></dt>
+<dd><p>Optional suffix before the .ht extension (A/B comparison). Applies to writes and downstream reads; pass consistently.</p>
+</dd>
+<dt><kbd>--qual-hists-output-suffix</kbd></dt>
+<dd><p>Like –cov-and-an-output-suffix, for the –merge-qual-hists output.</p>
+</dd>
+<dt><kbd>--write-aou-downsampling-ht</kbd></dt>
+<dd><p>Write v5 downsampling HT.</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--write-vep-context-sites</kbd></dt>
+<dd><p>Preprocess vep_context once into the deduped, stripped, locus-keyed sites HT every chunk reads. Prerequisite for the compute. With –test, writes a scoped _test table.</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--write-chunk-intervals</kbd></dt>
+<dd><p>Precompute every chunk’s balanced read sub-intervals in one VDS open. REQUIRED before the fan-out. Uses –total-partitions / –partitions-per-chunk / –read-subintervals-per-chunk; –test writes to the test path.</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--validate-cov-and-an</kbd></dt>
+<dd><p>Anti-join the sites HT against the merged cov_and_an HT; fail if any site is missing. Run after –merge-cov-chunks.</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--compute-all-cov-release-stats-ht</kbd></dt>
+<dd><p>Compute the all sites coverage, allele number, and quality histogram HT.</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--partitions-for-rep-on-read</kbd></dt>
+<dd><p>Strict single-job compute only: co-partition the VDS and vep_context reads (shuffle-free join). Flag alone = the 1.1x-native default (recommended for full runs); a value = an explicit count. Honors –chrom.</p>
+</dd>
+<dt><kbd>--merge-qual-hists</kbd></dt>
+<dd><p>Merge variant quality histograms from AoU v8 and gnomAD v4 genomes.</p>
+<p>Default: False</p>
+</dd>
+</dl>
+</section>
+<section id="environment-configuration">
+<h2>environment configuration<a class="headerlink" href="#environment-configuration" title="Permalink to this heading"></a></h2>
+<dl class="option-list">
+<dt><kbd>--environment</kbd></dt>
+<dd><p>Possible choices: rwb, batch, dataproc</p>
+<p>Compute environment.</p>
+<p>Default: “rwb”</p>
+</dd>
+<dt><kbd>--results-environment</kbd></dt>
+<dd><p>Possible choices: rwb, batch, dataproc</p>
+<p>Override the bucket the release artifacts write to, independent of the compute –environment. Default: prod writes to ‘dataproc’, a –test run stays in the compute environment.</p>
+</dd>
+<dt><kbd>--tmp-dir-days</kbd></dt>
+<dd><p>Number of days for temp directory retention. Default is 4.</p>
+<p>Default: 4</p>
+</dd>
+<dt><kbd>--gcp-billing-project</kbd></dt>
+<dd><p>Google Cloud billing project for reading requester pays buckets.</p>
+<p>Default: “broad-mpg-gnomad”</p>
+</dd>
+</dl>
+</section>
+<section id="batch-configuration">
+<h2>batch configuration<a class="headerlink" href="#batch-configuration" title="Permalink to this heading"></a></h2>
+<p>Optional parameters for batch/QoB backend (only used when –environment=batch).</p>
+<dl class="option-list">
+<dt><kbd>--experimental</kbd></dt>
+<dd><p>Route QoB init through hl.experimental.init and attach the driver to an existing Hail Batch (HAIL_BATCH_ID; raises if unset). Without it, each invocation creates its own Batch.</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--app-name</kbd></dt>
+<dd><p>Job name for batch/QoB backend.</p>
+</dd>
+<dt><kbd>--driver-cores</kbd></dt>
+<dd><p>Number of cores for the driver node. Pass a power of two between 0.25 and 16 (as a string, e.g. ‘2’ or ‘0.5’).</p>
+</dd>
+<dt><kbd>--driver-memory</kbd></dt>
+<dd><p>Possible choices: standard, highmem</p>
+<p>Memory type for driver node. ‘lowmem’ is not offered: Hail Batch rejects it for JVM jobs (‘400: jvm jobs cannot be on lowmem machines’).</p>
+</dd>
+<dt><kbd>--jvm-heap-size</kbd></dt>
+<dd><p>Max JVM heap (-Xmx) for the in-process QoB driver under –experimental, e.g. ‘5g’. Set to ~50-70% of container memory (the rest is off-heap/Python/OS). Rejected without –experimental.</p>
+</dd>
+<dt><kbd>--worker-cores</kbd></dt>
+<dd><p>Number of cores per worker node. Pass a power of two between 0.25 and 16 (as a string, e.g. ‘1’ or ‘0.5’).</p>
+</dd>
+<dt><kbd>--worker-memory</kbd></dt>
+<dd><p>Possible choices: standard, highmem</p>
+<p>Memory type for worker nodes. Default None = QoB’s ‘standard’, already generous (272 MiB peak measured). ‘lowmem’ is rejected for JVM jobs.</p>
+</dd>
+</dl>
+</section>
+<section id="test-mode">
+<h2>Test mode<a class="headerlink" href="#test-mode" title="Permalink to this heading"></a></h2>
+<p>Route inputs/outputs to test paths and (optionally) filter data.</p>
+<dl class="option-list">
+<dt><kbd>--test</kbd></dt>
+<dd><p>Route reads/writes to test paths (group_membership, cov_and_an, release HTs, etc.). Independent of <code class="docutils literal notranslate"><span class="pre">--chrom</span></code>: combine for a chrom-filtered test run.</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--test-sample-subset</kbd></dt>
+<dd><p>With –test on AoU, subsample to ~0.1% of samples. Default off: a –test run keeps all samples so AN values stay comparable.</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--test-n-partitions</kbd></dt>
+<dd><p>Cheap test over the first N VDS partitions. With –write-chunk-intervals, scopes the probe (-&gt; ceil(N/ppc) chunks; combine with –chrom). With the strict compute, reads the first N native partitions (genome start; does not compose with –chrom). Default None: full run.</p>
+</dd>
+<dt><kbd>--chrom</kbd></dt>
+<dd><p>Filter to a single contig (e.g. chr22). Appended to the output suffix so per-contig runs never collide; assemble with –assemble-chrom-coverage.</p>
+</dd>
+<dt><kbd>--test-region</kbd></dt>
+<dd><p>Scope a test to explicit locus intervals (e.g. chr1:55058666-55108666) instead of the first N VDS partitions; auto-enables test mode. Sites and VDS reads are region-scoped; straddling ref blocks are split (strict path / n_sub=1) or handled by leading-edge widening (fan-out). Mutually exclusive with –test-n-partitions.</p>
+</dd>
+</dl>
+</section>
+<section id="get-gnomad-genomes-group-membership-ht.">
+<h2>Get gnomAD genomes group membership HT.<a class="headerlink" href="#get-gnomad-genomes-group-membership-ht." title="Permalink to this heading"></a></h2>
+<dl class="option-list">
+<dt><kbd>--write-group-membership-ht</kbd></dt>
+<dd><p>Write group membership HT.</p>
+<p>Default: False</p>
+</dd>
+</dl>
+</section>
+<section id="compute-coverage-release-stats-ht.">
+<h2>Compute coverage release stats HT.<a class="headerlink" href="#compute-coverage-release-stats-ht." title="Permalink to this heading"></a></h2>
+<dl class="option-list">
+<dt><kbd>--merge-gnomad-coverage</kbd></dt>
+<dd><p>Subtract consent drop samples from v4 release HT to create gnomAD v5 genomes coverage HT.</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--export-coverage-release-files</kbd></dt>
+<dd><p>Export the gnomAD v5 coverage HT and TSV. Coverage is gnomAD-only: AoU computes no coverage stats (its reference blocks carry no DP).</p>
+<p>Default: False</p>
+</dd>
+</dl>
+</section>
+<section id="compute-an-release-stats-ht.">
+<h2>Compute AN release stats HT.<a class="headerlink" href="#compute-an-release-stats-ht." title="Permalink to this heading"></a></h2>
+<dl class="option-list">
+<dt><kbd>--merge-gnomad-an</kbd></dt>
+<dd><p>Subtract consent drop samples from v4 release HT to create gnomAD v5 genomes AN HT.</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--export-an-release-files</kbd></dt>
+<dd><p>Exports the joint AoU + gnomAD v5 AN release HT and TSV file.</p>
+<p>Default: False</p>
+</dd>
+</dl>
+</section>
+<section id="hail-batch-fan-out-for-``--compute-all-cov-release-stats-ht``.">
+<h2>Hail Batch fan-out for ``–compute-all-cov-release-stats-ht``.<a class="headerlink" href="#hail-batch-fan-out-for-``--compute-all-cov-release-stats-ht``." title="Permalink to this heading"></a></h2>
+<p>Submit one Hail Batch job per partition chunk; each chunk is a tiny relay container that spawns its own QoB driver to do the densify. Idempotent: chunks whose <code class="docutils literal notranslate"><span class="pre">_SUCCESS</span></code> exists are skipped on rerun.</p>
+<dl class="option-list">
+<dt><kbd>--use-batch-fanout</kbd></dt>
+<dd><p>Fan the coverage/AN compute out as one Batch job per chunk. Mutually exclusive with the other entry points; run –merge-cov-chunks afterward.</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--submit-orchestrator</kbd></dt>
+<dd><p>Run the orchestrator inside Hail Batch: submit one small non-spot job that re-invokes this command (minus this flag) and return. Requires –use-batch-fanout or –merge-cov-chunks; resubmit the same command to resume if the job dies.</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--fanout-retry-passes</kbd></dt>
+<dd><p>Extra automatic re-dispatch passes for still-missing chunks after the last wave. Unlike –chunk-attempts, a pass starts only after every prior relay has exited, so it cannot race an orphaned inner batch. 0 disables. Default 1.</p>
+<p>Default: 1</p>
+</dd>
+<dt><kbd>--merge-cov-chunks</kbd></dt>
+<dd><p>Submit the recursive tree-reduce merge of the fan-out’s chunk HTs (group size –merge-group-size) down to the canonical HT. Missing chunks fail loudly.</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--assemble-chrom-coverage</kbd></dt>
+<dd><p>Union the per-contig HTs from –merge-cov-chunks –chrom runs into the canonical HT (contigs from the chunk-intervals JSON). Runs in-process.</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--partitions-per-chunk</kbd></dt>
+<dd><p>Number of VDS partitions per chunk job. Default 3, a shape from early testing; each chunk pays fixed overhead (relay + QoB driver + scan combine), so larger values are substantially cheaper at production scale (2026-08 calibration: ~$0.35/chunk fixed + ~$0.068/partition). IMPORTANT: keep identical across –write-chunk-intervals / –use-batch-fanout / –merge-cov-chunks (the JSON fixes the chunk set).</p>
+<p>Default: 3</p>
+</dd>
+<dt><kbd>--read-subintervals-per-chunk</kbd></dt>
+<dd><p>Balanced sub-intervals per chunk (computed at –write-chunk-intervals time); the VDS and vep_context are both read with these intervals – co-partitioned, no shuffle. Default 50.</p>
+<p>Default: 50</p>
+</dd>
+<dt><kbd>--total-partitions</kbd></dt>
+<dd><p>Total VDS partitions to scatter (full prod extent). Default 145192 (prod AoU VDS). Consumed by –write-chunk-intervals; –test-n-partitions overrides for tests.</p>
+<p>Default: 145192</p>
+</dd>
+<dt><kbd>--wave-size</kbd></dt>
+<dd><p>Max chunks per Hail Batch under –use-batch-fanout; waves run sequentially, bounding concurrent relays and their QoB drivers. Capacity is the shared Hail Batch service pool, not gnomad-production GCP quota. &lt;= 0 for a single batch. Default 1000.</p>
+<p>Default: 1000</p>
+</dd>
+<dt><kbd>--merge-group-size</kbd></dt>
+<dd><p>Chunk HTs per group-merge job. Default 500.</p>
+<p>Default: 500</p>
+</dd>
+<dt><kbd>--methods-branch</kbd></dt>
+<dd><p>Branch/commit of gnomad_methods to clone in chunk containers.</p>
+<p>Default: “main”</p>
+</dd>
+<dt><kbd>--batch-image</kbd></dt>
+<dd><p>Docker image for the chunk + merge BashJob containers.</p>
+<p>Default: “us-central1-docker.pkg.dev/broad-mpg-gnomad/images/v5_freq_batch:latest”</p>
+</dd>
+<dt><kbd>--batch-billing-project</kbd></dt>
+<dd><p>Hail Batch billing project for the orchestrator pipeline.</p>
+<p>Default: “gnomad-production”</p>
+</dd>
+<dt><kbd>--batch-remote-tmpdir</kbd></dt>
+<dd><p>GCS scratch for the orchestrator’s ServiceBackend. Default None: host Hail config.</p>
+</dd>
+<dt><kbd>--chunk-cpu</kbd></dt>
+<dd><p>CPU per chunk relay container. Default 0.5: the relay only builds IR and waits on its inner QoB batch.</p>
+<p>Default: 0.5</p>
+</dd>
+<dt><kbd>--chunk-memory</kbd></dt>
+<dd><p>Possible choices: lowmem, standard, highmem</p>
+<p>Hail Batch memory preset per chunk relay container.</p>
+<p>Default: “standard”</p>
+</dd>
+<dt><kbd>--chunk-storage</kbd></dt>
+<dd><p>/io storage per chunk relay container. Default 5Gi.</p>
+<p>Default: “5Gi”</p>
+</dd>
+<dt><kbd>--chunk-driver-cores</kbd></dt>
+<dd><p>Cores for the QoB driver pod each chunk/merge relay spawns. Power of two between 0.25 and 16 (as a string, e.g. ‘2’ or ‘0.5’). Forwarded to the relay’s –driver-cores; decoupled from the orchestrator’s own –driver-cores. Default ‘2’: with the highmem memory default this is a 13 GB driver, the smallest configuration measured to survive a coverage chunk (2-core standard, 8 GB, died; 1-core highmem, 6.5 GB, is smaller than what died and untested on coverage). The driver is billed for the whole worker barrier while idle, so cores beyond the memory they bring are near-pure waste.</p>
+<p>Default: “2”</p>
+</dd>
+<dt><kbd>--chunk-driver-memory</kbd></dt>
+<dd><p>Possible choices: standard, highmem</p>
+<p>Memory profile for the QoB driver pod. Default ‘highmem’: on ‘standard’ the driver died lowering the big fused execute (‘unexpected end of stream in jvm’ – a JVM-total limit, not a RegionPool OOM). ‘lowmem’ is rejected for JVM jobs.</p>
+<p>Default: “highmem”</p>
+</dd>
+<dt><kbd>--chunk-worker-cores</kbd></dt>
+<dd><p>Cores per QoB worker pod the chunk/merge driver dispatches. Power of two between 0.25 and 16 (as a string, e.g. ‘1’ or ‘0.5’). Forwarded to the relay’s –worker-cores; decoupled from the orchestrator’s own –worker-cores.</p>
+</dd>
+<dt><kbd>--chunk-worker-memory</kbd></dt>
+<dd><p>Possible choices: standard, highmem</p>
+<p>Memory per QoB worker pod. Default None = QoB’s ‘standard’, already generous (272 MiB peak measured). ‘lowmem’ is rejected for JVM jobs.</p>
+</dd>
+<dt><kbd>--chunk-attempts</kbd></dt>
+<dd><p>Max attempts per relay job. Default 1 = no auto-retry: Batch cannot cancel a lost attempt’s inner QoB batch, so a retry would race it. Failures land in _failed_chunks.json; rerun the fan-out.</p>
+<p>Default: 1</p>
+</dd>
+<dt><kbd>--merge-cpu</kbd></dt>
+<dd><p>CPU per merge container.</p>
+<p>Default: 4</p>
+</dd>
+<dt><kbd>--merge-memory</kbd></dt>
+<dd><p>Hail Batch memory preset per merge container.</p>
+<p>Default: “standard”</p>
+</dd>
+<dt><kbd>--merge-storage</kbd></dt>
+<dd><p>Extra /io storage per group-merge container.</p>
+<p>Default: “50Gi”</p>
+</dd>
+<dt><kbd>--final-merge-storage</kbd></dt>
+<dd><p>Extra /io storage for the final merge container.</p>
+<p>Default: “100Gi”</p>
+</dd>
+<dt><kbd>--batch-dry-run</kbd></dt>
+<dd><p>If set, validate the Hail Batch DAG without submitting.</p>
+<p>Default: False</p>
+</dd>
+</dl>
+</section>
+<section id="per-chunk-worker-entry-points-for---use-batch-fanout-(set-by-the-orchestrator;-not-for-direct-use-unless-debugging-a-single-chunk).">
+<h2>Per-chunk worker entry-points for –use-batch-fanout (set by the orchestrator; not for direct use unless debugging a single chunk).<a class="headerlink" href="#per-chunk-worker-entry-points-for---use-batch-fanout-(set-by-the-orchestrator;-not-for-direct-use-unless-debugging-a-single-chunk)." title="Permalink to this heading"></a></h2>
+<dl class="option-list">
+<dt><kbd>--run-chunk</kbd></dt>
+<dd><p>Worker entry-point: compute one chunk and write to –chunk-output. Requires –chunk-start, –chunk-stop, –chunk-output.</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--chunk-start</kbd></dt>
+<dd><p>Chunk index for –run-chunk: the chunk’s entry in the per-chunk precompute JSON (a –test-region run uses 0). Set by the orchestrator.</p>
+<p>Default: 0</p>
+</dd>
+<dt><kbd>--chunk-stop</kbd></dt>
+<dd><p>Chunk index end (exclusive); the orchestrator sets it to –chunk-start + 1.</p>
+<p>Default: 0</p>
+</dd>
+<dt><kbd>--chunk-output</kbd></dt>
+<dd><p>Output path for –run-chunk’s HT. When unset, auto-derived (the orchestrator always passes it explicitly).</p>
+</dd>
+<dt><kbd>--run-merge</kbd></dt>
+<dd><p>Worker entry-point: union the HTs at –merge-inputs and write to –merge-output.</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--merge-inputs</kbd></dt>
+<dd><p>GCS paths of per-chunk (or per-group) HTs to union.</p>
+</dd>
+<dt><kbd>--merge-output</kbd></dt>
+<dd><p>GCS output path for –run-merge’s merged HT.</p>
+</dd>
+<dt><kbd>--merge-coalesce-to</kbd></dt>
+<dd><p>naive_coalesce the unioned HT to this many partitions before writing (set by the merge orchestrator).</p>
+</dd>
+</dl>
+</section>
+<section id="module-functions">
+<h2>Module Functions<a class="headerlink" href="#module-functions" title="Permalink to this heading"></a></h2>
+<table class="autosummary longtable docutils align-default">
+<tbody>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v5.annotations.compute_coverage.get_downsampling_ht" title="gnomad_qc.v5.annotations.compute_coverage.get_downsampling_ht"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v5.annotations.compute_coverage.get_downsampling_ht</span></code></a>(ht)</p></td>
+<td><p>Get Table with downsampling groups for all samples.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#gnomad_qc.v5.annotations.compute_coverage.get_group_membership_ht" title="gnomad_qc.v5.annotations.compute_coverage.get_group_membership_ht"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v5.annotations.compute_coverage.get_group_membership_ht</span></code></a>(...)</p></td>
+<td><p>Get genomes group membership HT for all sites allele number stratification.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v5.annotations.compute_coverage.compute_all_release_stats_per_ref_site" title="gnomad_qc.v5.annotations.compute_coverage.compute_all_release_stats_per_ref_site"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v5.annotations.compute_coverage.compute_all_release_stats_per_ref_site</span></code></a>(...)</p></td>
+<td><p>Compute coverage, allele number, and quality histograms per reference site.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#gnomad_qc.v5.annotations.compute_coverage.merge_gnomad_coverage_hts" title="gnomad_qc.v5.annotations.compute_coverage.merge_gnomad_coverage_hts"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v5.annotations.compute_coverage.merge_gnomad_coverage_hts</span></code></a>(...)</p></td>
+<td><p>Subtract consent-drop samples from the 3.0.1 coverage release to create the v5 HT.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v5.annotations.compute_coverage.merge_gnomad_an_hts" title="gnomad_qc.v5.annotations.compute_coverage.merge_gnomad_an_hts"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v5.annotations.compute_coverage.merge_gnomad_an_hts</span></code></a>(...)</p></td>
+<td><p>Subtract consent drop samples from gnomAD v4 genomes release HT to create gnomAD v5 genomes AN HT.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#gnomad_qc.v5.annotations.compute_coverage.join_aou_and_gnomad_an_ht" title="gnomad_qc.v5.annotations.compute_coverage.join_aou_and_gnomad_an_ht"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v5.annotations.compute_coverage.join_aou_and_gnomad_an_ht</span></code></a>(...)</p></td>
+<td><p>Join AoU and gnomAD AN HTs for release.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v5.annotations.compute_coverage.join_aou_and_gnomad_qual_hists_ht" title="gnomad_qc.v5.annotations.compute_coverage.join_aou_and_gnomad_qual_hists_ht"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v5.annotations.compute_coverage.join_aou_and_gnomad_qual_hists_ht</span></code></a>(...)</p></td>
+<td><p>Join AoU and gnomAD qual hists HTs for release.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#gnomad_qc.v5.annotations.compute_coverage.main" title="gnomad_qc.v5.annotations.compute_coverage.main"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v5.annotations.compute_coverage.main</span></code></a>(args)</p></td>
+<td><p>Compute all sites coverage, AN, and quality histograms for v5 genomes.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v5.annotations.compute_coverage.get_script_argument_parser</span></code>()</p></td>
+<td><p>Get script argument parser.</p></td>
+</tr>
+</tbody>
+</table>
+<span class="target" id="module-gnomad_qc.v5.annotations.compute_coverage"></span><p>Compute coverage, allele number, and quality histograms for gnomAD v5 genomes.</p>
+<p>v5 genomes = AoU v8 (new) + gnomAD v4 genomes minus the consent-drop set. This
+script computes per-reference-site AN per project, coverage (gnomAD only), and qual
+histograms (AoU only) and joins them into the v5 release HT/TSVs.</p>
+<p>Execution roles (mutually exclusive; dispatched by early return in <code class="docutils literal notranslate"><span class="pre">main</span></code>):</p>
+<ol class="arabic simple">
+<li><p>ORCHESTRATOR (<code class="docutils literal notranslate"><span class="pre">--use-batch-fanout</span></code> / <code class="docutils literal notranslate"><span class="pre">--merge-cov-chunks</span></code>): never
+initializes Hail; submits a Hail Batch of relay jobs and returns. Used for
+the prod-scale AoU compute.</p></li>
+<li><p>WORKER (<code class="docutils literal notranslate"><span class="pre">--run-chunk</span></code> / <code class="docutils literal notranslate"><span class="pre">--run-merge</span></code>): one relay container; initializes
+Hail and runs exactly one chunk/merge unit. The chunk worker is what calls
+<code class="docutils literal notranslate"><span class="pre">compute_all_release_stats_per_ref_site</span></code>.</p></li>
+<li><p>IN-PROCESS PIPELINE (neither): the strict single-job compute (gnomAD
+consent-drop, dev/test AoU), the setup writers, and the release assembly.</p></li>
+</ol>
+<p>A full prod AoU release is three separate invocations: fan-out compute,
+merge-cov-chunks, then the in-process assembly. The setup HTs (downsampling,
+group membership, sites, chunk intervals) are written by their own
+in-process invocations first; the fan-out reads them from disk. The AoU sample
+artifact JSONs (release samples, ID collisions) come from
+<code class="docutils literal notranslate"><span class="pre">create_sample_qc_metadata_ht.py</span> <span class="pre">--write-vds-sample-artifact-jsons</span></code> and are
+read inside <code class="docutils literal notranslate"><span class="pre">get_aou_vds</span></code>.</p>
+<p>Workflow:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="mf">1.</span> <span class="p">(</span><span class="n">AoU</span><span class="p">)</span> <span class="o">--</span><span class="n">write</span><span class="o">-</span><span class="n">aou</span><span class="o">-</span><span class="n">downsampling</span><span class="o">-</span><span class="n">ht</span>
+<span class="mf">2.</span> <span class="o">--</span><span class="n">write</span><span class="o">-</span><span class="n">group</span><span class="o">-</span><span class="n">membership</span><span class="o">-</span><span class="n">ht</span><span class="o">.</span> <span class="n">AoU</span><span class="p">:</span> <span class="n">one</span> <span class="n">aggregation</span> <span class="n">cell</span> <span class="n">per</span> <span class="n">distinct</span>
+   <span class="n">membership</span> <span class="n">pattern</span><span class="p">;</span> <span class="n">every</span> <span class="n">AN</span> <span class="n">group</span> <span class="ow">is</span> <span class="n">reconstructed</span> <span class="n">by</span> <span class="n">summing</span> <span class="n">cells</span><span class="o">.</span>
+   <span class="n">gnomAD</span><span class="p">:</span> <span class="n">the</span> <span class="n">consent</span><span class="o">-</span><span class="n">drop</span> <span class="n">samples</span><span class="p">,</span> <span class="n">one</span> <span class="n">boolean</span> <span class="n">per</span> <span class="n">group</span><span class="o">.</span>
+<span class="mf">3.</span> <span class="o">--</span><span class="n">write</span><span class="o">-</span><span class="n">vep</span><span class="o">-</span><span class="n">context</span><span class="o">-</span><span class="n">sites</span><span class="p">:</span> <span class="n">deduped</span><span class="p">,</span> <span class="n">telomere</span><span class="o">/</span><span class="n">centromere</span><span class="o">/</span><span class="n">chrM</span><span class="o">-</span><span class="n">stripped</span>
+   <span class="n">sites</span> <span class="n">HT</span> <span class="o">--</span> <span class="n">the</span> <span class="n">definition</span> <span class="n">of</span> <span class="s2">&quot;every site the compute must cover&quot;</span><span class="o">.</span>
+<span class="mf">4.</span> <span class="n">Compute</span><span class="p">:</span> <span class="o">--</span><span class="n">compute</span><span class="o">-</span><span class="nb">all</span><span class="o">-</span><span class="n">cov</span><span class="o">-</span><span class="n">release</span><span class="o">-</span><span class="n">stats</span><span class="o">-</span><span class="n">ht</span> <span class="p">(</span><span class="n">strict</span> <span class="n">single</span> <span class="n">job</span><span class="p">),</span> <span class="ow">or</span>
+   <span class="o">--</span><span class="n">write</span><span class="o">-</span><span class="n">chunk</span><span class="o">-</span><span class="n">intervals</span><span class="p">,</span> <span class="n">then</span> <span class="o">--</span><span class="n">use</span><span class="o">-</span><span class="n">batch</span><span class="o">-</span><span class="n">fanout</span><span class="p">,</span> <span class="n">then</span>
+   <span class="o">--</span><span class="n">merge</span><span class="o">-</span><span class="n">cov</span><span class="o">-</span><span class="n">chunks</span><span class="o">.</span> <span class="n">Chunk</span> <span class="n">outputs</span> <span class="n">are</span> <span class="n">namespaced</span> <span class="n">by</span> <span class="n">a</span> <span class="n">content</span> <span class="nb">hash</span> <span class="n">of</span>
+   <span class="n">the</span> <span class="n">intervals</span> <span class="n">JSON</span><span class="p">:</span> <span class="n">rerunning</span> <span class="n">the</span> <span class="n">fan</span><span class="o">-</span><span class="n">out</span> <span class="n">retries</span> <span class="n">only</span> <span class="n">missing</span> <span class="n">chunks</span><span class="p">,</span>
+   <span class="ow">and</span> <span class="n">a</span> <span class="n">regenerated</span> <span class="n">JSON</span> <span class="p">(</span><span class="n">new</span> <span class="n">layout</span><span class="p">,</span> <span class="n">new</span> <span class="nb">hash</span><span class="p">)</span> <span class="n">never</span> <span class="n">mixes</span> <span class="k">with</span> <span class="n">old</span>
+   <span class="n">chunks</span><span class="o">.</span>
+<span class="mf">5.</span> <span class="o">--</span><span class="n">validate</span><span class="o">-</span><span class="n">cov</span><span class="o">-</span><span class="ow">and</span><span class="o">-</span><span class="n">an</span><span class="p">:</span> <span class="n">the</span> <span class="n">merged</span> <span class="n">HT</span> <span class="n">must</span> <span class="n">cover</span> <span class="n">every</span> <span class="n">site</span> <span class="n">exactly</span><span class="o">.</span>
+<span class="mf">6.</span> <span class="p">(</span><span class="n">gnomad</span><span class="p">)</span> <span class="o">--</span><span class="n">merge</span><span class="o">-</span><span class="n">gnomad</span><span class="o">-</span><span class="n">coverage</span> <span class="o">/</span> <span class="o">--</span><span class="n">merge</span><span class="o">-</span><span class="n">gnomad</span><span class="o">-</span><span class="n">an</span><span class="p">:</span> <span class="n">subtract</span> <span class="n">the</span>
+   <span class="n">consent</span><span class="o">-</span><span class="n">drop</span> <span class="n">samples</span> <span class="kn">from</span> <span class="nn">the</span> <span class="n">release</span> <span class="n">HTs</span><span class="o">.</span> <span class="n">AN</span><span class="p">:</span> <span class="n">the</span> <span class="n">samples</span> <span class="ow">in</span> <span class="n">the</span> <span class="n">v4</span>
+   <span class="n">release</span><span class="p">,</span> <span class="kn">from</span> <span class="nn">the</span> <span class="n">v4</span><span class="mf">.1</span> <span class="n">AN</span> <span class="n">release</span><span class="o">.</span> <span class="n">Coverage</span><span class="p">:</span> <span class="n">the</span> <span class="n">samples</span> <span class="ow">in</span> <span class="n">the</span> <span class="n">v3</span><span class="mf">.0</span>
+   <span class="n">release</span><span class="p">,</span> <span class="kn">from</span> <span class="nn">the</span> <span class="mf">3.0.1</span> <span class="n">coverage</span> <span class="n">release</span> <span class="p">(</span><span class="n">the</span> <span class="n">only</span> <span class="n">genomes</span> <span class="n">coverage</span>
+   <span class="n">ever</span> <span class="n">computed</span><span class="p">;</span> <span class="n">v4</span> <span class="n">reused</span> <span class="n">it</span><span class="p">)</span><span class="o">.</span>
+<span class="mf">7.</span> <span class="p">(</span><span class="n">aou</span><span class="p">)</span> <span class="n">Release</span><span class="p">:</span> <span class="o">--</span><span class="n">export</span><span class="o">-</span><span class="n">coverage</span><span class="o">-</span><span class="n">release</span><span class="o">-</span><span class="n">files</span> <span class="p">(</span><span class="n">gnomAD</span><span class="o">-</span><span class="n">only</span><span class="p">;</span> <span class="n">AoU</span>
+   <span class="n">computes</span> <span class="n">no</span> <span class="n">coverage</span> <span class="n">stats</span><span class="p">),</span> <span class="o">--</span><span class="n">export</span><span class="o">-</span><span class="n">an</span><span class="o">-</span><span class="n">release</span><span class="o">-</span><span class="n">files</span><span class="p">,</span>
+   <span class="o">--</span><span class="n">merge</span><span class="o">-</span><span class="n">qual</span><span class="o">-</span><span class="n">hists</span> <span class="p">(</span><span class="n">gnomAD</span> <span class="n">v4</span> <span class="n">hists</span> <span class="n">reused</span> <span class="k">as</span><span class="o">-</span><span class="ow">is</span><span class="p">)</span><span class="o">.</span>
+</pre></div>
+</div>
+<p>Usage Examples:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="c1"># Per-chunk fan-out compute + merge (on batch). Run setup steps 1-3 +</span>
+<span class="c1"># --write-chunk-intervals first; the fan-out reads those outputs:</span>
+<span class="n">python</span> <span class="n">compute_coverage</span><span class="o">.</span><span class="n">py</span> <span class="o">--</span><span class="n">project</span><span class="o">-</span><span class="n">name</span> <span class="n">aou</span> <span class="o">--</span><span class="n">environment</span> <span class="n">batch</span> \\
+    <span class="o">--</span><span class="n">use</span><span class="o">-</span><span class="n">batch</span><span class="o">-</span><span class="n">fanout</span> <span class="o">--</span><span class="n">partitions</span><span class="o">-</span><span class="n">per</span><span class="o">-</span><span class="n">chunk</span> <span class="mi">3</span>
+<span class="n">python</span> <span class="n">compute_coverage</span><span class="o">.</span><span class="n">py</span> <span class="o">--</span><span class="n">project</span><span class="o">-</span><span class="n">name</span> <span class="n">aou</span> <span class="o">--</span><span class="n">environment</span> <span class="n">batch</span> \\
+    <span class="o">--</span><span class="n">merge</span><span class="o">-</span><span class="n">cov</span><span class="o">-</span><span class="n">chunks</span> <span class="o">--</span><span class="n">n</span><span class="o">-</span><span class="n">partitions</span> <span class="mi">10000</span>
+
+<span class="c1"># gnomAD v4 consent-drop subtraction (on dataproc):</span>
+<span class="n">hailctl</span> <span class="n">dataproc</span> <span class="n">submit</span> <span class="n">cluster</span><span class="o">-</span><span class="n">name</span> <span class="n">compute_coverage</span><span class="o">.</span><span class="n">py</span> \\
+    <span class="o">--</span><span class="n">project</span><span class="o">-</span><span class="n">name</span> <span class="n">gnomad</span> <span class="o">--</span><span class="n">environment</span> <span class="n">dataproc</span> \\
+    <span class="o">--</span><span class="n">merge</span><span class="o">-</span><span class="n">gnomad</span><span class="o">-</span><span class="n">coverage</span> <span class="o">--</span><span class="n">merge</span><span class="o">-</span><span class="n">gnomad</span><span class="o">-</span><span class="n">an</span>
+
+<span class="c1"># AoU/gnomAD release assembly (on batch):</span>
+<span class="n">python</span> <span class="n">compute_coverage</span><span class="o">.</span><span class="n">py</span> <span class="o">--</span><span class="n">project</span><span class="o">-</span><span class="n">name</span> <span class="n">aou</span> <span class="o">--</span><span class="n">environment</span> <span class="n">batch</span> \\
+    <span class="o">--</span><span class="n">export</span><span class="o">-</span><span class="n">coverage</span><span class="o">-</span><span class="n">release</span><span class="o">-</span><span class="n">files</span> <span class="o">--</span><span class="n">export</span><span class="o">-</span><span class="n">an</span><span class="o">-</span><span class="n">release</span><span class="o">-</span><span class="n">files</span> \\
+    <span class="o">--</span><span class="n">merge</span><span class="o">-</span><span class="n">qual</span><span class="o">-</span><span class="n">hists</span>
+</pre></div>
+</div>
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v5.annotations.compute_coverage.get_downsampling_ht">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v5.annotations.compute_coverage.</span></span><span class="sig-name descname"><span class="pre">get_downsampling_ht</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ht</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v5/annotations/compute_coverage.html#get_downsampling_ht"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v5.annotations.compute_coverage.get_downsampling_ht" title="Permalink to this definition"></a></dt>
+<dd><p>Get Table with downsampling groups for all samples.</p>
+<p>v5 downsamplings (AoU only): global 10,000 and 100,000, plus per-group
+sizes for afr/amr/nfe only (<code class="docutils literal notranslate"><span class="pre">gen_ancs_to_downsample</span></code>). Every group still
+gets a per-group index.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>ht</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.139)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>) – Input Table.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.139)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Table with downsampling groups.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v5.annotations.compute_coverage.get_group_membership_ht">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v5.annotations.compute_coverage.</span></span><span class="sig-name descname"><span class="pre">get_group_membership_ht</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">meta_ht</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">project</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ds_ht</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v5/annotations/compute_coverage.html#get_group_membership_ht"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v5.annotations.compute_coverage.get_group_membership_ht" title="Permalink to this definition"></a></dt>
+<dd><p>Get genomes group membership HT for all sites allele number stratification.</p>
+<p>AoU: reduced to cells (<code class="docutils literal notranslate"><span class="pre">reduce_to_cells=True</span></code>): one aggregation per
+distinct membership pattern instead of one per group, with every group –
+downsamplings included – reconstructed by summing cells. Compute calls
+must pass <code class="docutils literal notranslate"><span class="pre">reducible_aggs={&quot;AN&quot;}</span></code> and pin every non-summable annotation
+(qual_hists) to a single group via <code class="docutils literal notranslate"><span class="pre">entry_agg_group_membership</span></code>.</p>
+<p>gnomAD: consent-drop samples only. The AN groups contain the samples that
+were in the v4 release; the raw coverage group (<code class="docutils literal notranslate"><span class="pre">GNOMAD_COVERAGE_GROUP</span></code>,
+appended last) contains the samples that were in the v3.0 release.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>meta_ht</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.139)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>) – Meta HT (v5 project meta for AoU, v4 genomes meta for gnomAD).</p></li>
+<li><p><strong>project</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – “aou” or “gnomad”.</p></li>
+<li><p><strong>ds_ht</strong> (<code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code>[<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.139)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>]) – Optional downsampling HT (AoU only).</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.139)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Group membership HT.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v5.annotations.compute_coverage.compute_all_release_stats_per_ref_site">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v5.annotations.compute_coverage.</span></span><span class="sig-name descname"><span class="pre">compute_all_release_stats_per_ref_site</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">vds</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ref_ht</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sex_karyotype_field</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">project</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">coverage_over_x_bins</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">(1,</span> <span class="pre">5,</span> <span class="pre">10,</span> <span class="pre">15,</span> <span class="pre">20,</span> <span class="pre">25,</span> <span class="pre">30,</span> <span class="pre">50,</span> <span class="pre">100)</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">interval_ht</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">group_membership_ht</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v5/annotations/compute_coverage.html#compute_all_release_stats_per_ref_site"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v5.annotations.compute_coverage.compute_all_release_stats_per_ref_site" title="Permalink to this definition"></a></dt>
+<dd><p>Compute coverage, allele number, and quality histograms per reference site.</p>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>Running this prior to calculating frequencies removes the need for an
+additional densify there.</p>
+</div>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>vds</strong> (<a class="reference external" href="https://hail.is/docs/0.2/vds/hail.vds.VariantDataset.html#hail.vds.VariantDataset" title="(in Hail v0.2.139)"><code class="xref py py-class docutils literal notranslate"><span class="pre">VariantDataset</span></code></a>) – Input VDS. Reference data must carry <code class="docutils literal notranslate"><span class="pre">END</span></code> (and <code class="docutils literal notranslate"><span class="pre">GQ</span></code>); a
+<code class="docutils literal notranslate"><span class="pre">LEN</span></code> field is added if missing. DP is read from variant data only.</p></li>
+<li><p><strong>ref_ht</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.139)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>) – Locus-only sites Table defining the positions to aggregate at.</p></li>
+<li><p><strong>sex_karyotype_field</strong> (<code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>]) – Dotted path on the variant_data column struct to
+the sample’s sex karyotype (sets per-sample ploidy on sex chromosomes),
+or None to skip the adjustment. It is the identity on autosomes, so
+pass None when <code class="docutils literal notranslate"><span class="pre">ref_ht</span></code> has no chrX/chrY sites (see
+<code class="xref py py-func docutils literal notranslate"><span class="pre">_spans_sex_chromosome()</span></code>): that also skips the per-sample
+karyotype lookup and its column checkpoint.</p></li>
+<li><p><strong>project</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – “aou” or “gnomad”. AoU adds <code class="docutils literal notranslate"><span class="pre">qual_hists</span></code> and computes no
+coverage stats; gnomAD computes coverage and AN only.</p></li>
+<li><p><strong>coverage_over_x_bins</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">Sequence</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>]) – DP thresholds for the <code class="docutils literal notranslate"><span class="pre">over_X</span></code> fields.
+Default is <code class="xref py py-data docutils literal notranslate"><span class="pre">COVERAGE_OVER_X_BINS</span></code>.</p></li>
+<li><p><strong>interval_ht</strong> (<code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code>[<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.139)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>]) – Optional interval Table for partition pruning. Unused
+on the v5 path.</p></li>
+<li><p><strong>group_membership_ht</strong> (<code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code>[<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.139)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>]) – Group-membership Table defining the per-stratum
+sample sets AN is fanned out across, from <a class="reference internal" href="#gnomad_qc.v5.annotations.compute_coverage.get_group_membership_ht" title="gnomad_qc.v5.annotations.compute_coverage.get_group_membership_ht"><code class="xref py py-func docutils literal notranslate"><span class="pre">get_group_membership_ht()</span></code></a>.
+AN is passed as the only <code class="docutils literal notranslate"><span class="pre">reducible_aggs</span></code> entry: on the cell-reduced
+AoU HT it is aggregated once per cell and every group is rebuilt by
+summing cells; on the gnomAD HT it is aggregated per group.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.139)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>HT keyed by locus with per-stratum <code class="docutils literal notranslate"><span class="pre">AN</span></code>; flat coverage fields
+(raw, over the <code class="docutils literal notranslate"><span class="pre">GNOMAD_COVERAGE_GROUP</span></code> samples) for gnomAD;
+<code class="docutils literal notranslate"><span class="pre">qual_hists</span></code> (adj GQ histogram only)
+for AoU. AoU reference blocks carry no DP, so its coverage would
+measure ~0 genome-wide (chr1:55.06-55.16Mb: mean 0.048x, <code class="docutils literal notranslate"><span class="pre">over_1</span></code>
+432 of 365,318) and is never computed, and for the same reason its DP
+histogram at reference sites is empty and is not computed either.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v5.annotations.compute_coverage.merge_gnomad_coverage_hts">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v5.annotations.compute_coverage.</span></span><span class="sig-name descname"><span class="pre">merge_gnomad_coverage_hts</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">gnomad_ht</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">gnomad_release_ht</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">coverage_over_x_bins</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">(1,</span> <span class="pre">5,</span> <span class="pre">10,</span> <span class="pre">15,</span> <span class="pre">20,</span> <span class="pre">25,</span> <span class="pre">30,</span> <span class="pre">50,</span> <span class="pre">100)</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">gnomad_sample_count</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">71702</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">consent_drop_count</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">849</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v5/annotations/compute_coverage.html#merge_gnomad_coverage_hts"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v5.annotations.compute_coverage.merge_gnomad_coverage_hts" title="Permalink to this definition"></a></dt>
+<dd><p>Subtract consent-drop samples from the 3.0.1 coverage release to create the v5 HT.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>gnomad_ht</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.139)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>) – Coverage HT of the consent-drop samples in the v3.0 release.</p></li>
+<li><p><strong>gnomad_release_ht</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.139)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>) – gnomAD 3.0.1 genomes coverage release HT.</p></li>
+<li><p><strong>coverage_over_x_bins</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">Sequence</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>]) – Boundaries for the over-X fields. Default is <code class="xref py py-data docutils literal notranslate"><span class="pre">COVERAGE_OVER_X_BINS</span></code>.</p></li>
+<li><p><strong>gnomad_sample_count</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>) – 3.0.1 coverage release genome count. Default <cite>GNOMAD_COVERAGE_RELEASE_SAMPLE_COUNT</cite>.</p></li>
+<li><p><strong>consent_drop_count</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>) – Consent-drop genomes in the 3.0.1 coverage release. Default <cite>GNOMAD_CONSENT_DROP_COVERAGE_SAMPLE_COUNT</cite>.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.139)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>gnomAD v5 genomes coverage HT in the release schema (<code class="docutils literal notranslate"><span class="pre">mean</span></code>,
+<code class="docutils literal notranslate"><span class="pre">median_approx</span></code>, <code class="docutils literal notranslate"><span class="pre">total_DP</span></code>, fraction <code class="docutils literal notranslate"><span class="pre">over_X</span></code>).</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v5.annotations.compute_coverage.merge_gnomad_an_hts">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v5.annotations.compute_coverage.</span></span><span class="sig-name descname"><span class="pre">merge_gnomad_an_hts</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">gnomad_ht</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">gnomad_release_ht</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v5/annotations/compute_coverage.html#merge_gnomad_an_hts"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v5.annotations.compute_coverage.merge_gnomad_an_hts" title="Permalink to this definition"></a></dt>
+<dd><p>Subtract consent drop samples from gnomAD v4 genomes release HT to create gnomAD v5 genomes AN HT.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>gnomad_ht</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.139)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>) – gnomAD AN HT (contains AN for consent drop samples only).</p></li>
+<li><p><strong>gnomad_release_ht</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.139)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>) – gnomAD v4 genomes release AN HT.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.139)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>gnomAD v5 genomes AN HT.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v5.annotations.compute_coverage.join_aou_and_gnomad_an_ht">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v5.annotations.compute_coverage.</span></span><span class="sig-name descname"><span class="pre">join_aou_and_gnomad_an_ht</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">aou_ht</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">gnomad_ht</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v5/annotations/compute_coverage.html#join_aou_and_gnomad_an_ht"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v5.annotations.compute_coverage.join_aou_and_gnomad_an_ht" title="Permalink to this definition"></a></dt>
+<dd><p>Join AoU and gnomAD AN HTs for release.</p>
+<p>The shared strata’s combined AN is written first as the unlabeled “global”
+entries; the AoU-only AN (including the downsampling strata) is appended as
+an <code class="docutils literal notranslate"><span class="pre">{&quot;subset&quot;:</span> <span class="pre">&quot;aou&quot;}</span></code>-tagged subset.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>aou_ht</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.139)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>) – AoU AN HT.</p></li>
+<li><p><strong>gnomad_ht</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.139)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>) – gnomAD v5 genomes AN HT.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.139)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Joined HT.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v5.annotations.compute_coverage.join_aou_and_gnomad_qual_hists_ht">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v5.annotations.compute_coverage.</span></span><span class="sig-name descname"><span class="pre">join_aou_and_gnomad_qual_hists_ht</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">aou_ht</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">gnomad_ht</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v5/annotations/compute_coverage.html#join_aou_and_gnomad_qual_hists_ht"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v5.annotations.compute_coverage.join_aou_and_gnomad_qual_hists_ht" title="Permalink to this definition"></a></dt>
+<dd><p>Join AoU and gnomAD qual hists HTs for release.</p>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>Qual hists were not computed for the gnomAD v4 genomes release, so v5
+reuses the v4 hists as-is (no consent-drop subtraction).</p>
+</div>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>aou_ht</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.139)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>) – AoU qual hists HT.</p></li>
+<li><p><strong>gnomad_ht</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.139)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>) – gnomAD qual hists HT.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.139)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Joined HT.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v5.annotations.compute_coverage.main">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v5.annotations.compute_coverage.</span></span><span class="sig-name descname"><span class="pre">main</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">args</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v5/annotations/compute_coverage.html#main"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v5.annotations.compute_coverage.main" title="Permalink to this definition"></a></dt>
+<dd><p>Compute all sites coverage, AN, and quality histograms for v5 genomes.</p>
+<p>Dispatches the three mutually-exclusive roles (see the module docstring):</p>
+<blockquote>
+<div><ul class="simple">
+<li><p>orchestrator: submit a Hail Batch and return.</p></li>
+<li><p>worker: run one chunk/merge unit and return.</p></li>
+<li><p>in-process pipeline: setup -&gt; compute -&gt; assemble.</p></li>
+</ul>
+</div></blockquote>
+</dd></dl>
+
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="annotation_utils.html" class="btn btn-neutral float-left" title="gnomad_qc.v5.annotations.annotation_utils" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="generate_frequency.html" class="btn btn-neutral float-right" title="gnomad_qc.v5.annotations.generate_frequency" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p></p>
+  </div>
+
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

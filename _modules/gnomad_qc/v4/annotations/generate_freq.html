@@ -1,0 +1,1368 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>gnomad_qc.v4.annotations.generate_freq &mdash; gnomad_qc master documentation</title>
+      <link rel="stylesheet" href="../../../../_static/pygments.css" type="text/css" />
+      <link rel="stylesheet" href="../../../../_static/css/theme.css" type="text/css" />
+      <link rel="stylesheet" href="../../../../_static/theme_overrides.css" type="text/css" />
+  <!--[if lt IE 9]>
+    <script src="../../../../_static/js/html5shiv.min.js"></script>
+  <![endif]-->
+  
+        <script src="../../../../_static/jquery.js"></script>
+        <script src="../../../../_static/_sphinx_javascript_frameworks_compat.js"></script>
+        <script data-url_root="../../../../" id="documentation_options" src="../../../../_static/documentation_options.js"></script>
+        <script src="../../../../_static/doctools.js"></script>
+        <script src="../../../../_static/sphinx_highlight.js"></script>
+        <script src="https://unpkg.com/mermaid@10.2.0/dist/mermaid.min.js"></script>
+        <script>mermaid.initialize({startOnLoad:true});</script>
+    <script src="../../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../../index.html" class="icon icon-home">
+            gnomad_qc
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../../api_reference/index.html">API Reference</a></li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/broadinstitute/gnomad_qc/tags">Change Log</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../../index.html">gnomad_qc</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../../index.html">Module code</a></li>
+      <li class="breadcrumb-item active">gnomad_qc.v4.annotations.generate_freq</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for gnomad_qc.v4.annotations.generate_freq</h1><div class="highlight"><pre>
+<span></span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">Script to generate the frequency data annotations across v4 exomes.</span>
+
+<span class="sd">This script first splits the v4 VDS into multiples VDSs based which are then densified</span>
+<span class="sd">and annotated with frequency data and histograms. The VDSs are then merged back together</span>
+<span class="sd">in a hail Table. Next the script corrects for the high AB heterozygous GATK artifact in</span>
+<span class="sd">existing annotations when given the AF threshold using a high AB het array. The script</span>
+<span class="sd">then computes the inbreeding coefficient using the raw call stats. Finally, it computes</span>
+<span class="sd">the filtering allele frequency and grpmax with the AB-adjusted frequencies.</span>
+<span class="sd">&quot;&quot;&quot;</span>
+
+<span class="kn">import</span> <span class="nn">argparse</span>
+<span class="kn">import</span> <span class="nn">logging</span>
+<span class="kn">from</span> <span class="nn">copy</span> <span class="kn">import</span> <span class="n">deepcopy</span>
+<span class="kn">from</span> <span class="nn">typing</span> <span class="kn">import</span> <span class="n">Dict</span><span class="p">,</span> <span class="n">List</span><span class="p">,</span> <span class="n">Optional</span><span class="p">,</span> <span class="n">Tuple</span><span class="p">,</span> <span class="n">Union</span>
+
+<span class="kn">import</span> <span class="nn">hail</span> <span class="k">as</span> <span class="nn">hl</span>
+<span class="kn">from</span> <span class="nn">gnomad.resources.grch38.gnomad</span> <span class="kn">import</span> <span class="p">(</span>
+    <span class="n">DOWNSAMPLINGS</span><span class="p">,</span>
+    <span class="n">GEN_ANC_GROUPS_TO_REMOVE_FOR_GRPMAX</span><span class="p">,</span>
+<span class="p">)</span>
+<span class="kn">from</span> <span class="nn">gnomad.sample_qc.sex</span> <span class="kn">import</span> <span class="n">adjusted_sex_ploidy_expr</span>
+<span class="kn">from</span> <span class="nn">gnomad.utils.annotations</span> <span class="kn">import</span> <span class="p">(</span>
+    <span class="n">age_hists_expr</span><span class="p">,</span>
+    <span class="n">annotate_downsamplings</span><span class="p">,</span>
+    <span class="n">bi_allelic_site_inbreeding_expr</span><span class="p">,</span>
+    <span class="n">build_freq_stratification_list</span><span class="p">,</span>
+    <span class="n">compute_freq_by_strata</span><span class="p">,</span>
+    <span class="n">faf_expr</span><span class="p">,</span>
+    <span class="n">gen_anc_faf_max_expr</span><span class="p">,</span>
+    <span class="n">generate_freq_group_membership_array</span><span class="p">,</span>
+    <span class="n">get_adj_expr</span><span class="p">,</span>
+    <span class="n">grpmax_expr</span><span class="p">,</span>
+    <span class="n">merge_freq_arrays</span><span class="p">,</span>
+    <span class="n">merge_histograms</span><span class="p">,</span>
+    <span class="n">qual_hist_expr</span><span class="p">,</span>
+    <span class="n">set_xx_y_metrics_to_na_expr</span><span class="p">,</span>
+<span class="p">)</span>
+<span class="kn">from</span> <span class="nn">gnomad.utils.filtering</span> <span class="kn">import</span> <span class="n">filter_arrays_by_meta</span>
+<span class="kn">from</span> <span class="nn">gnomad.utils.release</span> <span class="kn">import</span> <span class="n">make_freq_index_dict_from_meta</span>
+<span class="kn">from</span> <span class="nn">gnomad.utils.slack</span> <span class="kn">import</span> <span class="n">slack_notifications</span>
+<span class="kn">from</span> <span class="nn">gnomad.utils.vcf</span> <span class="kn">import</span> <span class="n">SORT_ORDER</span>
+
+<span class="kn">from</span> <span class="nn">gnomad_qc.resource_utils</span> <span class="kn">import</span> <span class="p">(</span>
+    <span class="n">PipelineResourceCollection</span><span class="p">,</span>
+    <span class="n">PipelineStepResourceCollection</span><span class="p">,</span>
+<span class="p">)</span>
+<span class="kn">from</span> <span class="nn">gnomad_qc.slack_creds</span> <span class="kn">import</span> <span class="n">slack_token</span>
+<span class="kn">from</span> <span class="nn">gnomad_qc.v4.resources.annotations</span> <span class="kn">import</span> <span class="n">get_downsampling</span><span class="p">,</span> <span class="n">get_freq</span><span class="p">,</span> <span class="n">get_split_vds</span>
+<span class="kn">from</span> <span class="nn">gnomad_qc.v4.resources.basics</span> <span class="kn">import</span> <span class="n">get_gnomad_v4_vds</span><span class="p">,</span> <span class="n">get_logging_path</span>
+
+<span class="n">logging</span><span class="o">.</span><span class="n">basicConfig</span><span class="p">(</span>
+    <span class="n">level</span><span class="o">=</span><span class="n">logging</span><span class="o">.</span><span class="n">INFO</span><span class="p">,</span>
+    <span class="nb">format</span><span class="o">=</span><span class="s2">&quot;</span><span class="si">%(asctime)s</span><span class="s2">: </span><span class="si">%(message)s</span><span class="s2">&quot;</span><span class="p">,</span>
+    <span class="n">datefmt</span><span class="o">=</span><span class="s2">&quot;%m/</span><span class="si">%d</span><span class="s2">/%Y %I:%M:%S %p&quot;</span><span class="p">,</span>
+<span class="p">)</span>
+<span class="n">logger</span> <span class="o">=</span> <span class="n">logging</span><span class="o">.</span><span class="n">getLogger</span><span class="p">(</span><span class="s2">&quot;gnomAD_frequency&quot;</span><span class="p">)</span>
+<span class="n">logger</span><span class="o">.</span><span class="n">setLevel</span><span class="p">(</span><span class="n">logging</span><span class="o">.</span><span class="n">INFO</span><span class="p">)</span>
+
+<span class="n">AGE_HISTS</span> <span class="o">=</span> <span class="p">[</span>
+    <span class="s2">&quot;age_hist_het&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;age_hist_hom&quot;</span><span class="p">,</span>
+<span class="p">]</span>
+<span class="sd">&quot;&quot;&quot;Age histograms to compute and keep on the frequency Table.&quot;&quot;&quot;</span>
+<span class="n">QUAL_HISTS</span> <span class="o">=</span> <span class="p">[</span>
+    <span class="s2">&quot;gq_hist_all&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;dp_hist_all&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;gq_hist_alt&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;dp_hist_alt&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;ab_hist_alt&quot;</span><span class="p">,</span>
+<span class="p">]</span>
+<span class="sd">&quot;&quot;&quot;Quality histograms to compute and keep on the frequency Table.&quot;&quot;&quot;</span>
+<span class="n">FREQ_HIGH_AB_HET_ROW_FIELDS</span> <span class="o">=</span> <span class="p">[</span>
+    <span class="s2">&quot;high_ab_hets_by_group&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;high_ab_het_adjusted_ab_hists&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;high_ab_het_adjusted_age_hists&quot;</span><span class="p">,</span>
+<span class="p">]</span>
+<span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">List of top level row and global annotations relating to the high allele balance</span>
+<span class="sd">heterozygote correction that we want on the frequency HT before deciding on the AF</span>
+<span class="sd">cutoff.</span>
+<span class="sd">&quot;&quot;&quot;</span>
+<span class="n">FREQ_ROW_FIELDS</span> <span class="o">=</span> <span class="p">[</span>
+    <span class="s2">&quot;freq&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;qual_hists&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;raw_qual_hists&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;age_hists&quot;</span><span class="p">,</span>
+<span class="p">]</span>
+<span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">List of top level row and global annotations with no high allele balance heterozygote</span>
+<span class="sd">correction that we want on the frequency HT.</span>
+<span class="sd">&quot;&quot;&quot;</span>
+<span class="n">ALL_FREQ_ROW_FIELDS</span> <span class="o">=</span> <span class="n">FREQ_ROW_FIELDS</span> <span class="o">+</span> <span class="n">FREQ_HIGH_AB_HET_ROW_FIELDS</span>
+<span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">List of final top level row and global annotations created from dense data that we</span>
+<span class="sd">want on the frequency HT before deciding on the AF cutoff.</span>
+<span class="sd">&quot;&quot;&quot;</span>
+<span class="n">FREQ_GLOBAL_FIELDS</span> <span class="o">=</span> <span class="p">[</span>
+    <span class="s2">&quot;downsamplings&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;freq_meta&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;age_distribution&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;freq_index_dict&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;freq_meta_sample_count&quot;</span><span class="p">,</span>
+<span class="p">]</span>
+<span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">List of final global annotations created from dense data that we want on the frequency</span>
+<span class="sd">HT before deciding on the AF cutoff.</span>
+<span class="sd">&quot;&quot;&quot;</span>
+<span class="n">SUBSET_DICT</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;gnomad&quot;</span><span class="p">:</span> <span class="mi">0</span><span class="p">,</span> <span class="s2">&quot;non_ukb&quot;</span><span class="p">:</span> <span class="mi">1</span><span class="p">}</span>
+<span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">Dictionary for accessing the annotations with subset specific annotations such as</span>
+<span class="sd">age_hists, popmax, and faf.</span>
+<span class="sd">&quot;&quot;&quot;</span>
+
+
+<div class="viewcode-block" id="get_freq_resources"><a class="viewcode-back" href="../../../../api_reference/v4/annotations/generate_freq.html#gnomad_qc.v4.annotations.generate_freq.get_freq_resources">[docs]</a><span class="k">def</span> <span class="nf">get_freq_resources</span><span class="p">(</span>
+    <span class="n">overwrite</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+    <span class="n">test</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">bool</span><span class="p">]</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+    <span class="n">chrom</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">ukb</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+    <span class="n">non_ukb</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">PipelineResourceCollection</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Get frequency resources.</span>
+
+<span class="sd">    :param overwrite: Whether to overwrite existing files.</span>
+<span class="sd">    :param test: Whether to use test resources.</span>
+<span class="sd">    :param chrom: Chromosome used in freq calculations.</span>
+<span class="sd">    :param ukb: Whether to get frequency resources for UKB subset.</span>
+<span class="sd">    :param non_ukb: Whether to get frequency resources for non UKB subset.</span>
+<span class="sd">    :return: Frequency resources.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">freq_output_resources</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">if</span> <span class="n">ukb</span><span class="p">:</span>
+        <span class="n">freq_output_resources</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s2">&quot;ukb&quot;</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">non_ukb</span><span class="p">:</span>
+        <span class="n">freq_output_resources</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s2">&quot;non_ukb&quot;</span><span class="p">)</span>
+    <span class="n">freq_pipeline</span> <span class="o">=</span> <span class="n">PipelineResourceCollection</span><span class="p">(</span>
+        <span class="n">pipeline_name</span><span class="o">=</span><span class="s2">&quot;frequency&quot;</span><span class="p">,</span>
+        <span class="n">overwrite</span><span class="o">=</span><span class="n">overwrite</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">write_split_vds_and_downsampling_ht</span> <span class="o">=</span> <span class="n">PipelineStepResourceCollection</span><span class="p">(</span>
+        <span class="s2">&quot;--write-split-vds-and-downsampling-ht&quot;</span><span class="p">,</span>
+        <span class="n">output_resources</span><span class="o">=</span><span class="p">{</span>
+            <span class="s2">&quot;split_vds&quot;</span><span class="p">:</span> <span class="n">get_split_vds</span><span class="p">(</span><span class="n">test</span><span class="o">=</span><span class="n">test</span><span class="p">),</span>
+            <span class="s2">&quot;ds_ht&quot;</span><span class="p">:</span> <span class="n">get_downsampling</span><span class="p">(</span><span class="n">test</span><span class="o">=</span><span class="n">test</span><span class="p">),</span>
+        <span class="p">},</span>
+    <span class="p">)</span>
+    <span class="n">freq_output_resources</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">s</span><span class="si">}</span><span class="s2">_freq_ht&quot;</span><span class="p">:</span> <span class="n">get_freq</span><span class="p">(</span>
+            <span class="n">test</span><span class="o">=</span><span class="n">test</span><span class="p">,</span>
+            <span class="n">hom_alt_adjusted</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+            <span class="n">chrom</span><span class="o">=</span><span class="n">chrom</span><span class="p">,</span>
+            <span class="n">intermediate_subset</span><span class="o">=</span><span class="n">s</span><span class="p">,</span>
+            <span class="n">finalized</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+        <span class="p">)</span>
+        <span class="k">for</span> <span class="n">s</span> <span class="ow">in</span> <span class="n">freq_output_resources</span>
+    <span class="p">}</span>
+    <span class="k">if</span> <span class="n">non_ukb</span><span class="p">:</span>
+        <span class="n">freq_output_resources</span><span class="p">[</span><span class="s2">&quot;non_ukb_ds_ht&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">get_downsampling</span><span class="p">(</span>
+            <span class="n">test</span><span class="o">=</span><span class="n">test</span><span class="p">,</span> <span class="n">subset</span><span class="o">=</span><span class="s2">&quot;non_ukb&quot;</span>
+        <span class="p">)</span>
+    <span class="n">run_freq_and_dense_annotations</span> <span class="o">=</span> <span class="n">PipelineStepResourceCollection</span><span class="p">(</span>
+        <span class="s2">&quot;--run-freq-and-dense-annotations&quot;</span><span class="p">,</span>
+        <span class="n">pipeline_input_steps</span><span class="o">=</span><span class="p">[</span><span class="n">write_split_vds_and_downsampling_ht</span><span class="p">],</span>
+        <span class="n">output_resources</span><span class="o">=</span><span class="n">freq_output_resources</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">combine_freq</span> <span class="o">=</span> <span class="n">PipelineStepResourceCollection</span><span class="p">(</span>
+        <span class="s2">&quot;--combine-freq-hts&quot;</span><span class="p">,</span>
+        <span class="n">pipeline_input_steps</span><span class="o">=</span><span class="p">[</span><span class="n">run_freq_and_dense_annotations</span><span class="p">],</span>
+        <span class="n">output_resources</span><span class="o">=</span><span class="p">{</span>
+            <span class="s2">&quot;freq_ht&quot;</span><span class="p">:</span> <span class="n">get_freq</span><span class="p">(</span>
+                <span class="n">test</span><span class="o">=</span><span class="n">test</span><span class="p">,</span>
+                <span class="n">hom_alt_adjusted</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+                <span class="n">chrom</span><span class="o">=</span><span class="n">chrom</span><span class="p">,</span>
+                <span class="n">finalized</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+            <span class="p">)</span>
+        <span class="p">},</span>
+    <span class="p">)</span>
+    <span class="n">correct_for_high_ab_hets</span> <span class="o">=</span> <span class="n">PipelineStepResourceCollection</span><span class="p">(</span>
+        <span class="s2">&quot;--correct-for-high-ab-hets&quot;</span><span class="p">,</span>
+        <span class="n">pipeline_input_steps</span><span class="o">=</span><span class="p">[</span><span class="n">combine_freq</span><span class="p">],</span>
+        <span class="n">output_resources</span><span class="o">=</span><span class="p">{</span>
+            <span class="s2">&quot;corrected_freq_ht&quot;</span><span class="p">:</span> <span class="n">get_freq</span><span class="p">(</span>
+                <span class="n">test</span><span class="o">=</span><span class="n">test</span><span class="p">,</span> <span class="n">hom_alt_adjusted</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">chrom</span><span class="o">=</span><span class="n">chrom</span><span class="p">,</span> <span class="n">finalized</span><span class="o">=</span><span class="kc">False</span>
+            <span class="p">)</span>
+        <span class="p">},</span>
+    <span class="p">)</span>
+    <span class="n">finalize_freq_ht</span> <span class="o">=</span> <span class="n">PipelineStepResourceCollection</span><span class="p">(</span>
+        <span class="s2">&quot;--finalize-freq-ht&quot;</span><span class="p">,</span>
+        <span class="n">pipeline_input_steps</span><span class="o">=</span><span class="p">[</span><span class="n">correct_for_high_ab_hets</span><span class="p">],</span>
+        <span class="n">output_resources</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;final_freq_ht&quot;</span><span class="p">:</span> <span class="n">get_freq</span><span class="p">(</span><span class="n">test</span><span class="o">=</span><span class="n">test</span><span class="p">,</span> <span class="n">finalized</span><span class="o">=</span><span class="kc">True</span><span class="p">)},</span>
+    <span class="p">)</span>
+    <span class="n">freq_pipeline</span><span class="o">.</span><span class="n">add_steps</span><span class="p">(</span>
+        <span class="p">{</span>
+            <span class="s2">&quot;write_split_vds_and_downsampling_ht&quot;</span><span class="p">:</span> <span class="n">write_split_vds_and_downsampling_ht</span><span class="p">,</span>
+            <span class="s2">&quot;run_freq_and_dense_annotations&quot;</span><span class="p">:</span> <span class="n">run_freq_and_dense_annotations</span><span class="p">,</span>
+            <span class="s2">&quot;combine_freq&quot;</span><span class="p">:</span> <span class="n">combine_freq</span><span class="p">,</span>
+            <span class="s2">&quot;correct_for_high_ab_hets&quot;</span><span class="p">:</span> <span class="n">correct_for_high_ab_hets</span><span class="p">,</span>
+            <span class="s2">&quot;finalize_freq_ht&quot;</span><span class="p">:</span> <span class="n">finalize_freq_ht</span><span class="p">,</span>
+        <span class="p">}</span>
+    <span class="p">)</span>
+    <span class="k">return</span> <span class="n">freq_pipeline</span></div>
+
+
+<div class="viewcode-block" id="get_vds_for_freq"><a class="viewcode-back" href="../../../../api_reference/v4/annotations/generate_freq.html#gnomad_qc.v4.annotations.generate_freq.get_vds_for_freq">[docs]</a><span class="k">def</span> <span class="nf">get_vds_for_freq</span><span class="p">(</span>
+    <span class="n">use_test_dataset</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+    <span class="n">test_gene</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+    <span class="n">test_n_partitions</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">hl</span><span class="o">.</span><span class="n">int</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">chrom</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">hl</span><span class="o">.</span><span class="n">int</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">hl</span><span class="o">.</span><span class="n">vds</span><span class="o">.</span><span class="n">VariantDataset</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Prepare VDS for frequency calculation by filtering to release samples and only adding necessary annotations.</span>
+
+<span class="sd">    :param use_test_dataset: Whether to use test dataset.</span>
+<span class="sd">    :param test_gene: Whether to filter to DRD2 for testing purposes.</span>
+<span class="sd">    :param test_n_partitions: Number of partitions to use for testing.</span>
+<span class="sd">    :param chrom: Chromosome to filter to.</span>
+<span class="sd">    :return: Hail VDS with only necessary annotations.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span>
+        <span class="s2">&quot;Reading the </span><span class="si">%s</span><span class="s2"> gnomAD v4 VDS...&quot;</span><span class="p">,</span> <span class="s2">&quot;test&quot;</span> <span class="k">if</span> <span class="n">use_test_dataset</span> <span class="k">else</span> <span class="s2">&quot;full&quot;</span>
+    <span class="p">)</span>
+    <span class="k">if</span> <span class="n">test_n_partitions</span><span class="p">:</span>
+        <span class="n">test_partitions</span> <span class="o">=</span> <span class="nb">range</span><span class="p">(</span><span class="n">test_n_partitions</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">test_partitions</span> <span class="o">=</span> <span class="kc">None</span>
+
+    <span class="n">test</span> <span class="o">=</span> <span class="n">use_test_dataset</span> <span class="ow">or</span> <span class="n">test_gene</span> <span class="ow">or</span> <span class="n">test_n_partitions</span>
+
+    <span class="n">vds</span> <span class="o">=</span> <span class="n">get_gnomad_v4_vds</span><span class="p">(</span>
+        <span class="n">test</span><span class="o">=</span><span class="n">use_test_dataset</span><span class="p">,</span>
+        <span class="n">release_only</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+        <span class="n">filter_partitions</span><span class="o">=</span><span class="n">test_partitions</span><span class="p">,</span>
+        <span class="n">chrom</span><span class="o">=</span><span class="n">chrom</span><span class="p">,</span>
+        <span class="n">annotate_meta</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+    <span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">test_gene</span><span class="p">:</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Filtering to DRD2 in VDS for testing purposes...&quot;</span><span class="p">)</span>
+        <span class="n">test_interval</span> <span class="o">=</span> <span class="p">[</span>
+            <span class="n">hl</span><span class="o">.</span><span class="n">parse_locus_interval</span><span class="p">(</span>
+                <span class="s2">&quot;chr11:113409605-113475691&quot;</span><span class="p">,</span> <span class="n">reference_genome</span><span class="o">=</span><span class="s2">&quot;GRCh38&quot;</span>
+            <span class="p">)</span>
+        <span class="p">]</span>
+        <span class="n">vds</span> <span class="o">=</span> <span class="n">hl</span><span class="o">.</span><span class="n">vds</span><span class="o">.</span><span class="n">filter_intervals</span><span class="p">(</span><span class="n">vds</span><span class="p">,</span> <span class="n">test_interval</span><span class="p">,</span> <span class="n">split_reference_blocks</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Annotating VDS with only necessary sample metadata...&quot;</span><span class="p">)</span>
+    <span class="n">rmt</span> <span class="o">=</span> <span class="n">vds</span><span class="o">.</span><span class="n">reference_data</span>
+    <span class="n">vmt</span> <span class="o">=</span> <span class="n">vds</span><span class="o">.</span><span class="n">variant_data</span>
+    <span class="n">project_meta_expr</span> <span class="o">=</span> <span class="n">vmt</span><span class="o">.</span><span class="n">meta</span><span class="o">.</span><span class="n">project_meta</span>
+    <span class="n">vmt</span> <span class="o">=</span> <span class="n">vmt</span><span class="o">.</span><span class="n">select_cols</span><span class="p">(</span>
+        <span class="n">pop</span><span class="o">=</span><span class="n">vmt</span><span class="o">.</span><span class="n">meta</span><span class="o">.</span><span class="n">population_inference</span><span class="o">.</span><span class="n">pop</span><span class="p">,</span>
+        <span class="n">sex_karyotype</span><span class="o">=</span><span class="n">vmt</span><span class="o">.</span><span class="n">meta</span><span class="o">.</span><span class="n">sex_imputation</span><span class="o">.</span><span class="n">sex_karyotype</span><span class="p">,</span>
+        <span class="n">fixed_homalt_model</span><span class="o">=</span><span class="n">project_meta_expr</span><span class="o">.</span><span class="n">fixed_homalt_model</span><span class="p">,</span>
+        <span class="n">gatk_version</span><span class="o">=</span><span class="n">project_meta_expr</span><span class="o">.</span><span class="n">gatk_version</span><span class="p">,</span>
+        <span class="n">age</span><span class="o">=</span><span class="n">project_meta_expr</span><span class="o">.</span><span class="n">age</span><span class="p">,</span>
+        <span class="n">ukb_sample</span><span class="o">=</span><span class="n">hl</span><span class="o">.</span><span class="n">if_else</span><span class="p">(</span><span class="n">project_meta_expr</span><span class="o">.</span><span class="n">ukb_sample</span><span class="p">,</span> <span class="s2">&quot;ukb&quot;</span><span class="p">,</span> <span class="s2">&quot;non_ukb&quot;</span><span class="p">),</span>
+    <span class="p">)</span>
+
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Dropping excessively multi-allelic site at chr19:5787204...&quot;</span><span class="p">)</span>
+    <span class="n">vmt</span> <span class="o">=</span> <span class="n">vmt</span><span class="o">.</span><span class="n">filter_rows</span><span class="p">(</span>
+        <span class="n">vmt</span><span class="o">.</span><span class="n">locus</span> <span class="o">!=</span> <span class="n">hl</span><span class="o">.</span><span class="n">parse_locus</span><span class="p">(</span><span class="s2">&quot;chr19:5787204&quot;</span><span class="p">,</span> <span class="n">reference_genome</span><span class="o">=</span><span class="s2">&quot;GRCh38&quot;</span><span class="p">)</span>
+    <span class="p">)</span>
+
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Getting age distribution of all samples in the callset...&quot;</span><span class="p">)</span>
+    <span class="n">vmt</span> <span class="o">=</span> <span class="n">vmt</span><span class="o">.</span><span class="n">annotate_globals</span><span class="p">(</span>
+        <span class="n">age_distribution</span><span class="o">=</span><span class="n">vmt</span><span class="o">.</span><span class="n">aggregate_cols</span><span class="p">(</span><span class="n">hl</span><span class="o">.</span><span class="n">agg</span><span class="o">.</span><span class="n">hist</span><span class="p">(</span><span class="n">vmt</span><span class="o">.</span><span class="n">age</span><span class="p">,</span> <span class="mi">30</span><span class="p">,</span> <span class="mi">80</span><span class="p">,</span> <span class="mi">10</span><span class="p">))</span>
+    <span class="p">)</span>
+
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Annotating non_ref hets pre-split...&quot;</span><span class="p">)</span>
+    <span class="n">vmt</span> <span class="o">=</span> <span class="n">vmt</span><span class="o">.</span><span class="n">annotate_entries</span><span class="p">(</span><span class="n">_het_non_ref</span><span class="o">=</span><span class="n">vmt</span><span class="o">.</span><span class="n">LGT</span><span class="o">.</span><span class="n">is_het_non_ref</span><span class="p">())</span>
+
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Selecting only required fields to reduce memory usage...&quot;</span><span class="p">)</span>
+    <span class="n">vmt</span> <span class="o">=</span> <span class="n">vmt</span><span class="o">.</span><span class="n">select_entries</span><span class="p">(</span><span class="s2">&quot;LA&quot;</span><span class="p">,</span> <span class="s2">&quot;LAD&quot;</span><span class="p">,</span> <span class="s2">&quot;DP&quot;</span><span class="p">,</span> <span class="s2">&quot;GQ&quot;</span><span class="p">,</span> <span class="s2">&quot;LGT&quot;</span><span class="p">,</span> <span class="s2">&quot;_het_non_ref&quot;</span><span class="p">)</span>
+
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Spltting mutliallelics in VDS...&quot;</span><span class="p">)</span>
+    <span class="n">vds</span> <span class="o">=</span> <span class="n">hl</span><span class="o">.</span><span class="n">vds</span><span class="o">.</span><span class="n">VariantDataset</span><span class="p">(</span><span class="n">rmt</span><span class="p">,</span> <span class="n">vmt</span><span class="p">)</span>
+    <span class="n">vds</span> <span class="o">=</span> <span class="n">hl</span><span class="o">.</span><span class="n">vds</span><span class="o">.</span><span class="n">split_multi</span><span class="p">(</span><span class="n">vds</span><span class="p">,</span> <span class="n">filter_changed_loci</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">vds</span></div>
+
+
+<div class="viewcode-block" id="annotate_freq_index_dict"><a class="viewcode-back" href="../../../../api_reference/v4/annotations/generate_freq.html#gnomad_qc.v4.annotations.generate_freq.annotate_freq_index_dict">[docs]</a><span class="k">def</span> <span class="nf">annotate_freq_index_dict</span><span class="p">(</span><span class="n">ht</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Create frequency index dictionary.</span>
+
+<span class="sd">    The keys are the strata over which frequency aggregations where calculated and</span>
+<span class="sd">    the values are the strata&#39;s index in the frequency array.</span>
+
+<span class="sd">    :param ht: Input Table.</span>
+<span class="sd">    :return: Table with &#39;freq_index_dict&#39; global field.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Making freq index dict...&quot;</span><span class="p">)</span>
+    <span class="c1"># Add additional strata to the sort order, keeping group, i.e. adj, at the end.</span>
+    <span class="n">sort_order</span> <span class="o">=</span> <span class="n">deepcopy</span><span class="p">(</span><span class="n">SORT_ORDER</span><span class="p">)</span>
+    <span class="n">sort_order</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">:</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="o">=</span> <span class="p">[</span><span class="s2">&quot;gatk_version&quot;</span><span class="p">]</span>
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">annotate_globals</span><span class="p">(</span>
+        <span class="n">freq_index_dict</span><span class="o">=</span><span class="n">make_freq_index_dict_from_meta</span><span class="p">(</span>
+            <span class="n">freq_meta</span><span class="o">=</span><span class="n">ht</span><span class="o">.</span><span class="n">freq_meta</span><span class="p">,</span>
+            <span class="n">label_delimiter</span><span class="o">=</span><span class="s2">&quot;_&quot;</span><span class="p">,</span>
+            <span class="n">sort_order</span><span class="o">=</span><span class="n">sort_order</span><span class="p">,</span>
+        <span class="p">)</span>
+    <span class="p">)</span>
+    <span class="k">return</span> <span class="n">ht</span></div>
+
+
+<div class="viewcode-block" id="filter_freq_arrays_for_non_ukb_subset"><a class="viewcode-back" href="../../../../api_reference/v4/annotations/generate_freq.html#gnomad_qc.v4.annotations.generate_freq.filter_freq_arrays_for_non_ukb_subset">[docs]</a><span class="k">def</span> <span class="nf">filter_freq_arrays_for_non_ukb_subset</span><span class="p">(</span>
+    <span class="n">ht</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">,</span>
+    <span class="n">items_to_filter</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">],</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">]]],</span>
+    <span class="n">keep</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span>
+    <span class="n">combine_operator</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;and&quot;</span><span class="p">,</span>
+    <span class="n">annotations</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">],</span> <span class="n">Tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">]]</span> <span class="o">=</span> <span class="p">(</span><span class="s2">&quot;freq&quot;</span><span class="p">,</span> <span class="s2">&quot;high_ab_hets_by_group&quot;</span><span class="p">),</span>
+    <span class="n">remove_subset_from_meta</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Filter frequency arrays by metadata.</span>
+
+<span class="sd">    Filter &#39;annotations&#39; and `freq_meta` array fields to only `items_to_filter` by</span>
+<span class="sd">    using the &#39;freq_meta&#39; array field values.</span>
+
+<span class="sd">    If `remove_subset_from_meta` is True, update &#39;freq_meta&#39; dicts by removing items</span>
+<span class="sd">    with the key &quot;subset&quot; removed. If False, update &#39;freq_meta&#39; dicts to include a</span>
+<span class="sd">    &quot;subset&quot; key with &quot;non_ukb&quot; value.</span>
+
+<span class="sd">    Also rename the &#39;downsamplings&#39; global field to &quot;non_ukb_downsamplings&quot; so we can</span>
+<span class="sd">    merge them later without losing the non-UKB downsampling information.</span>
+
+<span class="sd">    :param ht: Input Table.</span>
+<span class="sd">    :param items_to_filter: Items to filter by.</span>
+<span class="sd">    :param keep: Whether to keep or remove items. Default is True.</span>
+<span class="sd">    :param combine_operator: Operator (&quot;and&quot; or &quot;or&quot;) to use when combining items in</span>
+<span class="sd">        &#39;items_to_filter&#39;. Default is &quot;and&quot;.</span>
+<span class="sd">    :param annotations: Annotations in &#39;ht&#39; to filter by `items_to_filter`.</span>
+<span class="sd">    :param remove_subset_from_meta: Whether to remove the &quot;subset&quot; key from &#39;freq_meta&#39;</span>
+<span class="sd">        or add &quot;subset&quot; key with &quot;non_ukb&quot; value. Default is False.</span>
+<span class="sd">    :return: Table with filtered &#39;annotations&#39; and &#39;freq_meta&#39; array fields.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">freq_meta</span><span class="p">,</span> <span class="n">array_exprs</span> <span class="o">=</span> <span class="n">filter_arrays_by_meta</span><span class="p">(</span>
+        <span class="n">ht</span><span class="o">.</span><span class="n">freq_meta</span><span class="p">,</span>
+        <span class="p">{</span>
+            <span class="o">**</span><span class="p">{</span><span class="n">a</span><span class="p">:</span> <span class="n">ht</span><span class="p">[</span><span class="n">a</span><span class="p">]</span> <span class="k">for</span> <span class="n">a</span> <span class="ow">in</span> <span class="n">annotations</span><span class="p">},</span>
+            <span class="s2">&quot;freq_meta_sample_count&quot;</span><span class="p">:</span> <span class="n">ht</span><span class="o">.</span><span class="n">index_globals</span><span class="p">()</span><span class="o">.</span><span class="n">freq_meta_sample_count</span><span class="p">,</span>
+        <span class="p">},</span>
+        <span class="n">items_to_filter</span><span class="o">=</span><span class="n">items_to_filter</span><span class="p">,</span>
+        <span class="n">keep</span><span class="o">=</span><span class="n">keep</span><span class="p">,</span>
+        <span class="n">combine_operator</span><span class="o">=</span><span class="n">combine_operator</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="k">if</span> <span class="n">remove_subset_from_meta</span><span class="p">:</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Dropping non_ukb subset key from freq_meta...&quot;</span><span class="p">)</span>
+        <span class="n">freq_meta</span> <span class="o">=</span> <span class="n">freq_meta</span><span class="o">.</span><span class="n">map</span><span class="p">(</span>
+            <span class="k">lambda</span> <span class="n">d</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">dict</span><span class="p">(</span><span class="n">d</span><span class="o">.</span><span class="n">items</span><span class="p">()</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="k">lambda</span> <span class="n">x</span><span class="p">:</span> <span class="n">x</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">!=</span> <span class="s2">&quot;subset&quot;</span><span class="p">))</span>
+        <span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Adding non_ukb subset key from freq_meta...&quot;</span><span class="p">)</span>
+        <span class="n">freq_meta</span> <span class="o">=</span> <span class="n">freq_meta</span><span class="o">.</span><span class="n">map</span><span class="p">(</span>
+            <span class="k">lambda</span> <span class="n">d</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">dict</span><span class="p">(</span><span class="n">d</span><span class="o">.</span><span class="n">items</span><span class="p">()</span><span class="o">.</span><span class="n">append</span><span class="p">((</span><span class="s2">&quot;subset&quot;</span><span class="p">,</span> <span class="s2">&quot;non_ukb&quot;</span><span class="p">)))</span>
+        <span class="p">)</span>
+
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">annotate</span><span class="p">(</span><span class="o">**</span><span class="p">{</span><span class="n">a</span><span class="p">:</span> <span class="n">array_exprs</span><span class="p">[</span><span class="n">a</span><span class="p">]</span> <span class="k">for</span> <span class="n">a</span> <span class="ow">in</span> <span class="n">annotations</span><span class="p">})</span>
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">annotate_globals</span><span class="p">(</span>
+        <span class="n">freq_meta</span><span class="o">=</span><span class="n">freq_meta</span><span class="p">,</span>
+        <span class="n">freq_meta_sample_count</span><span class="o">=</span><span class="n">array_exprs</span><span class="p">[</span><span class="s2">&quot;freq_meta_sample_count&quot;</span><span class="p">],</span>
+    <span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">ht</span></div>
+
+
+<div class="viewcode-block" id="high_ab_het"><a class="viewcode-back" href="../../../../api_reference/v4/annotations/generate_freq.html#gnomad_qc.v4.annotations.generate_freq.high_ab_het">[docs]</a><span class="k">def</span> <span class="nf">high_ab_het</span><span class="p">(</span>
+    <span class="n">entry</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">StructExpression</span><span class="p">,</span> <span class="n">col</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">StructExpression</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">hl</span><span class="o">.</span><span class="n">Int32Expression</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Determine if a call is considered a high allele balance heterozygous call.</span>
+
+<span class="sd">    High allele balance heterozygous calls were introduced in certain GATK versions.</span>
+<span class="sd">    Track how many calls appear at each site to correct them to homozygous</span>
+<span class="sd">    alternate calls downstream in frequency calculations and histograms.</span>
+
+<span class="sd">    Assumes the following annotations are present in `entry` struct:</span>
+<span class="sd">        - GT</span>
+<span class="sd">        - adj</span>
+<span class="sd">        - _high_ab_het_ref</span>
+
+<span class="sd">    Assumes the following annotations are present in `col` struct:</span>
+<span class="sd">        - fixed_homalt_model</span>
+
+<span class="sd">    :param entry: Entry struct.</span>
+<span class="sd">    :param col: Column struct.</span>
+<span class="sd">    :return: 1 if high allele balance heterozygous call, else 0.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">return</span> <span class="n">hl</span><span class="o">.</span><span class="n">int</span><span class="p">(</span>
+        <span class="n">entry</span><span class="o">.</span><span class="n">GT</span><span class="o">.</span><span class="n">is_het_ref</span><span class="p">()</span>
+        <span class="o">&amp;</span> <span class="n">entry</span><span class="o">.</span><span class="n">adj</span>
+        <span class="o">&amp;</span> <span class="o">~</span><span class="n">col</span><span class="o">.</span><span class="n">fixed_homalt_model</span>
+        <span class="o">&amp;</span> <span class="n">entry</span><span class="o">.</span><span class="n">_high_ab_het_ref</span>
+    <span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="generate_freq_ht"><a class="viewcode-back" href="../../../../api_reference/v4/annotations/generate_freq.html#gnomad_qc.v4.annotations.generate_freq.generate_freq_ht">[docs]</a><span class="k">def</span> <span class="nf">generate_freq_ht</span><span class="p">(</span>
+    <span class="n">mt</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">MatrixTable</span><span class="p">,</span>
+    <span class="n">ds_ht</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">,</span>
+    <span class="n">meta_ht</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">,</span>
+    <span class="n">non_ukb_ds_ht</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Generate frequency Table.</span>
+
+<span class="sd">    Assumes all necessary annotations are present:</span>
+<span class="sd">        `mt` annotations:</span>
+<span class="sd">            - GT</span>
+<span class="sd">            - adj</span>
+<span class="sd">            - _high_ab_het_ref</span>
+<span class="sd">            - fixed_homalt_model</span>
+<span class="sd">            - fixed_homalt_model</span>
+
+<span class="sd">        `ds_ht` annotations:</span>
+<span class="sd">            - downsampling</span>
+<span class="sd">            - downsamplings</span>
+<span class="sd">            - ds_pop_counts</span>
+
+<span class="sd">        `meta_ht` annotations:</span>
+<span class="sd">            - pop</span>
+<span class="sd">            - sex_karyotype</span>
+<span class="sd">            - gatk_version</span>
+<span class="sd">            - age</span>
+<span class="sd">            - ukb_sample</span>
+
+<span class="sd">    :param mt: Input MatrixTable.</span>
+<span class="sd">    :param ds_ht: Table with downsampling annotations.</span>
+<span class="sd">    :param meta_ht: Table with sample metadata annotations.</span>
+<span class="sd">    :param non_ukb_ds_ht: Optional Table with non-UKB downsampling annotations.</span>
+<span class="sd">    :return: Hail Table with frequency annotations.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">meta_ht</span> <span class="o">=</span> <span class="n">meta_ht</span><span class="o">.</span><span class="n">semi_join</span><span class="p">(</span><span class="n">mt</span><span class="o">.</span><span class="n">cols</span><span class="p">())</span>
+    <span class="n">additional_strata_expr</span> <span class="o">=</span> <span class="p">[</span>
+        <span class="p">{</span><span class="s2">&quot;gatk_version&quot;</span><span class="p">:</span> <span class="n">meta_ht</span><span class="o">.</span><span class="n">gatk_version</span><span class="p">},</span>
+        <span class="p">{</span><span class="s2">&quot;gatk_version&quot;</span><span class="p">:</span> <span class="n">meta_ht</span><span class="o">.</span><span class="n">gatk_version</span><span class="p">,</span> <span class="s2">&quot;pop&quot;</span><span class="p">:</span> <span class="n">meta_ht</span><span class="o">.</span><span class="n">pop</span><span class="p">},</span>
+    <span class="p">]</span>
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Building frequency stratification list...&quot;</span><span class="p">)</span>
+    <span class="n">strata_expr</span> <span class="o">=</span> <span class="n">build_freq_stratification_list</span><span class="p">(</span>
+        <span class="n">sex_expr</span><span class="o">=</span><span class="n">meta_ht</span><span class="o">.</span><span class="n">sex_karyotype</span><span class="p">,</span>
+        <span class="n">gen_anc_expr</span><span class="o">=</span><span class="n">meta_ht</span><span class="o">.</span><span class="n">pop</span><span class="p">,</span>
+        <span class="n">additional_strata_expr</span><span class="o">=</span><span class="n">additional_strata_expr</span><span class="p">,</span>
+        <span class="n">downsampling_expr</span><span class="o">=</span><span class="n">ds_ht</span><span class="p">[</span><span class="n">meta_ht</span><span class="o">.</span><span class="n">key</span><span class="p">]</span><span class="o">.</span><span class="n">downsampling</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">group_membership_ht</span> <span class="o">=</span> <span class="n">generate_freq_group_membership_array</span><span class="p">(</span>
+        <span class="n">meta_ht</span><span class="p">,</span>
+        <span class="n">strata_expr</span><span class="p">,</span>
+        <span class="n">downsamplings</span><span class="o">=</span><span class="n">hl</span><span class="o">.</span><span class="n">eval</span><span class="p">(</span><span class="n">ds_ht</span><span class="o">.</span><span class="n">downsamplings</span><span class="p">),</span>
+        <span class="n">ds_gen_anc_counts</span><span class="o">=</span><span class="n">hl</span><span class="o">.</span><span class="n">eval</span><span class="p">(</span><span class="n">ds_ht</span><span class="o">.</span><span class="n">ds_pop_counts</span><span class="p">),</span>
+    <span class="p">)</span>
+    <span class="n">group_membership</span> <span class="o">=</span> <span class="n">group_membership_ht</span><span class="p">[</span><span class="n">mt</span><span class="o">.</span><span class="n">col_key</span><span class="p">]</span><span class="o">.</span><span class="n">group_membership</span>
+    <span class="n">group_membership_globals</span> <span class="o">=</span> <span class="n">group_membership_ht</span><span class="o">.</span><span class="n">index_globals</span><span class="p">()</span>
+    <span class="k">if</span> <span class="n">non_ukb_ds_ht</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Building non-ukb downsampling stratification list...&quot;</span><span class="p">)</span>
+        <span class="n">non_ukb_strata_expr</span> <span class="o">=</span> <span class="n">build_freq_stratification_list</span><span class="p">(</span>
+            <span class="n">gen_anc_expr</span><span class="o">=</span><span class="n">meta_ht</span><span class="o">.</span><span class="n">pop</span><span class="p">,</span>
+            <span class="n">downsampling_expr</span><span class="o">=</span><span class="n">non_ukb_ds_ht</span><span class="p">[</span><span class="n">meta_ht</span><span class="o">.</span><span class="n">key</span><span class="p">]</span><span class="o">.</span><span class="n">downsampling</span><span class="p">,</span>
+        <span class="p">)</span>
+        <span class="n">non_ukb_strata_expr</span> <span class="o">=</span> <span class="p">[</span><span class="n">e</span> <span class="k">for</span> <span class="n">e</span> <span class="ow">in</span> <span class="n">non_ukb_strata_expr</span> <span class="k">if</span> <span class="s2">&quot;downsampling&quot;</span> <span class="ow">in</span> <span class="n">e</span><span class="p">]</span>
+
+        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Generating non-ukb downsampling group_membership array....&quot;</span><span class="p">)</span>
+        <span class="n">non_ukb_group_membership_ht</span> <span class="o">=</span> <span class="n">generate_freq_group_membership_array</span><span class="p">(</span>
+            <span class="n">meta_ht</span><span class="p">,</span>
+            <span class="n">non_ukb_strata_expr</span><span class="p">,</span>
+            <span class="n">downsamplings</span><span class="o">=</span><span class="n">hl</span><span class="o">.</span><span class="n">eval</span><span class="p">(</span><span class="n">non_ukb_ds_ht</span><span class="o">.</span><span class="n">downsamplings</span><span class="p">),</span>
+            <span class="n">ds_gen_anc_counts</span><span class="o">=</span><span class="n">hl</span><span class="o">.</span><span class="n">eval</span><span class="p">(</span><span class="n">non_ukb_ds_ht</span><span class="o">.</span><span class="n">ds_pop_counts</span><span class="p">),</span>
+        <span class="p">)</span>
+        <span class="c1"># Remove the first two because they are adj and raw for the full subset.</span>
+        <span class="n">group_membership</span> <span class="o">=</span> <span class="n">group_membership</span><span class="o">.</span><span class="n">extend</span><span class="p">(</span>
+            <span class="n">non_ukb_group_membership_ht</span><span class="p">[</span><span class="n">mt</span><span class="o">.</span><span class="n">col_key</span><span class="p">]</span><span class="o">.</span><span class="n">group_membership</span><span class="p">[</span><span class="mi">2</span><span class="p">:]</span>
+        <span class="p">)</span>
+        <span class="n">non_ukb_globals</span> <span class="o">=</span> <span class="n">non_ukb_group_membership_ht</span><span class="o">.</span><span class="n">index_globals</span><span class="p">()</span>
+        <span class="n">non_ukb_globals</span> <span class="o">=</span> <span class="n">non_ukb_globals</span><span class="o">.</span><span class="n">annotate</span><span class="p">(</span>
+            <span class="n">freq_meta</span><span class="o">=</span><span class="n">non_ukb_globals</span><span class="o">.</span><span class="n">freq_meta</span><span class="o">.</span><span class="n">map</span><span class="p">(</span>
+                <span class="k">lambda</span> <span class="n">d</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">dict</span><span class="p">(</span><span class="n">d</span><span class="o">.</span><span class="n">items</span><span class="p">()</span><span class="o">.</span><span class="n">append</span><span class="p">((</span><span class="s2">&quot;subset&quot;</span><span class="p">,</span> <span class="s2">&quot;non_ukb&quot;</span><span class="p">)))</span>
+            <span class="p">)</span>
+        <span class="p">)</span>
+        <span class="c1"># Remove the first two because they are adj and raw for the full subset.</span>
+        <span class="n">group_membership_globals</span> <span class="o">=</span> <span class="n">group_membership_globals</span><span class="o">.</span><span class="n">annotate</span><span class="p">(</span>
+            <span class="o">**</span><span class="p">{</span>
+                <span class="n">g</span><span class="p">:</span> <span class="n">group_membership_globals</span><span class="p">[</span><span class="n">g</span><span class="p">]</span><span class="o">.</span><span class="n">extend</span><span class="p">(</span><span class="n">non_ukb_globals</span><span class="p">[</span><span class="n">g</span><span class="p">][</span><span class="mi">2</span><span class="p">:])</span>
+                <span class="k">for</span> <span class="n">g</span> <span class="ow">in</span> <span class="p">[</span><span class="s2">&quot;freq_meta&quot;</span><span class="p">,</span> <span class="s2">&quot;freq_meta_sample_count&quot;</span><span class="p">]</span>
+            <span class="p">},</span>
+            <span class="n">non_ukb_downsamplings</span><span class="o">=</span><span class="n">non_ukb_globals</span><span class="o">.</span><span class="n">downsamplings</span><span class="p">,</span>
+            <span class="n">non_ukb_ds_pop_counts</span><span class="o">=</span><span class="n">non_ukb_globals</span><span class="o">.</span><span class="n">ds_pop_counts</span><span class="p">,</span>
+        <span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">group_membership_globals</span> <span class="o">=</span> <span class="n">group_membership_globals</span><span class="o">.</span><span class="n">annotate</span><span class="p">(</span>
+            <span class="n">non_ukb_downsamplings</span><span class="o">=</span><span class="n">hl</span><span class="o">.</span><span class="n">missing</span><span class="p">(</span><span class="n">hl</span><span class="o">.</span><span class="n">tarray</span><span class="p">(</span><span class="n">hl</span><span class="o">.</span><span class="n">tint</span><span class="p">)),</span>
+            <span class="n">non_ukb_ds_pop_counts</span><span class="o">=</span><span class="n">hl</span><span class="o">.</span><span class="n">missing</span><span class="p">(</span><span class="n">hl</span><span class="o">.</span><span class="n">tdict</span><span class="p">(</span><span class="n">hl</span><span class="o">.</span><span class="n">tstr</span><span class="p">,</span> <span class="n">hl</span><span class="o">.</span><span class="n">tint</span><span class="p">)),</span>
+        <span class="p">)</span>
+
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Annotating frequencies and counting high AB het calls...&quot;</span><span class="p">)</span>
+    <span class="n">freq_ht</span> <span class="o">=</span> <span class="n">compute_freq_by_strata</span><span class="p">(</span>
+        <span class="n">mt</span><span class="o">.</span><span class="n">annotate_cols</span><span class="p">(</span><span class="n">group_membership</span><span class="o">=</span><span class="n">group_membership</span><span class="p">),</span>
+        <span class="n">entry_agg_funcs</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;high_ab_hets_by_group&quot;</span><span class="p">:</span> <span class="p">(</span><span class="n">high_ab_het</span><span class="p">,</span> <span class="n">hl</span><span class="o">.</span><span class="n">agg</span><span class="o">.</span><span class="n">sum</span><span class="p">)},</span>
+        <span class="n">select_fields</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;hists_fields&quot;</span><span class="p">],</span>
+    <span class="p">)</span>
+    <span class="c1"># Note: To use &quot;multi_way_zip_join&quot; need globals to be the same but an if_else based</span>
+    <span class="c1">#  on strata doesn&#39;t work because hail looks for the annotation</span>
+    <span class="c1">#  &quot;non_ukb_downsamplings&quot; regardless of the conditional value and throws an error</span>
+    <span class="c1">#  if it doesn&#39;t exist.</span>
+    <span class="n">freq_ht</span> <span class="o">=</span> <span class="n">freq_ht</span><span class="o">.</span><span class="n">annotate_globals</span><span class="p">(</span><span class="o">**</span><span class="n">group_membership_globals</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">freq_ht</span></div>
+
+
+<div class="viewcode-block" id="densify_and_prep_vds_for_freq"><a class="viewcode-back" href="../../../../api_reference/v4/annotations/generate_freq.html#gnomad_qc.v4.annotations.generate_freq.densify_and_prep_vds_for_freq">[docs]</a><span class="k">def</span> <span class="nf">densify_and_prep_vds_for_freq</span><span class="p">(</span>
+    <span class="n">vds</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">vds</span><span class="o">.</span><span class="n">VariantDataset</span><span class="p">,</span>
+    <span class="n">ab_cutoff</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">0.9</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">hl</span><span class="o">.</span><span class="n">MatrixTable</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Densify VDS and select necessary annotations for frequency and histogram calculations.</span>
+
+<span class="sd">    Select entry annotations required for downstream work. &#39;DP&#39;, &#39;GQ&#39;, and &#39;_het_ab&#39; are</span>
+<span class="sd">    required for histograms. &#39;GT&#39; and &#39;adj&#39; are required for frequency calculations.</span>
+<span class="sd">    &#39;_high_ab_het_ref&#39; is required for high AB call corrections in frequency and</span>
+<span class="sd">    histogram annotations.</span>
+
+<span class="sd">    Assumes all necessary annotations are present:</span>
+<span class="sd">        - adj</span>
+<span class="sd">        - _het_non_ref</span>
+<span class="sd">        - GT</span>
+<span class="sd">        - GQ</span>
+<span class="sd">        - AD</span>
+<span class="sd">        - DP</span>
+<span class="sd">        - sex_karyotype</span>
+
+<span class="sd">    :param vds: Input VDS.</span>
+<span class="sd">    :param ab_cutoff: Allele balance cutoff to use for high AB het annotation.</span>
+<span class="sd">    :return: Dense MatrixTable with only necessary entry annotations.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Densifying VDS...&quot;</span><span class="p">)</span>
+    <span class="n">mt</span> <span class="o">=</span> <span class="n">hl</span><span class="o">.</span><span class="n">vds</span><span class="o">.</span><span class="n">to_dense_mt</span><span class="p">(</span><span class="n">vds</span><span class="p">)</span>
+
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Computing sex adjusted genotypes...&quot;</span><span class="p">)</span>
+    <span class="n">ab_expr</span> <span class="o">=</span> <span class="n">mt</span><span class="o">.</span><span class="n">AD</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">/</span> <span class="n">mt</span><span class="o">.</span><span class="n">DP</span>
+    <span class="n">gt_expr</span> <span class="o">=</span> <span class="n">adjusted_sex_ploidy_expr</span><span class="p">(</span><span class="n">mt</span><span class="o">.</span><span class="n">locus</span><span class="p">,</span> <span class="n">mt</span><span class="o">.</span><span class="n">GT</span><span class="p">,</span> <span class="n">mt</span><span class="o">.</span><span class="n">sex_karyotype</span><span class="p">)</span>
+
+    <span class="n">mt</span> <span class="o">=</span> <span class="n">mt</span><span class="o">.</span><span class="n">select_entries</span><span class="p">(</span>
+        <span class="s2">&quot;DP&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;GQ&quot;</span><span class="p">,</span>
+        <span class="n">GT</span><span class="o">=</span><span class="n">gt_expr</span><span class="p">,</span>
+        <span class="n">adj</span><span class="o">=</span><span class="n">get_adj_expr</span><span class="p">(</span><span class="n">gt_expr</span><span class="p">,</span> <span class="n">mt</span><span class="o">.</span><span class="n">GQ</span><span class="p">,</span> <span class="n">mt</span><span class="o">.</span><span class="n">DP</span><span class="p">,</span> <span class="n">mt</span><span class="o">.</span><span class="n">AD</span><span class="p">),</span>
+        <span class="n">_het_ab</span><span class="o">=</span><span class="n">ab_expr</span><span class="p">,</span>
+        <span class="n">_high_ab_het_ref</span><span class="o">=</span><span class="p">(</span><span class="n">ab_expr</span> <span class="o">&gt;</span> <span class="n">ab_cutoff</span><span class="p">)</span> <span class="o">&amp;</span> <span class="o">~</span><span class="n">mt</span><span class="o">.</span><span class="n">_het_non_ref</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="k">return</span> <span class="n">mt</span></div>
+
+
+<div class="viewcode-block" id="get_downsampling_ht"><a class="viewcode-back" href="../../../../api_reference/v4/annotations/generate_freq.html#gnomad_qc.v4.annotations.generate_freq.get_downsampling_ht">[docs]</a><span class="k">def</span> <span class="nf">get_downsampling_ht</span><span class="p">(</span><span class="n">mt</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">MatrixTable</span><span class="p">,</span> <span class="n">non_ukb</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Get Table with downsampling groups for all samples or the non-UKB subset.</span>
+
+<span class="sd">    :param mt: Input MatrixTable.</span>
+<span class="sd">    :param non_ukb: Whether to get downsampling groups for the non-UKB subset. Default</span>
+<span class="sd">        is False.</span>
+<span class="sd">    :return: Table with downsampling groups.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span>
+        <span class="s2">&quot;Determining downsampling groups for </span><span class="si">%s</span><span class="s2">...&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;the non-UKB subset&quot;</span> <span class="k">if</span> <span class="n">non_ukb</span> <span class="k">else</span> <span class="s2">&quot;all samples&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">meta_ht</span> <span class="o">=</span> <span class="n">mt</span><span class="o">.</span><span class="n">cols</span><span class="p">()</span>
+    <span class="n">downsamplings</span> <span class="o">=</span> <span class="n">DOWNSAMPLINGS</span><span class="p">[</span><span class="s2">&quot;v4&quot;</span><span class="p">]</span>
+    <span class="k">if</span> <span class="n">non_ukb</span><span class="p">:</span>
+        <span class="n">downsamplings</span> <span class="o">=</span> <span class="n">downsamplings</span><span class="p">[:</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
+    <span class="n">ds_ht</span> <span class="o">=</span> <span class="n">annotate_downsamplings</span><span class="p">(</span><span class="n">meta_ht</span><span class="p">,</span> <span class="n">downsamplings</span><span class="p">,</span> <span class="n">gen_anc_expr</span><span class="o">=</span><span class="n">meta_ht</span><span class="o">.</span><span class="n">pop</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">ds_ht</span></div>
+
+
+<div class="viewcode-block" id="update_non_ukb_freq_ht"><a class="viewcode-back" href="../../../../api_reference/v4/annotations/generate_freq.html#gnomad_qc.v4.annotations.generate_freq.update_non_ukb_freq_ht">[docs]</a><span class="k">def</span> <span class="nf">update_non_ukb_freq_ht</span><span class="p">(</span><span class="n">freq_ht</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Update non-UKB subset frequencies to be ready for combining with the frequencies of other samples.</span>
+
+<span class="sd">    Duplicates frequency info for all groups except the non-UKB specific downsamplings</span>
+<span class="sd">    and adds &quot;subset&quot; annotation to &#39;freq_meta&#39; for one of the duplicates.</span>
+
+<span class="sd">    This allows for the non-UKB subset frequencies to be merged with the frequencies of</span>
+<span class="sd">    the other samples to provide full dataset frequencies while keeping the non-UKB</span>
+<span class="sd">    subset specific frequency information.</span>
+
+<span class="sd">    :param freq_ht: Non-UKB frequency Table.</span>
+<span class="sd">    :return: Restructured non-UKB frequency Table.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">annotations</span> <span class="o">=</span> <span class="p">[</span><span class="s2">&quot;freq&quot;</span><span class="p">,</span> <span class="s2">&quot;high_ab_hets_by_group&quot;</span><span class="p">]</span>
+    <span class="n">global_annotations</span> <span class="o">=</span> <span class="p">[</span><span class="s2">&quot;freq_meta&quot;</span><span class="p">,</span> <span class="s2">&quot;freq_meta_sample_count&quot;</span><span class="p">]</span>
+
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Filtering to non_ukb subset downsamplings...&quot;</span><span class="p">)</span>
+    <span class="n">non_ukb_ds_ht</span> <span class="o">=</span> <span class="n">filter_freq_arrays_for_non_ukb_subset</span><span class="p">(</span>
+        <span class="n">freq_ht</span><span class="p">,</span>
+        <span class="n">items_to_filter</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;downsampling&quot;</span><span class="p">,</span> <span class="s2">&quot;subset&quot;</span><span class="p">],</span>
+    <span class="p">)</span>
+
+    <span class="c1"># Filter to only non_ukb group, pop, and sex strata so can add subset-specific</span>
+    <span class="c1"># freqs to main array.</span>
+    <span class="c1"># NOTE: This is duplicated data here, but it&#39;s necessary to merge split vds strata</span>
+    <span class="c1">#  properly and still retain the subset freq data.</span>
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Filtering to non_ukb subset strata...&quot;</span><span class="p">)</span>
+    <span class="n">non_ukb_ht</span> <span class="o">=</span> <span class="n">filter_freq_arrays_for_non_ukb_subset</span><span class="p">(</span>
+        <span class="n">freq_ht</span><span class="p">,</span>
+        <span class="n">items_to_filter</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;downsampling&quot;</span><span class="p">,</span> <span class="s2">&quot;gatk_version&quot;</span><span class="p">],</span>
+        <span class="n">keep</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+        <span class="n">combine_operator</span><span class="o">=</span><span class="s2">&quot;or&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span>
+        <span class="s2">&quot;Filtering non_ukb freqs to main freq strata to be combined with ukb...&quot;</span>
+    <span class="p">)</span>
+    <span class="n">freq_ht</span> <span class="o">=</span> <span class="n">filter_freq_arrays_for_non_ukb_subset</span><span class="p">(</span>
+        <span class="n">freq_ht</span><span class="p">,</span>
+        <span class="n">items_to_filter</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;downsampling&quot;</span><span class="p">,</span> <span class="s2">&quot;subset&quot;</span><span class="p">],</span>
+        <span class="n">remove_subset_from_meta</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+        <span class="n">keep</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+    <span class="p">)</span>
+
+    <span class="c1"># There are no overlap of strata groups here so can do basic flatmap on the</span>
+    <span class="c1"># arrays.</span>
+    <span class="n">freqs</span> <span class="o">=</span> <span class="n">hl</span><span class="o">.</span><span class="n">array</span><span class="p">(</span>
+        <span class="p">[</span><span class="n">freq_ht</span><span class="o">.</span><span class="n">row_value</span><span class="p">,</span> <span class="n">non_ukb_ht</span><span class="p">[</span><span class="n">freq_ht</span><span class="o">.</span><span class="n">key</span><span class="p">],</span> <span class="n">non_ukb_ds_ht</span><span class="p">[</span><span class="n">freq_ht</span><span class="o">.</span><span class="n">key</span><span class="p">]]</span>
+    <span class="p">)</span>
+    <span class="n">freq_ht</span> <span class="o">=</span> <span class="n">freq_ht</span><span class="o">.</span><span class="n">annotate</span><span class="p">(</span>
+        <span class="o">**</span><span class="p">{</span><span class="n">a</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">flatmap</span><span class="p">(</span><span class="k">lambda</span> <span class="n">x</span><span class="p">:</span> <span class="n">x</span><span class="p">[</span><span class="n">a</span><span class="p">],</span> <span class="n">freqs</span><span class="p">)</span> <span class="k">for</span> <span class="n">a</span> <span class="ow">in</span> <span class="n">annotations</span><span class="p">}</span>
+    <span class="p">)</span>
+    <span class="n">freq_globals</span> <span class="o">=</span> <span class="n">hl</span><span class="o">.</span><span class="n">array</span><span class="p">(</span>
+        <span class="p">[</span>
+            <span class="n">x</span><span class="o">.</span><span class="n">select_globals</span><span class="p">(</span><span class="o">*</span><span class="n">global_annotations</span><span class="p">)</span><span class="o">.</span><span class="n">index_globals</span><span class="p">()</span>
+            <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="p">[</span><span class="n">freq_ht</span><span class="p">,</span> <span class="n">non_ukb_ht</span><span class="p">,</span> <span class="n">non_ukb_ds_ht</span><span class="p">]</span>
+        <span class="p">]</span>
+    <span class="p">)</span>
+    <span class="n">freq_ht</span> <span class="o">=</span> <span class="n">freq_ht</span><span class="o">.</span><span class="n">annotate_globals</span><span class="p">(</span>
+        <span class="o">**</span><span class="p">{</span><span class="n">a</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">flatmap</span><span class="p">(</span><span class="k">lambda</span> <span class="n">x</span><span class="p">:</span> <span class="n">x</span><span class="p">[</span><span class="n">a</span><span class="p">],</span> <span class="n">freq_globals</span><span class="p">)</span> <span class="k">for</span> <span class="n">a</span> <span class="ow">in</span> <span class="n">global_annotations</span><span class="p">}</span>
+    <span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">freq_ht</span></div>
+
+
+<div class="viewcode-block" id="mt_hists_fields"><a class="viewcode-back" href="../../../../api_reference/v4/annotations/generate_freq.html#gnomad_qc.v4.annotations.generate_freq.mt_hists_fields">[docs]</a><span class="k">def</span> <span class="nf">mt_hists_fields</span><span class="p">(</span><span class="n">mt</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">MatrixTable</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">hl</span><span class="o">.</span><span class="n">StructExpression</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Annotate quality metrics histograms and age histograms onto MatrixTable.</span>
+
+<span class="sd">    :param mt: Input MatrixTable.</span>
+<span class="sd">    :return: Struct with quality metrics histograms and age histograms.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span>
+        <span class="s2">&quot;Computing quality metrics histograms and age histograms for each variant...&quot;</span>
+    <span class="p">)</span>
+    <span class="n">high_ab_gt_expr</span> <span class="o">=</span> <span class="n">hl</span><span class="o">.</span><span class="n">if_else</span><span class="p">(</span><span class="n">high_ab_het</span><span class="p">(</span><span class="n">mt</span><span class="p">,</span> <span class="n">mt</span><span class="p">)</span> <span class="o">==</span> <span class="mi">1</span><span class="p">,</span> <span class="n">hl</span><span class="o">.</span><span class="n">call</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">),</span> <span class="n">mt</span><span class="o">.</span><span class="n">GT</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">hl</span><span class="o">.</span><span class="n">struct</span><span class="p">(</span>
+        <span class="o">**</span><span class="n">qual_hist_expr</span><span class="p">(</span>
+            <span class="n">gt_expr</span><span class="o">=</span><span class="n">mt</span><span class="o">.</span><span class="n">GT</span><span class="p">,</span>
+            <span class="n">gq_expr</span><span class="o">=</span><span class="n">mt</span><span class="o">.</span><span class="n">GQ</span><span class="p">,</span>
+            <span class="n">dp_expr</span><span class="o">=</span><span class="n">mt</span><span class="o">.</span><span class="n">DP</span><span class="p">,</span>
+            <span class="n">adj_expr</span><span class="o">=</span><span class="n">mt</span><span class="o">.</span><span class="n">adj</span><span class="p">,</span>
+            <span class="n">ab_expr</span><span class="o">=</span><span class="n">mt</span><span class="o">.</span><span class="n">_het_ab</span><span class="p">,</span>
+            <span class="n">split_adj_and_raw</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+        <span class="p">),</span>
+        <span class="n">high_ab_het_adjusted_ab_hists</span><span class="o">=</span><span class="n">qual_hist_expr</span><span class="p">(</span>
+            <span class="n">gt_expr</span><span class="o">=</span><span class="n">high_ab_gt_expr</span><span class="p">,</span>
+            <span class="n">adj_expr</span><span class="o">=</span><span class="n">mt</span><span class="o">.</span><span class="n">adj</span><span class="p">,</span>
+            <span class="n">ab_expr</span><span class="o">=</span><span class="n">mt</span><span class="o">.</span><span class="n">_het_ab</span><span class="p">,</span>
+        <span class="p">),</span>
+        <span class="n">age_hists</span><span class="o">=</span><span class="n">age_hists_expr</span><span class="p">(</span><span class="n">mt</span><span class="o">.</span><span class="n">adj</span><span class="p">,</span> <span class="n">mt</span><span class="o">.</span><span class="n">GT</span><span class="p">,</span> <span class="n">mt</span><span class="o">.</span><span class="n">age</span><span class="p">),</span>
+        <span class="n">high_ab_het_adjusted_age_hists</span><span class="o">=</span><span class="n">age_hists_expr</span><span class="p">(</span><span class="n">mt</span><span class="o">.</span><span class="n">adj</span><span class="p">,</span> <span class="n">high_ab_gt_expr</span><span class="p">,</span> <span class="n">mt</span><span class="o">.</span><span class="n">age</span><span class="p">),</span>
+    <span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="combine_freq_hts"><a class="viewcode-back" href="../../../../api_reference/v4/annotations/generate_freq.html#gnomad_qc.v4.annotations.generate_freq.combine_freq_hts">[docs]</a><span class="k">def</span> <span class="nf">combine_freq_hts</span><span class="p">(</span>
+    <span class="n">freq_hts</span><span class="p">:</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">],</span>
+    <span class="n">row_annotations</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">],</span>
+    <span class="n">global_annotations</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">],</span>
+    <span class="n">age_hists</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="n">AGE_HISTS</span><span class="p">,</span>
+    <span class="n">qual_hists</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="n">QUAL_HISTS</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Combine frequency HTs into a single HT.</span>
+
+<span class="sd">    :param freq_hts: Dictionary of frequency HTs.</span>
+<span class="sd">    :param row_annotations: List of annotations to put onto one hail Table.</span>
+<span class="sd">    :param global_annotations: List of global annotations to put onto one hail Table.</span>
+<span class="sd">    :param age_hists: List of age histogram annotations to merge.</span>
+<span class="sd">    :param qual_hists: List of quality histogram annotations to merge.</span>
+<span class="sd">    :return: HT with all freq_hts annotations.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">ht_i</span> <span class="o">=</span> <span class="nb">range</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">freq_hts</span><span class="p">))</span>
+    <span class="n">freq_ht</span> <span class="o">=</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="o">.</span><span class="n">multi_way_zip_join</span><span class="p">(</span>
+        <span class="nb">list</span><span class="p">(</span><span class="n">freq_hts</span><span class="o">.</span><span class="n">values</span><span class="p">()),</span> <span class="s2">&quot;ann_array&quot;</span><span class="p">,</span> <span class="s2">&quot;global_array&quot;</span>
+    <span class="p">)</span>
+
+    <span class="c1"># Combine freq arrays and high ab het counts by group arrays into single</span>
+    <span class="c1"># annotations.</span>
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span>
+        <span class="s2">&quot;Merging frequency arrays, metadata, and high ab het counts by group array...&quot;</span>
+    <span class="p">)</span>
+    <span class="n">a_array</span> <span class="o">=</span> <span class="n">freq_ht</span><span class="o">.</span><span class="n">ann_array</span>
+    <span class="n">g_array</span> <span class="o">=</span> <span class="n">freq_ht</span><span class="o">.</span><span class="n">global_array</span>
+    <span class="n">comb_freq</span><span class="p">,</span> <span class="n">comb_freq_meta</span><span class="p">,</span> <span class="n">count_arrays_dict</span> <span class="o">=</span> <span class="n">merge_freq_arrays</span><span class="p">(</span>
+        <span class="n">farrays</span><span class="o">=</span><span class="p">[</span><span class="n">a_array</span><span class="p">[</span><span class="n">i</span><span class="p">]</span><span class="o">.</span><span class="n">freq</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="n">ht_i</span><span class="p">],</span>
+        <span class="n">fmeta</span><span class="o">=</span><span class="p">[</span><span class="n">g_array</span><span class="p">[</span><span class="n">i</span><span class="p">]</span><span class="o">.</span><span class="n">freq_meta</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="n">ht_i</span><span class="p">],</span>
+        <span class="n">count_arrays</span><span class="o">=</span><span class="p">{</span>
+            <span class="s2">&quot;high_ab_hets&quot;</span><span class="p">:</span> <span class="p">[</span><span class="n">a_array</span><span class="p">[</span><span class="n">i</span><span class="p">]</span><span class="o">.</span><span class="n">high_ab_hets_by_group</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="n">ht_i</span><span class="p">],</span>
+            <span class="s2">&quot;freq_meta_sample_count&quot;</span><span class="p">:</span> <span class="p">[</span><span class="n">g_array</span><span class="p">[</span><span class="n">i</span><span class="p">]</span><span class="o">.</span><span class="n">freq_meta_sample_count</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="n">ht_i</span><span class="p">],</span>
+        <span class="p">},</span>
+    <span class="p">)</span>
+
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Annotating merged freq array and high ab hets...&quot;</span><span class="p">)</span>
+    <span class="n">freq_ht</span> <span class="o">=</span> <span class="n">freq_ht</span><span class="o">.</span><span class="n">annotate</span><span class="p">(</span>
+        <span class="n">freq</span><span class="o">=</span><span class="n">comb_freq</span><span class="p">,</span>
+        <span class="n">high_ab_hets_by_group</span><span class="o">=</span><span class="n">count_arrays_dict</span><span class="p">[</span><span class="s2">&quot;high_ab_hets&quot;</span><span class="p">],</span>
+    <span class="p">)</span>
+
+    <span class="c1"># Merge all histograms into single annotations.</span>
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Merging all histograms...&quot;</span><span class="p">)</span>
+    <span class="n">hist_structs</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="s2">&quot;qual_hists&quot;</span><span class="p">:</span> <span class="n">qual_hists</span><span class="p">,</span>
+        <span class="s2">&quot;raw_qual_hists&quot;</span><span class="p">:</span> <span class="n">qual_hists</span><span class="p">,</span>
+        <span class="s2">&quot;high_ab_het_adjusted_ab_hists&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;ab_hist_alt&quot;</span><span class="p">,</span> <span class="s2">&quot;ab_hist_alt_adj&quot;</span><span class="p">],</span>
+        <span class="s2">&quot;age_hists&quot;</span><span class="p">:</span> <span class="n">age_hists</span><span class="p">,</span>
+        <span class="s2">&quot;high_ab_het_adjusted_age_hists&quot;</span><span class="p">:</span> <span class="n">age_hists</span><span class="p">,</span>
+    <span class="p">}</span>
+    <span class="n">hists_expr</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="n">hist_struct</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">struct</span><span class="p">(</span>
+            <span class="o">**</span><span class="p">{</span>
+                <span class="n">h</span><span class="p">:</span> <span class="n">merge_histograms</span><span class="p">(</span>
+                    <span class="p">[</span><span class="n">freq_ht</span><span class="o">.</span><span class="n">ann_array</span><span class="p">[</span><span class="n">i</span><span class="p">][</span><span class="n">hist_struct</span><span class="p">][</span><span class="n">h</span><span class="p">]</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="n">ht_i</span><span class="p">]</span>
+                <span class="p">)</span>
+                <span class="k">for</span> <span class="n">h</span> <span class="ow">in</span> <span class="n">hists</span>
+            <span class="p">}</span>
+        <span class="p">)</span>
+        <span class="k">for</span> <span class="n">hist_struct</span><span class="p">,</span> <span class="n">hists</span> <span class="ow">in</span> <span class="n">hist_structs</span><span class="o">.</span><span class="n">items</span><span class="p">()</span>
+    <span class="p">}</span>
+    <span class="n">freq_ht</span> <span class="o">=</span> <span class="n">freq_ht</span><span class="o">.</span><span class="n">annotate</span><span class="p">(</span><span class="o">**</span><span class="n">hists_expr</span><span class="p">)</span>
+
+    <span class="n">freq_ht</span> <span class="o">=</span> <span class="n">freq_ht</span><span class="o">.</span><span class="n">annotate_globals</span><span class="p">(</span>
+        <span class="n">downsamplings</span><span class="o">=</span><span class="p">{</span>
+            <span class="s2">&quot;gnomad&quot;</span><span class="p">:</span> <span class="n">freq_ht</span><span class="o">.</span><span class="n">global_array</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">downsamplings</span><span class="p">,</span>
+            <span class="s2">&quot;non_ukb&quot;</span><span class="p">:</span> <span class="n">freq_hts</span><span class="p">[</span><span class="s2">&quot;non_ukb&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">index_globals</span><span class="p">()</span><span class="o">.</span><span class="n">non_ukb_downsamplings</span><span class="p">,</span>
+        <span class="p">},</span>
+        <span class="n">age_distribution</span><span class="o">=</span><span class="n">freq_ht</span><span class="o">.</span><span class="n">global_array</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">age_distribution</span><span class="p">,</span>
+        <span class="n">freq_meta</span><span class="o">=</span><span class="n">comb_freq_meta</span><span class="p">,</span>
+        <span class="n">freq_meta_sample_count</span><span class="o">=</span><span class="n">hl</span><span class="o">.</span><span class="n">eval</span><span class="p">(</span><span class="n">count_arrays_dict</span><span class="p">[</span><span class="s2">&quot;freq_meta_sample_count&quot;</span><span class="p">]),</span>
+    <span class="p">)</span>
+    <span class="n">freq_ht</span> <span class="o">=</span> <span class="n">annotate_freq_index_dict</span><span class="p">(</span><span class="n">freq_ht</span><span class="p">)</span>
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Setting Y metrics to NA for XX groups...&quot;</span><span class="p">)</span>
+    <span class="n">freq_ht</span> <span class="o">=</span> <span class="n">freq_ht</span><span class="o">.</span><span class="n">annotate</span><span class="p">(</span><span class="n">freq</span><span class="o">=</span><span class="n">set_xx_y_metrics_to_na_expr</span><span class="p">(</span><span class="n">freq_ht</span><span class="p">))</span>
+    <span class="n">freq_ht</span> <span class="o">=</span> <span class="n">freq_ht</span><span class="o">.</span><span class="n">select</span><span class="p">(</span><span class="o">*</span><span class="n">row_annotations</span><span class="p">)</span>
+    <span class="n">freq_ht</span> <span class="o">=</span> <span class="n">freq_ht</span><span class="o">.</span><span class="n">select_globals</span><span class="p">(</span><span class="o">*</span><span class="n">global_annotations</span><span class="p">)</span>
+
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Combined frequency HT schema...&quot;</span><span class="p">)</span>
+    <span class="n">freq_ht</span><span class="o">.</span><span class="n">describe</span><span class="p">()</span>
+
+    <span class="k">return</span> <span class="n">freq_ht</span></div>
+
+
+<div class="viewcode-block" id="correct_for_high_ab_hets"><a class="viewcode-back" href="../../../../api_reference/v4/annotations/generate_freq.html#gnomad_qc.v4.annotations.generate_freq.correct_for_high_ab_hets">[docs]</a><span class="k">def</span> <span class="nf">correct_for_high_ab_hets</span><span class="p">(</span><span class="n">ht</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">,</span> <span class="n">af_threshold</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">0.01</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Correct for high allele balance heterozygous calls in call statistics and histograms.</span>
+
+<span class="sd">    High allele balance GTs were being called heterozygous instead of homozygous</span>
+<span class="sd">    alternate in GATK until version 4.1.4.1. This corrects for those calls by adjusting</span>
+<span class="sd">    them to homozygote alternate within our call statistics and histograms when a</span>
+<span class="sd">    site&#39;s allele frequency is greater than the passed `af_threshold`. Raw data is not</span>
+<span class="sd">    adjusted.</span>
+
+<span class="sd">    :param ht: Table with frequency and histogram annotations for correction as well as</span>
+<span class="sd">        high AB het annotations.</span>
+<span class="sd">    :param af_threshold: Allele frequency threshold for high AB adjustment. Default is</span>
+<span class="sd">        0.01.</span>
+<span class="sd">    :return: Table with corrected call statistics and histograms.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="c1"># Correct call statistics by passing through &#39;freq&#39; and &#39;high_ab_hets_by_group&#39;</span>
+    <span class="c1"># arrays to adjust each annotation accordingly.</span>
+    <span class="n">call_stats_expr</span> <span class="o">=</span> <span class="n">hl</span><span class="o">.</span><span class="n">map</span><span class="p">(</span>
+        <span class="k">lambda</span> <span class="n">f</span><span class="p">,</span> <span class="n">g</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">struct</span><span class="p">(</span>
+            <span class="n">AC</span><span class="o">=</span><span class="n">hl</span><span class="o">.</span><span class="n">int32</span><span class="p">(</span><span class="n">f</span><span class="o">.</span><span class="n">AC</span> <span class="o">+</span> <span class="n">g</span><span class="p">),</span>
+            <span class="n">AF</span><span class="o">=</span><span class="n">hl</span><span class="o">.</span><span class="n">if_else</span><span class="p">(</span><span class="n">f</span><span class="o">.</span><span class="n">AN</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">,</span> <span class="p">(</span><span class="n">f</span><span class="o">.</span><span class="n">AC</span> <span class="o">+</span> <span class="n">g</span><span class="p">)</span> <span class="o">/</span> <span class="n">f</span><span class="o">.</span><span class="n">AN</span><span class="p">,</span> <span class="n">hl</span><span class="o">.</span><span class="n">missing</span><span class="p">(</span><span class="n">hl</span><span class="o">.</span><span class="n">tfloat64</span><span class="p">)),</span>
+            <span class="n">AN</span><span class="o">=</span><span class="n">f</span><span class="o">.</span><span class="n">AN</span><span class="p">,</span>
+            <span class="n">homozygote_count</span><span class="o">=</span><span class="n">f</span><span class="o">.</span><span class="n">homozygote_count</span> <span class="o">+</span> <span class="n">g</span><span class="p">,</span>
+        <span class="p">),</span>
+        <span class="n">ht</span><span class="o">.</span><span class="n">freq</span><span class="p">,</span>
+        <span class="n">ht</span><span class="o">.</span><span class="n">high_ab_hets_by_group</span><span class="p">,</span>
+    <span class="p">)</span>
+
+    <span class="c1"># Add already computed &#39;ab_adjusted&#39; histograms to the &#39;qual_hist_expr&#39;.</span>
+    <span class="n">qual_hist_expr</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="sa">f</span><span class="s2">&quot;ab_adjusted_</span><span class="si">{</span><span class="n">x</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">:</span> <span class="n">ht</span><span class="p">[</span><span class="n">x</span><span class="p">]</span><span class="o">.</span><span class="n">annotate</span><span class="p">(</span>
+            <span class="n">ab_hist_alt</span><span class="o">=</span><span class="n">ht</span><span class="o">.</span><span class="n">high_ab_het_adjusted_ab_hists</span><span class="p">[</span>
+                <span class="sa">f</span><span class="s2">&quot;ab_hist_alt</span><span class="si">{</span><span class="s1">&#39;&#39;</span><span class="w"> </span><span class="k">if</span><span class="w"> </span><span class="n">x</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s1">&#39;raw&#39;</span><span class="p">)</span><span class="w"> </span><span class="k">else</span><span class="w"> </span><span class="s1">&#39;_adj&#39;</span><span class="si">}</span><span class="s2">&quot;</span>
+            <span class="p">]</span>
+        <span class="p">)</span>
+        <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">FREQ_ROW_FIELDS</span>
+        <span class="k">if</span> <span class="s2">&quot;qual_hist&quot;</span> <span class="ow">in</span> <span class="n">x</span>
+    <span class="p">}</span>
+
+    <span class="c1"># If a sites AF is greater than the &#39;af_threshold&#39;, add high AB het adjusted</span>
+    <span class="c1"># annotations, otherwise use original annotations.</span>
+    <span class="n">no_ab_adjusted_expr</span> <span class="o">=</span> <span class="p">{</span><span class="sa">f</span><span class="s2">&quot;ab_adjusted_</span><span class="si">{</span><span class="n">x</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">:</span> <span class="n">ht</span><span class="p">[</span><span class="n">x</span><span class="p">]</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">FREQ_ROW_FIELDS</span><span class="p">}</span>
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">select</span><span class="p">(</span>
+        <span class="s2">&quot;high_ab_hets_by_group&quot;</span><span class="p">,</span>
+        <span class="o">*</span><span class="n">FREQ_ROW_FIELDS</span><span class="p">,</span>
+        <span class="o">**</span><span class="n">hl</span><span class="o">.</span><span class="n">if_else</span><span class="p">(</span>
+            <span class="n">ht</span><span class="o">.</span><span class="n">freq</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">AF</span> <span class="o">&gt;</span> <span class="n">af_threshold</span><span class="p">,</span>
+            <span class="n">hl</span><span class="o">.</span><span class="n">struct</span><span class="p">(</span>
+                <span class="n">ab_adjusted_freq</span><span class="o">=</span><span class="n">call_stats_expr</span><span class="p">,</span>
+                <span class="o">**</span><span class="n">qual_hist_expr</span><span class="p">,</span>
+                <span class="n">ab_adjusted_age_hists</span><span class="o">=</span><span class="n">ht</span><span class="o">.</span><span class="n">high_ab_het_adjusted_age_hists</span><span class="p">,</span>
+            <span class="p">),</span>
+            <span class="n">hl</span><span class="o">.</span><span class="n">struct</span><span class="p">(</span><span class="o">**</span><span class="n">no_ab_adjusted_expr</span><span class="p">),</span>
+            <span class="n">missing_false</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+        <span class="p">),</span>
+    <span class="p">)</span>
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">annotate_globals</span><span class="p">(</span><span class="n">af_threshold_for_freq_adjustment</span><span class="o">=</span><span class="n">af_threshold</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">ht</span></div>
+
+
+<div class="viewcode-block" id="generate_faf_grpmax"><a class="viewcode-back" href="../../../../api_reference/v4/annotations/generate_freq.html#gnomad_qc.v4.annotations.generate_freq.generate_faf_grpmax">[docs]</a><span class="k">def</span> <span class="nf">generate_faf_grpmax</span><span class="p">(</span><span class="n">ht</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Compute filtering allele frequencies (&#39;faf&#39;), &#39;grpmax&#39;, and &#39;gen_anc_faf_max&#39; with the AB-adjusted frequencies.</span>
+
+<span class="sd">    :param ht: Hail Table containing &#39;freq&#39;, &#39;ab_adjusted_freq&#39;, &#39;high_ab_het&#39;</span>
+<span class="sd">        annotations.</span>
+<span class="sd">    :return: Hail Table with &#39;faf&#39;, &#39;grpmax&#39;, and &#39;gen_anc_faf_max&#39; annotations.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span>
+        <span class="s2">&quot;Filtering frequencies to just &#39;non_ukb&#39; subset entries for &#39;faf&#39; &quot;</span>
+        <span class="s2">&quot;calculations...&quot;</span>
+    <span class="p">)</span>
+    <span class="c1"># Remove the key &quot;subset&quot; from each dict in &#39;non_ukb_freq_meta&#39; list so &#39;faf&#39; will</span>
+    <span class="c1"># pull the correct indices, i.e. `faf_expr` requires specific lengths to consider</span>
+    <span class="c1"># each element in the freq list.</span>
+    <span class="n">non_ukb_ht</span> <span class="o">=</span> <span class="n">filter_freq_arrays_for_non_ukb_subset</span><span class="p">(</span>
+        <span class="n">ht</span><span class="p">,</span>
+        <span class="n">items_to_filter</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;subset&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;non_ukb&quot;</span><span class="p">]},</span>
+        <span class="n">combine_operator</span><span class="o">=</span><span class="s2">&quot;or&quot;</span><span class="p">,</span>
+        <span class="n">annotations</span><span class="o">=</span><span class="p">(</span><span class="s2">&quot;ab_adjusted_freq&quot;</span><span class="p">,),</span>
+        <span class="n">remove_subset_from_meta</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">freq_metas</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="s2">&quot;gnomad&quot;</span><span class="p">:</span> <span class="p">(</span><span class="n">ht</span><span class="o">.</span><span class="n">ab_adjusted_freq</span><span class="p">,</span> <span class="n">ht</span><span class="o">.</span><span class="n">index_globals</span><span class="p">()</span><span class="o">.</span><span class="n">freq_meta</span><span class="p">),</span>
+        <span class="s2">&quot;non_ukb&quot;</span><span class="p">:</span> <span class="p">(</span>
+            <span class="n">non_ukb_ht</span><span class="p">[</span><span class="n">ht</span><span class="o">.</span><span class="n">key</span><span class="p">]</span><span class="o">.</span><span class="n">ab_adjusted_freq</span><span class="p">,</span>
+            <span class="n">non_ukb_ht</span><span class="o">.</span><span class="n">index_globals</span><span class="p">()</span><span class="o">.</span><span class="n">freq_meta</span><span class="p">,</span>
+        <span class="p">),</span>
+    <span class="p">}</span>
+    <span class="n">faf_exprs</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="n">faf_meta_exprs</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="n">grpmax_exprs</span> <span class="o">=</span> <span class="p">{}</span>
+    <span class="n">gen_anc_faf_max_exprs</span> <span class="o">=</span> <span class="p">{}</span>
+    <span class="k">for</span> <span class="n">dataset</span><span class="p">,</span> <span class="p">(</span><span class="n">freq</span><span class="p">,</span> <span class="n">meta</span><span class="p">)</span> <span class="ow">in</span> <span class="n">freq_metas</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+        <span class="n">faf</span><span class="p">,</span> <span class="n">faf_meta</span> <span class="o">=</span> <span class="n">faf_expr</span><span class="p">(</span>
+            <span class="n">freq</span><span class="p">,</span> <span class="n">meta</span><span class="p">,</span> <span class="n">ht</span><span class="o">.</span><span class="n">locus</span><span class="p">,</span> <span class="n">GEN_ANC_GROUPS_TO_REMOVE_FOR_GRPMAX</span><span class="p">[</span><span class="s2">&quot;v4&quot;</span><span class="p">]</span>
+        <span class="p">)</span>
+        <span class="n">grpmax</span> <span class="o">=</span> <span class="n">grpmax_expr</span><span class="p">(</span><span class="n">freq</span><span class="p">,</span> <span class="n">meta</span><span class="p">,</span> <span class="n">GEN_ANC_GROUPS_TO_REMOVE_FOR_GRPMAX</span><span class="p">[</span><span class="s2">&quot;v4&quot;</span><span class="p">])</span>
+        <span class="n">grpmax</span> <span class="o">=</span> <span class="n">grpmax</span><span class="o">.</span><span class="n">annotate</span><span class="p">(</span>
+            <span class="n">gen_anc</span><span class="o">=</span><span class="n">grpmax</span><span class="o">.</span><span class="n">pop</span><span class="p">,</span>
+            <span class="n">faf95</span><span class="o">=</span><span class="n">faf</span><span class="p">[</span>
+                <span class="n">hl</span><span class="o">.</span><span class="n">literal</span><span class="p">(</span><span class="n">faf_meta</span><span class="p">)</span><span class="o">.</span><span class="n">index</span><span class="p">(</span><span class="k">lambda</span> <span class="n">y</span><span class="p">:</span> <span class="n">y</span><span class="o">.</span><span class="n">values</span><span class="p">()</span> <span class="o">==</span> <span class="p">[</span><span class="s2">&quot;adj&quot;</span><span class="p">,</span> <span class="n">grpmax</span><span class="o">.</span><span class="n">pop</span><span class="p">])</span>
+            <span class="p">]</span><span class="o">.</span><span class="n">faf95</span><span class="p">,</span>
+        <span class="p">)</span><span class="o">.</span><span class="n">drop</span><span class="p">(</span><span class="s2">&quot;pop&quot;</span><span class="p">)</span>
+        <span class="n">gen_anc_faf_max</span> <span class="o">=</span> <span class="n">gen_anc_faf_max_expr</span><span class="p">(</span><span class="n">faf</span><span class="p">,</span> <span class="n">faf_meta</span><span class="p">)</span>
+
+        <span class="c1"># Add subset back to non_ukb faf meta.</span>
+        <span class="k">if</span> <span class="n">dataset</span> <span class="o">==</span> <span class="s2">&quot;non_ukb&quot;</span><span class="p">:</span>
+            <span class="n">faf_meta</span> <span class="o">=</span> <span class="p">[{</span><span class="o">**</span><span class="n">x</span><span class="p">,</span> <span class="o">**</span><span class="p">{</span><span class="s2">&quot;subset&quot;</span><span class="p">:</span> <span class="s2">&quot;non_ukb&quot;</span><span class="p">}}</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">faf_meta</span><span class="p">]</span>
+        <span class="n">faf_exprs</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">faf</span><span class="p">)</span>
+        <span class="n">faf_meta_exprs</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">faf_meta</span><span class="p">)</span>
+        <span class="n">grpmax_exprs</span><span class="p">[</span><span class="n">dataset</span><span class="p">]</span> <span class="o">=</span> <span class="n">grpmax</span>
+        <span class="n">gen_anc_faf_max_exprs</span><span class="p">[</span><span class="n">dataset</span><span class="p">]</span> <span class="o">=</span> <span class="n">gen_anc_faf_max</span>
+
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Annotating &#39;faf&#39;, &#39;grpmax&#39;, and &#39;gen_anc_faf_max&#39;...&quot;</span><span class="p">)</span>
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">annotate</span><span class="p">(</span>
+        <span class="n">faf</span><span class="o">=</span><span class="n">hl</span><span class="o">.</span><span class="n">flatten</span><span class="p">(</span><span class="n">faf_exprs</span><span class="p">),</span>
+        <span class="n">grpmax</span><span class="o">=</span><span class="n">hl</span><span class="o">.</span><span class="n">struct</span><span class="p">(</span><span class="o">**</span><span class="n">grpmax_exprs</span><span class="p">),</span>
+        <span class="n">gen_anc_faf_max</span><span class="o">=</span><span class="n">hl</span><span class="o">.</span><span class="n">struct</span><span class="p">(</span><span class="o">**</span><span class="n">gen_anc_faf_max_exprs</span><span class="p">),</span>
+    <span class="p">)</span>
+    <span class="n">faf_meta_exprs</span> <span class="o">=</span> <span class="n">hl</span><span class="o">.</span><span class="n">flatten</span><span class="p">(</span><span class="n">faf_meta_exprs</span><span class="p">)</span>
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">annotate_globals</span><span class="p">(</span>
+        <span class="n">faf_meta</span><span class="o">=</span><span class="n">faf_meta_exprs</span><span class="p">,</span>
+        <span class="n">faf_index_dict</span><span class="o">=</span><span class="n">make_freq_index_dict_from_meta</span><span class="p">(</span><span class="n">faf_meta_exprs</span><span class="p">),</span>
+    <span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">ht</span></div>
+
+
+<div class="viewcode-block" id="compute_inbreeding_coeff"><a class="viewcode-back" href="../../../../api_reference/v4/annotations/generate_freq.html#gnomad_qc.v4.annotations.generate_freq.compute_inbreeding_coeff">[docs]</a><span class="k">def</span> <span class="nf">compute_inbreeding_coeff</span><span class="p">(</span><span class="n">ht</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Compute inbreeding coefficient using raw call stats.</span>
+
+<span class="sd">    :param ht: Hail Table containing &#39;freq&#39; array with struct entries of &#39;AC&#39;, &#39;AN&#39;, and</span>
+<span class="sd">        &#39;homozygote_count&#39;.</span>
+<span class="sd">    :return: Hail Table with inbreeding coefficient annotation.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">annotate</span><span class="p">(</span>
+        <span class="n">InbreedingCoeff</span><span class="o">=</span><span class="n">bi_allelic_site_inbreeding_expr</span><span class="p">(</span><span class="n">callstats_expr</span><span class="o">=</span><span class="n">ht</span><span class="o">.</span><span class="n">freq</span><span class="p">[</span><span class="mi">1</span><span class="p">])</span>
+    <span class="p">)</span>
+    <span class="k">return</span> <span class="n">ht</span></div>
+
+
+<div class="viewcode-block" id="create_final_freq_ht"><a class="viewcode-back" href="../../../../api_reference/v4/annotations/generate_freq.html#gnomad_qc.v4.annotations.generate_freq.create_final_freq_ht">[docs]</a><span class="k">def</span> <span class="nf">create_final_freq_ht</span><span class="p">(</span><span class="n">ht</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Create final freq Table with only desired annotations.</span>
+
+<span class="sd">    :param ht: Hail Table containing all annotations.</span>
+<span class="sd">    :return: Hail Table with final annotations.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Dropping gatk_version from freq ht array annotations...&quot;</span><span class="p">)</span>
+    <span class="n">freq_meta</span><span class="p">,</span> <span class="n">array_exprs</span> <span class="o">=</span> <span class="n">filter_arrays_by_meta</span><span class="p">(</span>
+        <span class="n">ht</span><span class="o">.</span><span class="n">freq_meta</span><span class="p">,</span>
+        <span class="p">{</span>
+            <span class="s2">&quot;freq&quot;</span><span class="p">:</span> <span class="n">ht</span><span class="o">.</span><span class="n">ab_adjusted_freq</span><span class="p">,</span>
+            <span class="s2">&quot;freq_meta_sample_count&quot;</span><span class="p">:</span> <span class="n">ht</span><span class="o">.</span><span class="n">index_globals</span><span class="p">()</span><span class="o">.</span><span class="n">freq_meta_sample_count</span><span class="p">,</span>
+        <span class="p">},</span>
+        <span class="n">items_to_filter</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;gatk_version&quot;</span><span class="p">],</span>
+        <span class="n">keep</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+    <span class="p">)</span>
+
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">select</span><span class="p">(</span>
+        <span class="n">freq</span><span class="o">=</span><span class="n">array_exprs</span><span class="p">[</span><span class="s2">&quot;freq&quot;</span><span class="p">],</span>
+        <span class="n">faf</span><span class="o">=</span><span class="n">ht</span><span class="o">.</span><span class="n">faf</span><span class="p">,</span>
+        <span class="n">grpmax</span><span class="o">=</span><span class="n">ht</span><span class="o">.</span><span class="n">grpmax</span><span class="p">,</span>
+        <span class="n">gen_anc_faf_max</span><span class="o">=</span><span class="n">ht</span><span class="o">.</span><span class="n">gen_anc_faf_max</span><span class="p">,</span>
+        <span class="n">inbreeding_coeff</span><span class="o">=</span><span class="n">ht</span><span class="o">.</span><span class="n">InbreedingCoeff</span><span class="p">,</span>
+        <span class="n">histograms</span><span class="o">=</span><span class="n">hl</span><span class="o">.</span><span class="n">struct</span><span class="p">(</span>
+            <span class="o">**</span><span class="p">{</span>
+                <span class="s2">&quot;qual_hists&quot;</span><span class="p">:</span> <span class="n">ht</span><span class="o">.</span><span class="n">ab_adjusted_qual_hists</span><span class="p">,</span>
+                <span class="s2">&quot;raw_qual_hists&quot;</span><span class="p">:</span> <span class="n">ht</span><span class="o">.</span><span class="n">ab_adjusted_raw_qual_hists</span><span class="p">,</span>
+                <span class="s2">&quot;age_hists&quot;</span><span class="p">:</span> <span class="n">ht</span><span class="o">.</span><span class="n">ab_adjusted_age_hists</span><span class="p">,</span>
+            <span class="p">},</span>
+        <span class="p">),</span>
+    <span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">_replace_pop_key_w_gen_anc</span><span class="p">(</span>
+        <span class="n">meta</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">expr</span><span class="o">.</span><span class="n">ArrayExpression</span><span class="p">,</span>
+    <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">hl</span><span class="o">.</span><span class="n">expr</span><span class="o">.</span><span class="n">ArrayExpression</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Replace &#39;pop&#39; key with &#39;gen_anc&#39; key in meta globals.</span>
+
+<span class="sd">        :param meta: Array of dicts.</span>
+<span class="sd">        :return: Array of dicts with &#39;pop&#39; key replaced with &#39;gen_anc&#39; key.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="n">meta</span><span class="o">.</span><span class="n">map</span><span class="p">(</span>
+            <span class="k">lambda</span> <span class="n">d</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">dict</span><span class="p">(</span>
+                <span class="n">d</span><span class="o">.</span><span class="n">items</span><span class="p">()</span><span class="o">.</span><span class="n">map</span><span class="p">(</span><span class="k">lambda</span> <span class="n">x</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">if_else</span><span class="p">(</span><span class="n">x</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">==</span> <span class="s2">&quot;pop&quot;</span><span class="p">,</span> <span class="p">(</span><span class="s2">&quot;gen_anc&quot;</span><span class="p">,</span> <span class="n">x</span><span class="p">[</span><span class="mi">1</span><span class="p">]),</span> <span class="n">x</span><span class="p">))</span>
+            <span class="p">)</span>
+        <span class="p">)</span>
+
+    <span class="n">g</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">index_globals</span><span class="p">()</span>
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">select_globals</span><span class="p">(</span>
+        <span class="n">downsamplings</span><span class="o">=</span><span class="n">g</span><span class="o">.</span><span class="n">downsamplings</span><span class="p">,</span>
+        <span class="n">freq_meta</span><span class="o">=</span><span class="n">_replace_pop_key_w_gen_anc</span><span class="p">(</span><span class="n">freq_meta</span><span class="p">),</span>
+        <span class="n">freq_index_dict</span><span class="o">=</span><span class="n">make_freq_index_dict_from_meta</span><span class="p">(</span><span class="n">freq_meta</span><span class="p">),</span>
+        <span class="n">freq_meta_sample_count</span><span class="o">=</span><span class="n">array_exprs</span><span class="p">[</span><span class="s2">&quot;freq_meta_sample_count&quot;</span><span class="p">],</span>
+        <span class="n">faf_meta</span><span class="o">=</span><span class="n">_replace_pop_key_w_gen_anc</span><span class="p">(</span><span class="n">g</span><span class="o">.</span><span class="n">faf_meta</span><span class="p">),</span>
+        <span class="n">faf_index_dict</span><span class="o">=</span><span class="n">g</span><span class="o">.</span><span class="n">faf_index_dict</span><span class="p">,</span>
+        <span class="n">age_distribution</span><span class="o">=</span><span class="n">g</span><span class="o">.</span><span class="n">age_distribution</span><span class="p">,</span>
+    <span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">ht</span></div>
+
+
+<span class="c1"># This function was added post-v4.0 and was not used in the v4.0 release.</span>
+<span class="c1"># It is here for reference on how a VDS should be split by subsets of samples</span>
+<span class="c1"># to ensure all reference data is retained across all variant sites.</span>
+<div class="viewcode-block" id="split_vds"><a class="viewcode-back" href="../../../../api_reference/v4/annotations/generate_freq.html#gnomad_qc.v4.annotations.generate_freq.split_vds">[docs]</a><span class="k">def</span> <span class="nf">split_vds</span><span class="p">(</span>
+    <span class="n">vds</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">vds</span><span class="o">.</span><span class="n">VariantDataset</span><span class="p">,</span> <span class="n">strata_expr</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">expr</span><span class="o">.</span><span class="n">Expression</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">hl</span><span class="o">.</span><span class="n">vds</span><span class="o">.</span><span class="n">VariantDataset</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Split a VDS into multiple VDSs based on `strata_expr`.</span>
+
+<span class="sd">    :param vds: Input VDS.</span>
+<span class="sd">    :param strata_expr: Expression on VDS variant_data MT columns that will be used to</span>
+<span class="sd">        determine if a sample belongs to certian split or subset of the VDS.</span>
+<span class="sd">    :return: Dictionary where strata value is key and VDS is value.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">s_by_strata</span> <span class="o">=</span> <span class="n">vds</span><span class="o">.</span><span class="n">variant_data</span><span class="o">.</span><span class="n">aggregate_cols</span><span class="p">(</span>
+        <span class="n">hl</span><span class="o">.</span><span class="n">agg</span><span class="o">.</span><span class="n">group_by</span><span class="p">(</span><span class="n">strata_expr</span><span class="p">,</span> <span class="n">hl</span><span class="o">.</span><span class="n">agg</span><span class="o">.</span><span class="n">collect_as_set</span><span class="p">(</span><span class="n">vds</span><span class="o">.</span><span class="n">variant_data</span><span class="o">.</span><span class="n">s</span><span class="p">))</span>
+    <span class="p">)</span>
+    <span class="n">vds_dict</span> <span class="o">=</span> <span class="p">{}</span>
+
+    <span class="k">for</span> <span class="n">strata</span><span class="p">,</span> <span class="n">samples</span> <span class="ow">in</span> <span class="n">s_by_strata</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Splitting VDS by </span><span class="si">%s</span><span class="s2">...&quot;</span><span class="p">,</span> <span class="n">strata</span><span class="p">)</span>
+        <span class="n">samples</span> <span class="o">=</span> <span class="n">hl</span><span class="o">.</span><span class="n">literal</span><span class="p">(</span><span class="n">samples</span><span class="p">)</span>
+        <span class="n">vmt</span> <span class="o">=</span> <span class="n">vds</span><span class="o">.</span><span class="n">variant_data</span>
+        <span class="n">rmt</span> <span class="o">=</span> <span class="n">vds</span><span class="o">.</span><span class="n">reference_data</span>
+        <span class="n">vmt</span> <span class="o">=</span> <span class="n">vmt</span><span class="o">.</span><span class="n">filter_cols</span><span class="p">(</span><span class="n">samples</span><span class="o">.</span><span class="n">contains</span><span class="p">(</span><span class="n">vmt</span><span class="o">.</span><span class="n">s</span><span class="p">))</span>
+        <span class="n">rmt</span> <span class="o">=</span> <span class="n">rmt</span><span class="o">.</span><span class="n">filter_cols</span><span class="p">(</span><span class="n">samples</span><span class="o">.</span><span class="n">contains</span><span class="p">(</span><span class="n">rmt</span><span class="o">.</span><span class="n">s</span><span class="p">))</span>
+        <span class="n">rmt</span> <span class="o">=</span> <span class="n">rmt</span><span class="o">.</span><span class="n">filter_rows</span><span class="p">(</span><span class="n">hl</span><span class="o">.</span><span class="n">agg</span><span class="o">.</span><span class="n">count</span><span class="p">()</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">)</span>
+        <span class="n">vds_dict</span><span class="p">[</span><span class="n">strata</span><span class="p">]</span> <span class="o">=</span> <span class="n">hl</span><span class="o">.</span><span class="n">vds</span><span class="o">.</span><span class="n">VariantDataset</span><span class="p">(</span><span class="n">rmt</span><span class="p">,</span> <span class="n">vmt</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">vds_dict</span></div>
+
+
+<div class="viewcode-block" id="main"><a class="viewcode-back" href="../../../../api_reference/v4/annotations/generate_freq.html#gnomad_qc.v4.annotations.generate_freq.main">[docs]</a><span class="k">def</span> <span class="nf">main</span><span class="p">(</span><span class="n">args</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Script to generate frequency and dense dependent annotations on v4 exomes.&quot;&quot;&quot;</span>
+    <span class="n">overwrite</span> <span class="o">=</span> <span class="n">args</span><span class="o">.</span><span class="n">overwrite</span>
+    <span class="n">use_test_dataset</span> <span class="o">=</span> <span class="n">args</span><span class="o">.</span><span class="n">use_test_dataset</span>
+    <span class="n">test_n_partitions</span> <span class="o">=</span> <span class="n">args</span><span class="o">.</span><span class="n">test_n_partitions</span>
+    <span class="n">test_gene</span> <span class="o">=</span> <span class="n">args</span><span class="o">.</span><span class="n">test_gene</span>
+    <span class="n">test</span> <span class="o">=</span> <span class="n">use_test_dataset</span> <span class="ow">or</span> <span class="n">test_n_partitions</span> <span class="ow">or</span> <span class="n">test_gene</span>
+    <span class="n">chrom</span> <span class="o">=</span> <span class="n">args</span><span class="o">.</span><span class="n">chrom</span>
+    <span class="n">ab_cutoff</span> <span class="o">=</span> <span class="n">args</span><span class="o">.</span><span class="n">ab_cutoff</span>
+    <span class="n">af_threshold</span> <span class="o">=</span> <span class="n">args</span><span class="o">.</span><span class="n">af_threshold</span>
+    <span class="n">ukb_only</span> <span class="o">=</span> <span class="n">args</span><span class="o">.</span><span class="n">ukb_only</span>
+    <span class="n">non_ukb_only</span> <span class="o">=</span> <span class="n">args</span><span class="o">.</span><span class="n">non_ukb_only</span>
+
+    <span class="n">ukb</span> <span class="o">=</span> <span class="kc">True</span>
+    <span class="n">non_ukb</span> <span class="o">=</span> <span class="kc">True</span>
+    <span class="k">if</span> <span class="n">ukb_only</span> <span class="ow">and</span> <span class="n">non_ukb_only</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;Cannot specify both --ukb-only and --non-ukb-only.&quot;</span><span class="p">)</span>
+    <span class="k">elif</span> <span class="n">ukb_only</span><span class="p">:</span>
+        <span class="n">non_ukb</span> <span class="o">=</span> <span class="kc">False</span>
+    <span class="k">elif</span> <span class="n">non_ukb_only</span><span class="p">:</span>
+        <span class="n">ukb</span> <span class="o">=</span> <span class="kc">False</span>
+
+    <span class="n">hl</span><span class="o">.</span><span class="n">init</span><span class="p">(</span>
+        <span class="n">log</span><span class="o">=</span><span class="s2">&quot;/generate_frequency_data.log&quot;</span><span class="p">,</span>
+        <span class="n">default_reference</span><span class="o">=</span><span class="s2">&quot;GRCh38&quot;</span><span class="p">,</span>
+        <span class="n">tmp_dir</span><span class="o">=</span><span class="s2">&quot;gs://gnomad-tmp-30day&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="c1"># SSA Logs are easier to troubleshoot with.</span>
+    <span class="n">hl</span><span class="o">.</span><span class="n">_set_flags</span><span class="p">(</span><span class="n">use_ssa_logs</span><span class="o">=</span><span class="s2">&quot;1&quot;</span><span class="p">)</span>
+    <span class="n">resources</span> <span class="o">=</span> <span class="n">get_freq_resources</span><span class="p">(</span><span class="n">overwrite</span><span class="p">,</span> <span class="n">test</span><span class="p">,</span> <span class="n">chrom</span><span class="p">,</span> <span class="n">ukb</span><span class="p">,</span> <span class="n">non_ukb</span><span class="p">)</span>
+
+    <span class="k">try</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">write_split_vds_and_downsampling_ht</span><span class="p">:</span>
+            <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span>
+                <span class="s2">&quot;Getting multi-allelic split VDS with adj and _het_AD entry&quot;</span>
+                <span class="s2">&quot; annotations...&quot;</span>
+            <span class="p">)</span>
+            <span class="n">res</span> <span class="o">=</span> <span class="n">resources</span><span class="o">.</span><span class="n">write_split_vds_and_downsampling_ht</span>
+            <span class="n">res</span><span class="o">.</span><span class="n">check_resource_existence</span><span class="p">()</span>
+
+            <span class="n">vds</span> <span class="o">=</span> <span class="n">get_vds_for_freq</span><span class="p">(</span>
+                <span class="n">use_test_dataset</span><span class="p">,</span> <span class="n">test_gene</span><span class="p">,</span> <span class="n">test_n_partitions</span><span class="p">,</span> <span class="n">chrom</span>
+            <span class="p">)</span>
+            <span class="n">vds</span> <span class="o">=</span> <span class="n">vds</span><span class="o">.</span><span class="n">checkpoint</span><span class="p">(</span><span class="n">res</span><span class="o">.</span><span class="n">split_vds</span><span class="o">.</span><span class="n">path</span><span class="p">,</span> <span class="n">overwrite</span><span class="o">=</span><span class="n">overwrite</span><span class="p">)</span>
+
+            <span class="n">ds_ht</span> <span class="o">=</span> <span class="n">get_downsampling_ht</span><span class="p">(</span><span class="n">vds</span><span class="o">.</span><span class="n">variant_data</span><span class="p">)</span>
+            <span class="n">ds_ht</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">res</span><span class="o">.</span><span class="n">ds_ht</span><span class="o">.</span><span class="n">path</span><span class="p">,</span> <span class="n">overwrite</span><span class="o">=</span><span class="n">overwrite</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">run_freq_and_dense_annotations</span><span class="p">:</span>
+            <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Running dense dependent steps...&quot;</span><span class="p">)</span>
+            <span class="n">res</span> <span class="o">=</span> <span class="n">resources</span><span class="o">.</span><span class="n">run_freq_and_dense_annotations</span>
+            <span class="n">res</span><span class="o">.</span><span class="n">check_resource_existence</span><span class="p">()</span>
+
+            <span class="n">vds</span> <span class="o">=</span> <span class="n">res</span><span class="o">.</span><span class="n">split_vds</span><span class="o">.</span><span class="n">vds</span><span class="p">()</span>
+            <span class="n">ds_ht</span> <span class="o">=</span> <span class="n">res</span><span class="o">.</span><span class="n">ds_ht</span><span class="o">.</span><span class="n">ht</span><span class="p">()</span>
+            <span class="n">meta_ht</span> <span class="o">=</span> <span class="n">vds</span><span class="o">.</span><span class="n">variant_data</span><span class="o">.</span><span class="n">cols</span><span class="p">()</span>
+
+            <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span>
+                <span class="s2">&quot;Splitting VDS by ukb_sample annotation to reduce data size for&quot;</span>
+                <span class="s2">&quot; densification...&quot;</span>
+            <span class="p">)</span>
+            <span class="c1"># For v4.0 the line of code this comment block was:</span>
+            <span class="c1"># vds_dict = split_vds_by_strata(vds, strata_expr=vds.variant_data.ukb_sample)</span>
+            <span class="c1">#</span>
+            <span class="c1"># This uses hail&#39;s hl.vds.filter_samples() function and keeps the default</span>
+            <span class="c1"># remove_dead_alleles=False. However, due to unexpected behavior in the</span>
+            <span class="c1"># code, the hl.vds.filter_samples() function still removes dead alleles by</span>
+            <span class="c1"># removing any variant row that does not have a defined entry. This behavior</span>
+            <span class="c1"># is present in all versions of hail with hl.vds.filter_samples() through</span>
+            <span class="c1"># the current version at the time of this commit, v0.2.128. When the VDS is</span>
+            <span class="c1"># densified, this results in a loss of all homozygous reference calls in the</span>
+            <span class="c1"># reference data sparse MT at these dead allele sites. Because we had to</span>
+            <span class="c1"># split the VDS for v4.0 with intentions of rejoining the two subset VDSs</span>
+            <span class="c1"># across all variant sites, this unexpected behavior resulted in the loss of</span>
+            <span class="c1"># all homozygous reference calls in the reference data sparse MT and thus</span>
+            <span class="c1"># reduced Allele Number (AN) for any bi-allelic variant exclusive to one of</span>
+            <span class="c1"># the subsetted VDSs. The replacement code below uses our own custom</span>
+            <span class="c1"># function to split the VDS and keep the dead alleles in the reference data.</span>
+            <span class="c1"># It was never run in production, but it is the correct way to split the VDS</span>
+            <span class="c1"># and keep the dead alleles in the reference data. The corrected frequency</span>
+            <span class="c1"># table for v4.1 used: gnomad_qc/gnomad_qc/v4/annotations/fix_freq_an.py</span>
+            <span class="c1"># Details on the run can be found here:</span>
+            <span class="c1"># github.com/broadinstitute/gnomad_production/issues/1366</span>
+            <span class="n">vds_dict</span> <span class="o">=</span> <span class="n">split_vds</span><span class="p">(</span><span class="n">vds</span><span class="p">,</span> <span class="n">strata_expr</span><span class="o">=</span><span class="n">vds</span><span class="o">.</span><span class="n">variant_data</span><span class="o">.</span><span class="n">ukb_sample</span><span class="p">)</span>
+            <span class="k">for</span> <span class="n">strata</span><span class="p">,</span> <span class="n">vds</span> <span class="ow">in</span> <span class="n">vds_dict</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+                <span class="k">if</span> <span class="n">ukb_only</span> <span class="ow">and</span> <span class="n">strata</span> <span class="o">==</span> <span class="s2">&quot;non_ukb&quot;</span> <span class="ow">or</span> <span class="n">non_ukb_only</span> <span class="ow">and</span> <span class="n">strata</span> <span class="o">==</span> <span class="s2">&quot;ukb&quot;</span><span class="p">:</span>
+                    <span class="k">continue</span>
+
+                <span class="k">if</span> <span class="n">strata</span> <span class="o">==</span> <span class="s2">&quot;non_ukb&quot;</span><span class="p">:</span>
+                    <span class="n">non_ukb_ds_ht</span> <span class="o">=</span> <span class="n">get_downsampling_ht</span><span class="p">(</span><span class="n">vds</span><span class="o">.</span><span class="n">variant_data</span><span class="p">,</span> <span class="n">non_ukb</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+                    <span class="n">non_ukb_ds_ht</span> <span class="o">=</span> <span class="n">non_ukb_ds_ht</span><span class="o">.</span><span class="n">checkpoint</span><span class="p">(</span>
+                        <span class="n">res</span><span class="o">.</span><span class="n">non_ukb_ds_ht</span><span class="o">.</span><span class="n">path</span><span class="p">,</span> <span class="n">overwrite</span><span class="o">=</span><span class="n">overwrite</span>
+                    <span class="p">)</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="n">non_ukb_ds_ht</span> <span class="o">=</span> <span class="kc">None</span>
+
+                <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Generating frequency and histograms for </span><span class="si">%s</span><span class="s2"> VDS...&quot;</span><span class="p">,</span> <span class="n">strata</span><span class="p">)</span>
+                <span class="n">mt</span> <span class="o">=</span> <span class="n">densify_and_prep_vds_for_freq</span><span class="p">(</span><span class="n">vds</span><span class="p">,</span> <span class="n">ab_cutoff</span><span class="o">=</span><span class="n">ab_cutoff</span><span class="p">)</span>
+                <span class="n">mt</span> <span class="o">=</span> <span class="n">mt</span><span class="o">.</span><span class="n">annotate_rows</span><span class="p">(</span><span class="n">hists_fields</span><span class="o">=</span><span class="n">mt_hists_fields</span><span class="p">(</span><span class="n">mt</span><span class="p">))</span>
+                <span class="n">freq_ht</span> <span class="o">=</span> <span class="n">generate_freq_ht</span><span class="p">(</span>
+                    <span class="n">mt</span><span class="p">,</span> <span class="n">ds_ht</span><span class="p">,</span> <span class="n">meta_ht</span><span class="p">,</span> <span class="n">non_ukb_ds_ht</span><span class="o">=</span><span class="n">non_ukb_ds_ht</span>
+                <span class="p">)</span>
+                <span class="n">freq_ht</span> <span class="o">=</span> <span class="n">freq_ht</span><span class="o">.</span><span class="n">transmute</span><span class="p">(</span><span class="o">**</span><span class="n">freq_ht</span><span class="o">.</span><span class="n">hists_fields</span><span class="p">)</span>
+                <span class="n">freq_ht</span><span class="o">.</span><span class="n">write</span><span class="p">(</span>
+                    <span class="nb">getattr</span><span class="p">(</span><span class="n">res</span><span class="p">,</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">strata</span><span class="si">}</span><span class="s2">_freq_ht&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">path</span><span class="p">,</span> <span class="n">overwrite</span><span class="o">=</span><span class="n">overwrite</span>
+                <span class="p">)</span>
+
+        <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">combine_freq_hts</span><span class="p">:</span>
+            <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Combining frequency HTs...&quot;</span><span class="p">)</span>
+            <span class="n">res</span> <span class="o">=</span> <span class="n">resources</span><span class="o">.</span><span class="n">combine_freq</span>
+            <span class="n">res</span><span class="o">.</span><span class="n">check_resource_existence</span><span class="p">()</span>
+            <span class="n">freq_ht</span> <span class="o">=</span> <span class="n">combine_freq_hts</span><span class="p">(</span>
+                <span class="p">{</span>
+                    <span class="s2">&quot;ukb&quot;</span><span class="p">:</span> <span class="n">res</span><span class="o">.</span><span class="n">ukb_freq_ht</span><span class="o">.</span><span class="n">ht</span><span class="p">(),</span>
+                    <span class="s2">&quot;non_ukb&quot;</span><span class="p">:</span> <span class="n">update_non_ukb_freq_ht</span><span class="p">(</span><span class="n">res</span><span class="o">.</span><span class="n">non_ukb_freq_ht</span><span class="o">.</span><span class="n">ht</span><span class="p">()),</span>
+                <span class="p">},</span>
+                <span class="n">ALL_FREQ_ROW_FIELDS</span><span class="p">,</span>
+                <span class="n">FREQ_GLOBAL_FIELDS</span><span class="p">,</span>
+            <span class="p">)</span>
+            <span class="n">freq_ht</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">res</span><span class="o">.</span><span class="n">freq_ht</span><span class="o">.</span><span class="n">path</span><span class="p">,</span> <span class="n">overwrite</span><span class="o">=</span><span class="n">overwrite</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">correct_for_high_ab_hets</span><span class="p">:</span>
+            <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span>
+                <span class="s2">&quot;Adjusting annotations impacted by high AB het -&gt; hom alt adjustment...&quot;</span>
+            <span class="p">)</span>
+            <span class="n">res</span> <span class="o">=</span> <span class="n">resources</span><span class="o">.</span><span class="n">correct_for_high_ab_hets</span>
+            <span class="n">res</span><span class="o">.</span><span class="n">check_resource_existence</span><span class="p">()</span>
+            <span class="n">ht</span> <span class="o">=</span> <span class="n">res</span><span class="o">.</span><span class="n">freq_ht</span><span class="o">.</span><span class="n">ht</span><span class="p">()</span>
+
+            <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Correcting call stats, qual AB hists, and age hists...&quot;</span><span class="p">)</span>
+            <span class="n">ht</span> <span class="o">=</span> <span class="n">correct_for_high_ab_hets</span><span class="p">(</span><span class="n">ht</span><span class="p">,</span> <span class="n">af_threshold</span><span class="o">=</span><span class="n">af_threshold</span><span class="p">)</span>
+
+            <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Computing FAF &amp; grpmax...&quot;</span><span class="p">)</span>
+            <span class="n">ht</span> <span class="o">=</span> <span class="n">generate_faf_grpmax</span><span class="p">(</span><span class="n">ht</span><span class="p">)</span>
+
+            <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Calculating InbreedingCoeff...&quot;</span><span class="p">)</span>
+            <span class="n">ht</span> <span class="o">=</span> <span class="n">compute_inbreeding_coeff</span><span class="p">(</span><span class="n">ht</span><span class="p">)</span>
+
+            <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;High AB het corrected frequency HT schema...&quot;</span><span class="p">)</span>
+            <span class="n">ht</span><span class="o">.</span><span class="n">describe</span><span class="p">()</span>
+
+            <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Writing corrected frequency Table...&quot;</span><span class="p">)</span>
+            <span class="n">ht</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">res</span><span class="o">.</span><span class="n">corrected_freq_ht</span><span class="o">.</span><span class="n">path</span><span class="p">,</span> <span class="n">overwrite</span><span class="o">=</span><span class="n">overwrite</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">finalize_freq_ht</span><span class="p">:</span>
+            <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Writing final frequency Table...&quot;</span><span class="p">)</span>
+            <span class="n">res</span> <span class="o">=</span> <span class="n">resources</span><span class="o">.</span><span class="n">finalize_freq_ht</span>
+            <span class="n">res</span><span class="o">.</span><span class="n">check_resource_existence</span><span class="p">()</span>
+            <span class="n">ht</span> <span class="o">=</span> <span class="n">create_final_freq_ht</span><span class="p">(</span><span class="n">res</span><span class="o">.</span><span class="n">corrected_freq_ht</span><span class="o">.</span><span class="n">ht</span><span class="p">())</span>
+
+            <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Final frequency HT schema...&quot;</span><span class="p">)</span>
+            <span class="n">ht</span><span class="o">.</span><span class="n">describe</span><span class="p">()</span>
+            <span class="n">ht</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">res</span><span class="o">.</span><span class="n">final_freq_ht</span><span class="o">.</span><span class="n">path</span><span class="p">,</span> <span class="n">overwrite</span><span class="o">=</span><span class="n">overwrite</span><span class="p">)</span>
+    <span class="k">finally</span><span class="p">:</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Copying log to logging bucket...&quot;</span><span class="p">)</span>
+        <span class="n">hl</span><span class="o">.</span><span class="n">copy_log</span><span class="p">(</span><span class="n">get_logging_path</span><span class="p">(</span><span class="s2">&quot;frequency_data&quot;</span><span class="p">))</span></div>
+
+
+<span class="k">def</span> <span class="nf">get_script_argument_parser</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="n">argparse</span><span class="o">.</span><span class="n">ArgumentParser</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Get script argument parser.&quot;&quot;&quot;</span>
+    <span class="n">parser</span> <span class="o">=</span> <span class="n">argparse</span><span class="o">.</span><span class="n">ArgumentParser</span><span class="p">()</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--use-test-dataset&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Runs a test on the gnomad test dataset.&quot;</span><span class="p">,</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--test-gene&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Runs a test on the DRD2 gene in the gnomad test dataset.&quot;</span><span class="p">,</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--test-n-partitions&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="p">(</span>
+            <span class="s2">&quot;Use only N partitions of the VDS as input for testing purposes. Defaults&quot;</span>
+            <span class="s2">&quot;to 2 if passed without a value.&quot;</span>
+        <span class="p">),</span>
+        <span class="n">nargs</span><span class="o">=</span><span class="s2">&quot;?&quot;</span><span class="p">,</span>
+        <span class="n">const</span><span class="o">=</span><span class="mi">2</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">int</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--chrom&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;If passed, script will only run on passed chromosome.&quot;</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">str</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--overwrite&quot;</span><span class="p">,</span> <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Overwrites existing files.&quot;</span><span class="p">,</span> <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--slack-channel&quot;</span><span class="p">,</span> <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Slack channel to post results and notifications to.&quot;</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--write-split-vds-and-downsampling-ht&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Write split VDS and downsampling HT.&quot;</span><span class="p">,</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--run-freq-and-dense-annotations&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="p">(</span>
+            <span class="s2">&quot;Calculate frequencies, histograms, and high AB sites per sample grouping.&quot;</span>
+        <span class="p">),</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--ukb-only&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Only run frequency and histogram calculations for UKB samples.&quot;</span><span class="p">,</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--non-ukb-only&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Only run frequency and histogram calculations for non-UKB samples.&quot;</span><span class="p">,</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--combine-freq-hts&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="p">(</span>
+            <span class="s2">&quot;Combine frequency and histogram Tables for UKB and non-UKB samples into a&quot;</span>
+            <span class="s2">&quot; single Table.&quot;</span>
+        <span class="p">),</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--correct-for-high-ab-hets&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="p">(</span>
+            <span class="s2">&quot;Correct each frequency entry to account for homozygous alternate depletion&quot;</span>
+            <span class="s2">&quot; present in GATK versions released prior to 4.1.4.1 and run chosen&quot;</span>
+            <span class="s2">&quot; downstream annotations.&quot;</span>
+        <span class="p">),</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--ab-cutoff&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="p">(</span>
+            <span class="s2">&quot;Allele balance threshold to use when adjusting heterozygous calls to &quot;</span>
+            <span class="s2">&quot;homozygous alternate calls at sites for samples that used GATK versions&quot;</span>
+            <span class="s2">&quot; released prior to 4.1.4.1.&quot;</span>
+        <span class="p">),</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">float</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="mf">0.9</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--af-threshold&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="p">(</span>
+            <span class="s2">&quot;Threshold at which to adjust site group frequencies at sites for&quot;</span>
+            <span class="s2">&quot; homozygous alternate depletion present in GATK versions released prior to&quot;</span>
+            <span class="s2">&quot; 4.1.4.1.&quot;</span>
+        <span class="p">),</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">float</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="mf">0.01</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--finalize-freq-ht&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="p">(</span>
+            <span class="s2">&quot;Finalize frequency Table by dropping unnecessary fields and renaming&quot;</span>
+            <span class="s2">&quot; remaining fields.&quot;</span>
+        <span class="p">),</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">parser</span>
+
+
+<span class="k">if</span> <span class="vm">__name__</span> <span class="o">==</span> <span class="s2">&quot;__main__&quot;</span><span class="p">:</span>
+    <span class="n">parser</span> <span class="o">=</span> <span class="n">get_script_argument_parser</span><span class="p">()</span>
+    <span class="n">args</span> <span class="o">=</span> <span class="n">parser</span><span class="o">.</span><span class="n">parse_args</span><span class="p">()</span>
+
+    <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">slack_channel</span><span class="p">:</span>
+        <span class="k">with</span> <span class="n">slack_notifications</span><span class="p">(</span><span class="n">slack_token</span><span class="p">,</span> <span class="n">args</span><span class="o">.</span><span class="n">slack_channel</span><span class="p">):</span>
+            <span class="n">main</span><span class="p">(</span><span class="n">args</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">main</span><span class="p">(</span><span class="n">args</span><span class="p">)</span>
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p></p>
+  </div>
+
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

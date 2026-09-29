@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>gnomad_qc.v4.create_release.create_false_dup_liftover &mdash; gnomad_qc master documentation</title>
+      <link rel="stylesheet" href="../../../../_static/pygments.css" type="text/css" />
+      <link rel="stylesheet" href="../../../../_static/css/theme.css" type="text/css" />
+      <link rel="stylesheet" href="../../../../_static/theme_overrides.css" type="text/css" />
+  <!--[if lt IE 9]>
+    <script src="../../../../_static/js/html5shiv.min.js"></script>
+  <![endif]-->
+  
+        <script src="../../../../_static/jquery.js"></script>
+        <script src="../../../../_static/_sphinx_javascript_frameworks_compat.js"></script>
+        <script data-url_root="../../../../" id="documentation_options" src="../../../../_static/documentation_options.js"></script>
+        <script src="../../../../_static/doctools.js"></script>
+        <script src="../../../../_static/sphinx_highlight.js"></script>
+        <script src="https://unpkg.com/mermaid@10.2.0/dist/mermaid.min.js"></script>
+        <script>mermaid.initialize({startOnLoad:true});</script>
+    <script src="../../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../../index.html" class="icon icon-home">
+            gnomad_qc
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../../api_reference/index.html">API Reference</a></li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/broadinstitute/gnomad_qc/tags">Change Log</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../../index.html">gnomad_qc</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../../index.html">Module code</a></li>
+      <li class="breadcrumb-item active">gnomad_qc.v4.create_release.create_false_dup_liftover</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for gnomad_qc.v4.create_release.create_false_dup_liftover</h1><div class="highlight"><pre>
+<span></span><span class="sd">&quot;&quot;&quot;Script to create custom liftover file for three false dup genes CBS, KCNE1, and CRYAA.&quot;&quot;&quot;</span>
+
+<span class="kn">import</span> <span class="nn">argparse</span>
+<span class="kn">import</span> <span class="nn">logging</span>
+
+<span class="kn">import</span> <span class="nn">hail</span> <span class="k">as</span> <span class="nn">hl</span>
+<span class="kn">from</span> <span class="nn">gnomad.utils.annotations</span> <span class="kn">import</span> <span class="p">(</span>
+    <span class="n">faf_expr</span><span class="p">,</span>
+    <span class="n">gen_anc_faf_max_expr</span><span class="p">,</span>
+    <span class="n">grpmax_expr</span><span class="p">,</span>
+    <span class="n">merge_freq_arrays</span><span class="p">,</span>
+<span class="p">)</span>
+<span class="kn">from</span> <span class="nn">gnomad.utils.release</span> <span class="kn">import</span> <span class="n">make_freq_index_dict_from_meta</span>
+
+<span class="kn">from</span> <span class="nn">gnomad_qc.v2.annotations.generate_frequency_data</span> <span class="kn">import</span> <span class="n">POPS_TO_REMOVE_FOR_POPMAX</span>
+<span class="kn">from</span> <span class="nn">gnomad_qc.v2.resources.basics</span> <span class="kn">import</span> <span class="n">get_gnomad_liftover_data_path</span>
+<span class="kn">from</span> <span class="nn">gnomad_qc.v4.resources.release</span> <span class="kn">import</span> <span class="n">get_false_dup_genes_path</span>
+
+<span class="n">logging</span><span class="o">.</span><span class="n">basicConfig</span><span class="p">(</span>
+    <span class="nb">format</span><span class="o">=</span><span class="s2">&quot;</span><span class="si">%(asctime)s</span><span class="s2"> (</span><span class="si">%(name)s</span><span class="s2"> </span><span class="si">%(lineno)s</span><span class="s2">): </span><span class="si">%(message)s</span><span class="s2">&quot;</span><span class="p">,</span>
+    <span class="n">datefmt</span><span class="o">=</span><span class="s2">&quot;%m/</span><span class="si">%d</span><span class="s2">/%Y %I:%M:%S %p&quot;</span><span class="p">,</span>
+<span class="p">)</span>
+<span class="n">logger</span> <span class="o">=</span> <span class="n">logging</span><span class="o">.</span><span class="n">getLogger</span><span class="p">(</span><span class="s2">&quot;false_dup_genes&quot;</span><span class="p">)</span>
+<span class="n">logger</span><span class="o">.</span><span class="n">setLevel</span><span class="p">(</span><span class="n">logging</span><span class="o">.</span><span class="n">INFO</span><span class="p">)</span>
+
+<span class="n">FALSE_DUP_GENES</span> <span class="o">=</span> <span class="p">[</span><span class="s2">&quot;KCNE1&quot;</span><span class="p">,</span> <span class="s2">&quot;CBS&quot;</span><span class="p">,</span> <span class="s2">&quot;CRYAA&quot;</span><span class="p">]</span>
+
+
+<div class="viewcode-block" id="filter_liftover_to_false_dups"><a class="viewcode-back" href="../../../../api_reference/v4/create_release/create_false_dup_liftover.html#gnomad_qc.v4.create_release.create_false_dup_liftover.filter_liftover_to_false_dups">[docs]</a><span class="k">def</span> <span class="nf">filter_liftover_to_false_dups</span><span class="p">(</span>
+    <span class="n">data_type</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Read in gnomAD v2 liftover table, filter to genes of interest, and return the Table.</span>
+
+<span class="sd">    :param data_type: Data type &#39;exomes&#39; or &#39;genomes&#39;. Default is &#39;exomes&#39;.</span>
+<span class="sd">    :return: Filtered Hail Table.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">hl</span><span class="o">.</span><span class="n">read_table</span><span class="p">(</span>
+        <span class="n">get_gnomad_liftover_data_path</span><span class="p">(</span><span class="n">data_type</span><span class="o">=</span><span class="n">data_type</span><span class="p">,</span> <span class="n">version</span><span class="o">=</span><span class="s2">&quot;2.1.1&quot;</span><span class="p">)</span>
+    <span class="p">)</span>
+
+    <span class="c1"># Filter to chr21, since it is known that is where all 3 of the genes are.</span>
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">ht</span><span class="o">.</span><span class="n">locus</span><span class="o">.</span><span class="n">contig</span> <span class="o">==</span> <span class="s2">&quot;chr21&quot;</span><span class="p">)</span>
+
+    <span class="c1"># Filter to any variant located in one of the 3 genes of interest.</span>
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span>
+        <span class="n">ht</span><span class="o">.</span><span class="n">vep</span><span class="o">.</span><span class="n">transcript_consequences</span><span class="o">.</span><span class="n">gene_symbol</span><span class="o">.</span><span class="n">any</span><span class="p">(</span>
+            <span class="k">lambda</span> <span class="n">x</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">literal</span><span class="p">(</span><span class="n">FALSE_DUP_GENES</span><span class="p">)</span><span class="o">.</span><span class="n">contains</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
+        <span class="p">)</span>
+    <span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">ht</span></div>
+
+
+<div class="viewcode-block" id="main"><a class="viewcode-back" href="../../../../api_reference/v4/create_release/create_false_dup_liftover.html#gnomad_qc.v4.create_release.create_false_dup_liftover.main">[docs]</a><span class="k">def</span> <span class="nf">main</span><span class="p">(</span><span class="n">args</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Write merged v2 exomes and genomes liftover table with joint information for three clinically relevant genes.</span>
+
+<span class="sd">    There are three clinically relevant genes impacted by false duplications in the GRCh38 reference (KCNE1, CBS, and CRYAA).</span>
+<span class="sd">    To make it easier for our users to switch to gnomAD v4 and the new reference build,</span>
+<span class="sd">    this script creates a new release file that combines information from the v2 exomes and genomes only for these three genes.</span>
+<span class="sd">    To create this file, filter the v2 liftover files (https://gnomad.broadinstitute.org/downloads#v2-liftover) to these genes,</span>
+<span class="sd">    and then merge frequency information across the exomes and genomes</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="c1"># Read in liftover files.</span>
+    <span class="n">exome_ht</span> <span class="o">=</span> <span class="n">filter_liftover_to_false_dups</span><span class="p">(</span><span class="s2">&quot;exomes&quot;</span><span class="p">)</span>
+    <span class="n">genome_ht</span> <span class="o">=</span> <span class="n">filter_liftover_to_false_dups</span><span class="p">(</span><span class="s2">&quot;genomes&quot;</span><span class="p">)</span>
+
+    <span class="c1"># Union and merge to contain any variant present in either.</span>
+    <span class="c1"># Note: only about ~550 overlap, with ~187k exome variants and ~12k genome variants.</span>
+    <span class="c1"># Genome global annotations stored with _1.</span>
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">exome_ht</span><span class="o">.</span><span class="n">select</span><span class="p">()</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">genome_ht</span><span class="o">.</span><span class="n">select</span><span class="p">(),</span> <span class="n">how</span><span class="o">=</span><span class="s2">&quot;outer&quot;</span><span class="p">)</span>
+
+    <span class="c1"># Clear naming for global annotations.</span>
+    <span class="c1"># Globals from exomes and genomes end with _exomes or _genomes.</span>
+    <span class="n">renaming_dictionary</span> <span class="o">=</span> <span class="p">{}</span>
+    <span class="k">for</span> <span class="n">global_name</span> <span class="ow">in</span> <span class="nb">sorted</span><span class="p">(</span><span class="nb">list</span><span class="p">(</span><span class="n">ht</span><span class="o">.</span><span class="n">globals</span><span class="p">)):</span>
+        <span class="k">if</span> <span class="s2">&quot;_1&quot;</span> <span class="ow">in</span> <span class="n">global_name</span><span class="p">:</span>
+            <span class="n">renaming_dictionary</span><span class="p">[</span><span class="n">global_name</span><span class="p">]</span> <span class="o">=</span> <span class="n">global_name</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="s2">&quot;_1&quot;</span><span class="p">,</span> <span class="s2">&quot;_genomes&quot;</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">renaming_dictionary</span><span class="p">[</span><span class="n">global_name</span><span class="p">]</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">global_name</span><span class="si">}</span><span class="s2">_exomes&quot;</span>
+
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">rename</span><span class="p">(</span><span class="n">renaming_dictionary</span><span class="p">)</span>
+
+    <span class="c1"># Annotate with information from both exomes and genomes.</span>
+    <span class="c1"># Many will be NaN from the lack of overlap.</span>
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">annotate</span><span class="p">(</span>
+        <span class="n">v2_exomes</span><span class="o">=</span><span class="n">exome_ht</span><span class="p">[</span><span class="n">ht</span><span class="o">.</span><span class="n">locus</span><span class="p">,</span> <span class="n">ht</span><span class="o">.</span><span class="n">alleles</span><span class="p">],</span>
+        <span class="n">v2_genomes</span><span class="o">=</span><span class="n">genome_ht</span><span class="p">[</span><span class="n">ht</span><span class="o">.</span><span class="n">locus</span><span class="p">,</span> <span class="n">ht</span><span class="o">.</span><span class="n">alleles</span><span class="p">],</span>
+    <span class="p">)</span>
+
+    <span class="c1"># Checkpoint output to new temp file.</span>
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">checkpoint</span><span class="p">(</span><span class="n">hl</span><span class="o">.</span><span class="n">utils</span><span class="o">.</span><span class="n">new_temp_file</span><span class="p">(</span><span class="s2">&quot;three_dup_genes_liftover&quot;</span><span class="p">,</span> <span class="s2">&quot;ht&quot;</span><span class="p">))</span>
+
+    <span class="c1"># Merge exomes and genomes frequencies.</span>
+    <span class="c1"># Code adapted from</span>
+    <span class="c1"># gnomad_qc/v4/create_release/create_combined_faf_release_ht.py#L155</span>
+    <span class="c1"># as of 01-26-2025 with changing &#39;gen_anc&#39; -&gt; pop.</span>
+    <span class="n">freq</span><span class="p">,</span> <span class="n">freq_meta</span> <span class="o">=</span> <span class="n">merge_freq_arrays</span><span class="p">(</span>
+        <span class="n">farrays</span><span class="o">=</span><span class="p">[</span><span class="n">ht</span><span class="o">.</span><span class="n">v2_exomes</span><span class="o">.</span><span class="n">freq</span><span class="p">,</span> <span class="n">ht</span><span class="o">.</span><span class="n">v2_genomes</span><span class="o">.</span><span class="n">freq</span><span class="p">],</span>
+        <span class="n">fmeta</span><span class="o">=</span><span class="p">[</span>
+            <span class="n">ht</span><span class="o">.</span><span class="n">index_globals</span><span class="p">()</span><span class="o">.</span><span class="n">freq_meta_exomes</span><span class="p">,</span>
+            <span class="n">ht</span><span class="o">.</span><span class="n">index_globals</span><span class="p">()</span><span class="o">.</span><span class="n">freq_meta_genomes</span><span class="p">,</span>
+        <span class="p">],</span>
+    <span class="p">)</span>
+
+    <span class="c1"># Select to first 28 groups, containing:</span>
+    <span class="c1"># Raw, adj, adj male &amp; female, and adj sex-split pops for 8 pops.</span>
+    <span class="n">freq</span> <span class="o">=</span> <span class="n">freq</span><span class="p">[:</span><span class="mi">28</span><span class="p">]</span>
+    <span class="n">freq_meta</span> <span class="o">=</span> <span class="n">freq_meta</span><span class="p">[:</span><span class="mi">28</span><span class="p">]</span>
+
+    <span class="c1"># Create a new struct to hold all joint information.</span>
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">annotate</span><span class="p">(</span><span class="n">v2_joint</span><span class="o">=</span><span class="n">hl</span><span class="o">.</span><span class="n">struct</span><span class="p">(</span><span class="n">joint_freq</span><span class="o">=</span><span class="n">freq</span><span class="p">))</span>
+
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">annotate_globals</span><span class="p">(</span>
+        <span class="n">joint_freq_meta</span><span class="o">=</span><span class="n">freq_meta</span><span class="p">,</span>
+        <span class="n">joint_freq_index_dict</span><span class="o">=</span><span class="n">make_freq_index_dict_from_meta</span><span class="p">(</span><span class="n">hl</span><span class="o">.</span><span class="n">literal</span><span class="p">(</span><span class="n">freq_meta</span><span class="p">)),</span>
+    <span class="p">)</span>
+
+    <span class="c1"># Checkpoint output to new temp file.</span>
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">checkpoint</span><span class="p">(</span><span class="n">hl</span><span class="o">.</span><span class="n">utils</span><span class="o">.</span><span class="n">new_temp_file</span><span class="p">(</span><span class="s2">&quot;three_dup_genes_liftover&quot;</span><span class="p">,</span> <span class="s2">&quot;ht&quot;</span><span class="p">))</span>
+
+    <span class="c1"># Compute FAF on the merged exomes + genomes frequencies.</span>
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Generating faf metrics...&quot;</span><span class="p">)</span>
+    <span class="n">faf</span><span class="p">,</span> <span class="n">faf_meta</span> <span class="o">=</span> <span class="n">faf_expr</span><span class="p">(</span>
+        <span class="n">ht</span><span class="o">.</span><span class="n">v2_joint</span><span class="o">.</span><span class="n">joint_freq</span><span class="p">,</span>
+        <span class="n">ht</span><span class="o">.</span><span class="n">joint_freq_meta</span><span class="p">,</span>
+        <span class="n">ht</span><span class="o">.</span><span class="n">locus</span><span class="p">,</span>
+        <span class="n">gen_anc_groups_to_exclude</span><span class="o">=</span><span class="n">POPS_TO_REMOVE_FOR_POPMAX</span><span class="p">,</span>
+        <span class="n">gen_anc_label</span><span class="o">=</span><span class="s2">&quot;pop&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+
+    <span class="c1"># Compute group max (popmax) on the merged exomes + genomes frequencies.</span>
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Computing grpmax...&quot;</span><span class="p">)</span>
+    <span class="n">grpmax</span> <span class="o">=</span> <span class="n">grpmax_expr</span><span class="p">(</span>
+        <span class="n">ht</span><span class="o">.</span><span class="n">v2_joint</span><span class="o">.</span><span class="n">joint_freq</span><span class="p">,</span>
+        <span class="n">ht</span><span class="o">.</span><span class="n">joint_freq_meta</span><span class="p">,</span>
+        <span class="n">gen_anc_groups_to_exclude</span><span class="o">=</span><span class="n">POPS_TO_REMOVE_FOR_POPMAX</span><span class="p">,</span>
+        <span class="n">gen_anc_label</span><span class="o">=</span><span class="s2">&quot;pop&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+
+    <span class="c1"># Rename &#39;pop&#39; to &#39;gen_anc&#39; to fit other joint annotations.</span>
+    <span class="n">grpmax</span> <span class="o">=</span> <span class="n">grpmax</span><span class="o">.</span><span class="n">rename</span><span class="p">({</span><span class="s2">&quot;pop&quot;</span><span class="p">:</span> <span class="s2">&quot;gen_anc&quot;</span><span class="p">})</span>
+
+    <span class="c1"># Annotate Table with all joint exomes + genomes computations.</span>
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">annotate</span><span class="p">(</span>
+        <span class="n">v2_joint</span><span class="o">=</span><span class="n">ht</span><span class="o">.</span><span class="n">v2_joint</span><span class="o">.</span><span class="n">annotate</span><span class="p">(</span>
+            <span class="n">joint_faf</span><span class="o">=</span><span class="n">faf</span><span class="p">,</span>
+            <span class="n">joint_fafmax</span><span class="o">=</span><span class="n">gen_anc_faf_max_expr</span><span class="p">(</span>
+                <span class="n">faf</span><span class="p">,</span> <span class="n">hl</span><span class="o">.</span><span class="n">literal</span><span class="p">(</span><span class="n">faf_meta</span><span class="p">),</span> <span class="n">gen_anc_label</span><span class="o">=</span><span class="s2">&quot;pop&quot;</span>
+            <span class="p">),</span>
+            <span class="n">joint_grpmax</span><span class="o">=</span><span class="n">grpmax</span><span class="p">,</span>
+        <span class="p">)</span>
+    <span class="p">)</span>
+
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">annotate_globals</span><span class="p">(</span>
+        <span class="n">joint_faf_meta</span><span class="o">=</span><span class="n">faf_meta</span><span class="p">,</span>
+        <span class="n">joint_faf_index_dict</span><span class="o">=</span><span class="n">make_freq_index_dict_from_meta</span><span class="p">(</span><span class="n">hl</span><span class="o">.</span><span class="n">literal</span><span class="p">(</span><span class="n">faf_meta</span><span class="p">)),</span>
+    <span class="p">)</span>
+
+    <span class="c1"># Checkpoint output to created resource.</span>
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">get_false_dup_genes_path</span><span class="p">(</span><span class="n">test</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">test</span><span class="p">),</span> <span class="n">overwrite</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">overwrite</span><span class="p">)</span></div>
+
+
+<span class="k">if</span> <span class="vm">__name__</span> <span class="o">==</span> <span class="s2">&quot;__main__&quot;</span><span class="p">:</span>
+    <span class="n">parser</span> <span class="o">=</span> <span class="n">argparse</span><span class="o">.</span><span class="n">ArgumentParser</span><span class="p">()</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--overwrite&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Option to overwrite existing custom liftover table.&quot;</span><span class="p">,</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--test&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Option to store output at test paths.&quot;</span><span class="p">,</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">args</span> <span class="o">=</span> <span class="n">parser</span><span class="o">.</span><span class="n">parse_args</span><span class="p">()</span>
+
+    <span class="n">main</span><span class="p">(</span><span class="n">args</span><span class="p">)</span>
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p></p>
+  </div>
+
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>
