@@ -3069,9 +3069,11 @@ def main(args):
                 output_step_resources={"downsampling_ht": [downsampling_ht_path]},
                 overwrite=overwrite,
             )
+            # Coalesce first: every aggregate and scan below otherwise fans out
+            # over the meta HT's ~330 near-empty partitions.
             ds_meta_ht = meta_ht.filter(
                 (meta_ht.project_meta.project == project) & (meta_ht.release)
-            )
+            ).naive_coalesce(GROUP_MEMBERSHIP_N_PARTITIONS)
             ds_ht = get_downsampling_ht(ds_meta_ht)
             ds_ht.write(downsampling_ht_path, overwrite=overwrite)
 
@@ -3092,7 +3094,7 @@ def main(args):
                 logger.info("Writing AoU group membership HT...")
                 aou_meta_ht = meta_ht.filter(
                     (meta_ht.project_meta.project == project) & (meta_ht.release)
-                )
+                ).naive_coalesce(GROUP_MEMBERSHIP_N_PARTITIONS)
                 group_membership_ht = get_group_membership_ht(
                     meta_ht=aou_meta_ht,
                     project=project,
