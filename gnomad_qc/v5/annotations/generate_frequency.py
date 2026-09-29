@@ -45,6 +45,7 @@ python generate_frequency.py --merge-datasets --environment batch --app-name "me
 
 import argparse
 import copy
+import hashlib
 import json
 import logging
 import re
@@ -81,6 +82,7 @@ from hail.utils import new_temp_file
 from gnomad_qc.resource_utils import check_resource_existence
 from gnomad_qc.v3.utils import hom_alt_depletion_fix
 from gnomad_qc.v4.resources.release import release_sites
+from gnomad_qc.v5.annotations.annotation_utils import annotate_adj_no_dp
 from gnomad_qc.v5.resources.annotations import (
     coverage_and_an_path,
     get_aou_freq_chunk_path,
@@ -114,9 +116,11 @@ logger = logging.getLogger("v5_frequency")
 
 # Hail Batch regions for relay chunk/merge jobs (mirrors compute_coverage).
 BATCH_REGIONS = ["us-central1"]
-# Chunk/merge relay + densify image: Hail 0.2.128 + gnomad_methods deps baked in.
+# Chunk/merge relay + densify image: Hail 0.2.137 + gnomad_methods deps baked in.
+# 0.2.137 is the floor for QoB: the Batch worker JVM is Java 21, which the
+# 0.2.128 JAR cannot run on.
 DEFAULT_BATCH_IMAGE = (
-    "us-central1-docker.pkg.dev/broad-mpg-gnomad/images/v5_freq_batch:0.2.128"
+    "us-central1-docker.pkg.dev/broad-mpg-gnomad/images/v5_freq_batch:0.2.137"
 )
 logger.setLevel(logging.INFO)
 
@@ -412,11 +416,9 @@ def _prepare_aou_vds(
             LAD=aou_vmt.LAD,
             LA=aou_vmt.LA,
         )
-        # AoU adj: the usual gnomAD cutoffs (GQ >= 20, DP >= 10 with DP
-        # approximated as sum(LAD), AB >= 0.2 for het calls).
-        aou_vmt = aou_vmt.annotate_entries(
-            adj=get_adj_expr(aou_vmt.LGT, aou_vmt.GQ, hl.sum(aou_vmt.LAD), aou_vmt.LAD)
-        )
+        # AoU adj uses the shared helper (also used by coverage and variant QC):
+        # the usual gnomAD cutoffs with DP approximated as sum(LAD).
+        aou_vmt = annotate_adj_no_dp(aou_vmt)
         aou_vds = hl.vds.VariantDataset(aou_vds.reference_data, aou_vmt)
         aou_vds = hl.vds.split_multi(aou_vds, filter_changed_loci=True)
         aou_vmt = aou_vds.variant_data
@@ -717,20 +719,14 @@ def _calculate_aou_frequencies_and_hists_using_densify(
     #     recomputing here, hom-ref calls inside ref blocks would be silently
     #     excluded from adj-filtered aggregations in `compute_freq_by_strata`
     #     (which uses `hl.agg.filter(adj[i], ...)`, and missing → False).
-    #     Hom-ref calls (ref-block fill-ins) pass unconditionally: AoU never
-    #     writes GQ0, so there is no principled GQ cutoff. Variant entries use
-    #     the standard cutoffs (GQ >= 20, DP approximated as sum(AD) >= 10,
-    #     AB >= 0.2 for het calls).
+    #     `annotate_adj_no_dp` (the shared AoU helper, also used by coverage
+    #     and variant QC) applies the standard cutoffs to every call that
+    #     carries AD, and GQ >= 20 only to ref-block fill-ins (hom-ref calls
+    #     whose AD is missing on the dense MT).
     aou_mt = aou_mt.annotate_entries(
         GT=adjusted_sex_ploidy_expr(aou_mt.locus, aou_mt.GT, aou_mt.sex_karyotype)
     )
-    aou_mt = aou_mt.annotate_entries(
-        adj=hl.if_else(
-            aou_mt.GT.is_non_ref(),
-            get_adj_expr(aou_mt.GT, aou_mt.GQ, hl.sum(aou_mt.AD), aou_mt.AD),
-            True,
-        )
-    )
+    aou_mt = annotate_adj_no_dp(aou_mt)
     aou_mt = aou_mt.annotate_rows(hist_fields=mt_hist_fields(aou_mt))
 
     # Optionally reduce group_membership to only the leaf groups before the
@@ -1232,8 +1228,8 @@ def _build_setup_command(
       container's Java GCS client (works on a laptop via gcloud config, but not in
       a bare container without this).
     - Relies on the batch image (``--batch-image``, default the
-      ``v5_freq_batch:0.2.128`` image) to supply the validated Hail version --
-      0.2.128 baked in -- instead of a per-job runtime pip reinstall. (0.2.128
+      ``v5_freq_batch:0.2.137`` image) to supply the validated Hail version --
+      0.2.137 baked in -- instead of a per-job runtime pip reinstall. (0.2.137
       predates the 0.2.138 requester-pays-propagation regression for VDS metadata
       reads; pass a different ``--batch-image`` to change the Hail version.)
 
@@ -1267,7 +1263,7 @@ def _build_setup_command(
         f"python3 -c \"import json, os; p='/gsa-key/key.json';"
         f" d=json.load(open(p)); d['quota_project_id']='{gcp_billing_project}';"
         f" json.dump(d, open(p+'.new','w')); os.replace(p+'.new', p)\"\n"
-        # Hail version comes from the batch image (default v5_freq_batch:0.2.128),
+        # Hail version comes from the batch image (default v5_freq_batch:0.2.137),
         # not a runtime reinstall -- keeps container startup fast and the version
         # reproducible. Pass a different --batch-image to change it.
         f"curl -sSL {methods_tarball} | tar xz -C /tmp\n"
@@ -3133,7 +3129,7 @@ def _orchestrate_freq_fanout(
             )
 
     commit = subprocess.check_output(["git", "rev-parse", "HEAD"]).decode().strip()
-    # Reuse freq's _build_setup_command (targets v5_freq_batch:0.2.128, no
+    # Reuse freq's _build_setup_command (targets v5_freq_batch:0.2.137, no
     # hail reinstall).
     setup_cmd = _build_setup_command(commit, methods_branch=args.methods_branch)
 
@@ -4570,7 +4566,7 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         default=DEFAULT_BATCH_IMAGE,
         help=(
             "Docker image for chunk and merge jobs. Defaults to the"
-            " v5_freq_batch:0.2.128 image (Hail 0.2.128 + gnomad_methods deps baked"
+            " v5_freq_batch:0.2.137 image (Hail 0.2.137 + gnomad_methods deps baked"
             " in). Pass another image to change the Hail version -- the version comes"
             " from the image, not a runtime reinstall."
         ),
