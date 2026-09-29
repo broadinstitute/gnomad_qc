@@ -444,8 +444,7 @@ def get_aou_vds(
         `add_project_prefix` must be set to True to filter properly. Default is None.
     :param test: Whether to load the test VDS instead of the full VDS. The test VDS includes 10 samples selected from the full dataset for testing purposes. Default is False.
     :param filter_partitions: Optional argument to filter the VDS to a list of specific partitions.
-    :param read_intervals: Optional list of locus intervals passed to `hl.vds.read_vds`
-        at read time. Mutually exclusive with `filter_partitions`.
+    :param read_intervals: Optional list of locus intervals passed to ``hl.vds.read_vds`` at read time; one VDS partition per interval, no shuffle. Unlike ``filter_intervals``, reference blocks are kept by start locus, so a block that starts before an interval and extends into it is dropped: widen each contig's leading interval by ``ref_block_max_length - 1`` (see ``_expand_leading_edges`` in compute_coverage.py). Mutually exclusive with ``filter_partitions``.
     :param chrom: Optional argument to filter the VDS to a specific chromosome(s).
     :param autosomes_only: Whether to include only autosomes. Default is False.
     :param sex_chr_only: Whether to include only sex chromosomes. Default is False.
@@ -688,6 +687,7 @@ def get_gnomad_v5_genomes_vds(
     annotate_meta: bool = False,
     test: bool = False,
     filter_partitions: Optional[List[int]] = None,
+    read_intervals: Optional[List[hl.utils.Interval]] = None,
     chrom: Optional[Union[str, List[str], Set[str]]] = None,
     autosomes_only: bool = False,
     sex_chr_only: bool = False,
@@ -713,6 +713,14 @@ def get_gnomad_v5_genomes_vds(
     :param test: Whether to use the test VDS instead of the full v4 genomes VDS.
     :param filter_partitions: Optional argument to filter the VDS to specific partitions
         in the provided list.
+    :param read_intervals: Optional list of locus intervals passed through to
+        ``get_gnomad_v3_vds`` / ``hl.vds.read_vds`` at read time. Creates one VDS
+        partition per interval so the VDS can be co-partitioned with another table
+        read on the same intervals (a shuffle-free join). Unlike ``filter_intervals``,
+        reference blocks are kept by start locus, so a block that starts before an
+        interval and extends into it is dropped: widen each contig's leading interval
+        by ``ref_block_max_length - 1`` (see ``_expand_leading_edges`` in
+        compute_coverage.py). Mutually exclusive with ``filter_partitions``.
     :param chrom: Optional argument to filter the VDS to a specific chromosome(s).
     :param autosomes_only: Whether to filter the VDS to autosomes only. Default is
         False.
@@ -745,6 +753,7 @@ def get_gnomad_v5_genomes_vds(
         samples_meta=False,
         test=test,
         filter_partitions=filter_partitions,
+        read_intervals=read_intervals,
         chrom=chrom,
         autosomes_only=autosomes_only,
         sex_chr_only=sex_chr_only,
