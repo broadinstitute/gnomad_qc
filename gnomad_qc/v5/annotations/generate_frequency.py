@@ -3332,8 +3332,8 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         type=str,
         default=None,
         help=(
-            "Cores per QoB worker job. Hail Batch accepts fractional values (e.g."
-            " '0.5'); passed through to hl.init as a string."
+            "Cores per QoB worker job. Hail Batch requires 1, 2, 4, or 8 for JVM"
+            " jobs (fractional cores are rejected with a 400)."
         ),
     )
     batch_group.add_argument(
@@ -3391,8 +3391,10 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         type=str,
         default=None,
         help=(
-            "Relay: cores per nested-QoB worker job (fractional allowed, e.g. '0.5')."
-            " Default None (Hail's default, 1)."
+            "Relay: cores per nested-QoB worker job. Hail Batch requires 1, 2, 4, or 8"
+            " for JVM jobs (a fractional value is rejected with a 400; measured"
+            " 2026-09-30). The chunk tasks are CPU-bound, so more cores per worker"
+            " do not lower cost. Default None (Hail's default, 1)."
         ),
     )
     fanout_group.add_argument(
