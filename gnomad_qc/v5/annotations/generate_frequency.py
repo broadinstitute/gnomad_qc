@@ -335,7 +335,12 @@ def _load_release_aou_vds(
         chrom=chrom,
         environment=environment,
     )
-    keep = hl.Table.parallelize([hl.struct(s=s) for s in release], key="s")
+    # One literal array mapped to structs (as hl.vds.filter_samples does), NOT a Python
+    # list of 365k hl.struct objects: the latter builds a 365k-node expression in the
+    # client and OOM-kills a 0.5-core relay container (measured 2026-09-30).
+    keep = hl.Table.parallelize(
+        hl.literal(release, "array<str>").map(lambda s: hl.struct(s=s)), key="s"
+    )
     vmt = vds.variant_data
     vmt = vmt.filter_cols(hl.is_defined(keep[vmt.col_key]))
     return hl.vds.VariantDataset(vds.reference_data, vmt)
