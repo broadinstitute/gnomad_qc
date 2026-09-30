@@ -60,7 +60,6 @@ from gnomad.resources.grch38.gnomad import GEN_ANC_GROUPS_TO_REMOVE_FOR_GRPMAX
 from gnomad.sample_qc.sex import adjusted_sex_ploidy_expr
 from gnomad.utils.annotations import (
     age_hists_expr,
-    agg_by_strata,
     bi_allelic_site_inbreeding_expr,
     compute_freq_by_strata,
     expand_strata_array_from_leaves,
@@ -364,13 +363,13 @@ def _prepare_aou_vds(
     """
     Prepare the AoU variant data for the all-sites-AN frequency calculation.
 
-    Keeps sex karyotype and age from the ``meta`` column (``get_aou_vds(annotate_meta=
-    True)``), adjusts sex ploidy, annotates adj, splits multi-allelics, and sets the
-    strata globals from the group membership HT ``compute_coverage.py`` built the
-    all-sites AN with. Order matters: ploidy -> adj -> split, so adj is computed on the
-    local (``LGT``/``LAD``) fields.
+    Joins sex karyotype and age onto the columns from a small meta view
+    (:func:`_aou_release_meta_small`), adjusts sex ploidy, annotates adj, splits
+    multi-allelics, and sets the strata globals from the group membership HT
+    ``compute_coverage.py`` built the all-sites AN with. Order matters: ploidy ->
+    adj -> split, so adj is computed on the local (``LGT``/``LAD``) fields.
 
-    :param aou_vds: AoU VariantDataset with the ``meta`` column annotation.
+    :param aou_vds: AoU VariantDataset (release samples).
     :param test: Whether running in test mode.
     :param environment: Environment being used. Default is "batch". Must be one of "rwb"
         or "batch".
@@ -384,7 +383,7 @@ def _prepare_aou_vds(
     aou_vmt = aou_vds.variant_data
     # The group membership HT compute_coverage built the all-sites AN with (its
     # cell-reduced form when present); freq's strata must match the AN's. Only its
-    # globals are used here -- agg_by_strata joins the membership itself.
+    # globals are used here -- the aggregation step joins the membership itself.
     logger.info(
         "Loading AoU group membership table for variant frequency stratification..."
     )
@@ -421,7 +420,7 @@ def _prepare_aou_vds(
     # Age-distribution global comes from the sample metadata table (one scan of the
     # sample-keyed meta table), NOT aggregate_cols on the prepared variant MT -- the
     # latter would force a full variant-MT pass per downstream eager action. Set as a
-    # literal global, so it survives agg_by_strata.
+    # literal global, so it survives the aggregation step.
     if age_distribution is None:
         age_distribution = _aou_age_distribution(meta_small)
     # The cells HT keeps the full strata list under the `_full` globals.
@@ -433,6 +432,89 @@ def _prepare_aou_vds(
         ),
         age_distribution=age_distribution,
         downsamplings=gg.downsamplings,
+    )
+
+
+def _sparse_strata_and_hists(
+    mt: hl.MatrixTable, group_membership_ht: hl.Table
+) -> hl.Table:
+    """
+    Aggregate AC / homozygote_count per stratum and the histograms over defined entries only.
+
+    Output-identical to ``agg_by_strata`` over the same MatrixTable plus
+    ``mt_hist_fields``, but each row visits only its defined entries. VDS variant data
+    stores an entry only for samples with a non-reference call, so a row's entries
+    array (one slot per sample, ~365k) is ~99.9% missing: the median variant has 3
+    carriers. Aggregating over the full array walks every slot once per aggregation
+    pass; here the array is compacted once and every aggregator runs over the
+    carriers.
+
+    Semantics reproduced exactly:
+      - a call is counted in each stratum its sample belongs to; for adj strata only
+        when ``adj`` is True (a missing ``adj`` counts as False, as ``hl.agg.filter``
+        does);
+      - ``AC`` = sum of alt alleles, ``homozygote_count`` = number of hom-var calls
+        (missing genotypes contribute nothing, as with ``hl.agg.sum`` /
+        ``count_where``);
+      - the histograms come from the same ``qual_hist_expr`` / ``age_hists_expr``
+        expressions as :func:`mt_hist_fields`, so binning is unchanged.
+
+    :param mt: Prepared, split variant MatrixTable with entry fields ``GT``, ``GQ``,
+        ``AD``, ``adj`` and column field ``age``.
+    :param group_membership_ht: Group membership HT (full or cells); its
+        ``group_membership`` array and ``freq_meta`` global define the strata.
+    :return: Table keyed like ``mt`` with row fields ``hist_fields``, ``AC``,
+        ``homozygote_count`` (arrays over the HT's strata) and ``mt``'s globals.
+    """
+    freq_meta = [dict(m) for m in hl.eval(group_membership_ht.freq_meta)]
+    n_groups = len(freq_meta)
+    adj_groups = hl.literal([m.get("group", "NA") == "adj" for m in freq_meta])
+    # Per sample: the indices of the strata it belongs to.
+    gm = group_membership_ht.select(
+        strata=hl.enumerate(group_membership_ht.group_membership)
+        .filter(lambda t: t[1])
+        .map(lambda t: t[0])
+    )
+    mt = mt.annotate_cols(strata=gm[mt.col_key].strata)
+    lt = mt.localize_entries("entries", "cols")
+    # Compact to the defined entries, carrying each carrier's age and the strata its
+    # call is counted in (raw strata always, adj strata only when the call is adj).
+    carriers = (
+        hl.enumerate(lt.entries)
+        .filter(lambda t: hl.is_defined(t[1]))
+        .map(
+            lambda t: t[1].annotate(
+                age=lt.cols[t[0]].age,
+                counted_in=lt.cols[t[0]].strata.filter(
+                    lambda g: ~adj_groups[g] | hl.coalesce(t[1].adj, False)
+                ),
+            )
+        )
+    )
+    empty = hl.struct(AC=hl.int64(0), homozygote_count=hl.int64(0))
+    lt = lt.annotate(
+        hist_fields=carriers.aggregate(lambda c: mt_hist_fields(c)),
+        _by_stratum=carriers.aggregate(
+            lambda c: hl.agg.explode(
+                lambda g: hl.agg.group_by(
+                    g,
+                    hl.struct(
+                        AC=hl.agg.sum(c.GT.n_alt_alleles()),
+                        homozygote_count=hl.agg.count_where(c.GT.is_hom_var()),
+                    ),
+                ),
+                c.counted_in,
+            )
+        ),
+    )
+    lt = lt.annotate(
+        AC=hl.range(n_groups).map(lambda g: lt._by_stratum.get(g, empty).AC),
+        homozygote_count=hl.range(n_groups).map(
+            lambda g: lt._by_stratum.get(g, empty).homozygote_count
+        ),
+    )
+    return lt.select("hist_fields", "AC", "homozygote_count").select_globals(
+        *[g for g in lt.globals.dtype if g != "cols"]
     )
 
 
@@ -482,52 +564,28 @@ def _calculate_aou_frequencies_and_hists_using_all_sites_ans(
         all_sites_an_ht = hl.filter_intervals(
             all_sites_an_ht, [hl.parse_locus_interval(chrom)]
         )
-    aou_variant_mt = aou_variant_mt.annotate_rows(
-        hist_fields=mt_hist_fields(aou_variant_mt)
-    )
-    # Drop raw_qual_hists HERE -- before agg_by_strata and the checkpoint below -- so
-    # Hail prunes its 5 histogram aggregators from the aggregation. Dropping it only in
-    # the final select (after the checkpoint) does NOT help: the checkpoint is a
-    # materialization barrier, so the raw aggregators would still be computed over
-    # ~245k samples per variant and written to the checkpoint, then discarded. Only the
-    # adj qual_hists is kept in v5 (raw_qual_hists was approved for removal).
-    aou_variant_mt = aou_variant_mt.annotate_rows(
-        hist_fields=aou_variant_mt.hist_fields.annotate(
-            qual_hists=aou_variant_mt.hist_fields.qual_hists.drop("raw_qual_hists")
-        )
-    )
-
     logger.info("Annotating frequencies with all sites ANs...")
     # Read the SAME group membership the all-sites-AN HT was built with, so the AC /
     # homozygote_count strata line up with the AN array on the join below. That is the
-    # cell-reduced HT when compute_coverage wrote one: agg_by_strata then aggregates
-    # per cell (each sample is in one adj cell and one raw cell, so ~2 index visits per
-    # sample per variant instead of one per stratum it belongs to), and the cells are
-    # summed back to the full strata below using the decomposition globals the HT
-    # carries. The cells HT is written at 10 partitions; the full HT is ~330, so it is
-    # coalesced here (materialized -- a lazy naive_coalesce does not propagate through
-    # the key-indexed join).
+    # cell-reduced HT when compute_coverage wrote one (each sample in one adj cell and
+    # one raw cell); the cells are summed back to the full strata below using the
+    # decomposition globals the HT carries. The full HT is ~330 partitions, so it is
+    # coalesced lazily to 10 before the column join.
     group_membership_ht, reduced = _aou_group_membership_ht(
         test=test, environment=environment
     )
     if not reduced:
-        group_membership_ht = group_membership_ht.naive_coalesce(10).checkpoint(
-            new_temp_file("group_membership_coalesced", "ht")
-        )
+        group_membership_ht = group_membership_ht.naive_coalesce(10)
 
-    aou_variant_freq_ht = agg_by_strata(
-        aou_variant_mt.select_entries(
-            "GT",
-            "adj",
-            n_alt_alleles=aou_variant_mt.GT.n_alt_alleles(),
-            is_hom_var=aou_variant_mt.GT.is_hom_var(),
-        ),
-        {
-            "AC": (lambda t: t.n_alt_alleles, hl.agg.sum),
-            "homozygote_count": (lambda t: t.is_hom_var, hl.agg.count_where),
-        },
-        group_membership_ht=group_membership_ht,
-        select_fields=["hist_fields"],
+    # Per-stratum AC / homozygote_count and the histograms, aggregated over each row's
+    # defined entries only (see _sparse_strata_and_hists). Only the adj qual_hists is
+    # kept in v5 (raw_qual_hists was approved for removal); dropping it here, before the
+    # checkpoint, lets Hail prune its aggregators.
+    aou_variant_freq_ht = _sparse_strata_and_hists(aou_variant_mt, group_membership_ht)
+    aou_variant_freq_ht = aou_variant_freq_ht.annotate(
+        hist_fields=aou_variant_freq_ht.hist_fields.annotate(
+            qual_hists=aou_variant_freq_ht.hist_fields.qual_hists.drop("raw_qual_hists")
+        )
     )
 
     # With the cells HT, AC / homozygote_count come back over cells only; expand each
@@ -569,7 +627,7 @@ def _calculate_aou_frequencies_and_hists_using_all_sites_ans(
 
     # Checkpoint the per-variant aggregated freq HT (AC/homozygote_count arrays +
     # hist_fields) before the AN join, freq-struct build, and write. Running the whole
-    # pipeline (split_multi -> qual/age hists -> agg_by_strata -> AN left-join -> write)
+    # pipeline (split_multi -> sparse hists + strata aggregation -> AN left-join -> write)
     # as ONE fused query compiles to a ~3,500-node IR and a huge volume of generated JVM
     # bytecode on the DRIVER, OOMing a standard (~8GB) driver at write time even though
     # the data itself is tiny (~130MB RegionPool). Materializing this compact
