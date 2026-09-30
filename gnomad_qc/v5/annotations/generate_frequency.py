@@ -287,65 +287,6 @@ def _aou_age_distribution(meta_small: hl.Table):
     return meta_small.aggregate(hl.agg.hist(meta_small.age, 30, 80, 10))
 
 
-def _load_release_aou_vds(
-    environment: str,
-    test_vds: bool = False,
-    filter_partitions: list[int] | None = None,
-    read_intervals: list[hl.utils.Interval] | None = None,
-    chrom: str | None = None,
-) -> hl.vds.VariantDataset:
-    """
-    Load the AoU VDS restricted to the release samples, with no per-row bookkeeping.
-
-    ``get_aou_vds(release_only=True)`` removes the hard-filtered samples with
-    ``remove_dead_alleles=True`` and applies the release filter through
-    ``hl.vds.filter_samples``; each of those walks every row's full sample array (a
-    dead-allele count plus an LA/LAD rewrite, and an "any entries left" count). The
-    release samples are already free of hard-filtered samples, and the frequency
-    calculation drops rows with raw AC 0 over the release samples anyway, so neither
-    pass changes the output. Here the columns are filtered directly to the release
-    list (the permanent JSON ``write_aou_vds_sample_jsons`` writes) and rows are left
-    alone; the empty ones fall out at the raw-AC filter.
-
-    :param environment: Compute environment.
-    :param test_vds: Whether to load the test VDS.
-    :param filter_partitions: Optional partition indices to read.
-    :param read_intervals: Optional locus intervals to prune the read to.
-    :param chrom: Optional single contig.
-    :return: VDS whose variant data holds only release samples.
-    """
-    from gnomad_qc.v5.resources.meta import load_aou_sample_artifact_json
-
-    release = load_aou_sample_artifact_json("release_samples.json", environment)
-    if release is None:
-        raise FileNotFoundError(
-            "release_samples.json is missing; run write_aou_vds_sample_jsons first."
-        )
-    vds = get_aou_vds(
-        release_only=False,
-        remove_hard_filtered_samples=False,
-        remove_dead_alleles=False,
-        # Prefix colliding sample IDs so they match the post-prefix release list.
-        add_project_prefix=True,
-        annotate_meta=False,
-        log_sample_counts=False,
-        test=test_vds,
-        filter_partitions=filter_partitions,
-        read_intervals=read_intervals,
-        chrom=chrom,
-        environment=environment,
-    )
-    # One literal array mapped to structs (as hl.vds.filter_samples does), NOT a Python
-    # list of 365k hl.struct objects: the latter builds a 365k-node expression in the
-    # client and OOM-kills a 0.5-core relay container (measured 2026-09-30).
-    keep = hl.Table.parallelize(
-        hl.literal(release, "array<str>").map(lambda s: hl.struct(s=s)), key="s"
-    )
-    vmt = vds.variant_data
-    vmt = vmt.filter_cols(hl.is_defined(keep[vmt.col_key]))
-    return hl.vds.VariantDataset(vds.reference_data, vmt)
-
-
 def _aou_group_membership_ht(
     test: bool = False, environment: str = "batch"
 ) -> tuple[hl.Table, bool]:
@@ -377,6 +318,35 @@ def _aou_group_membership_ht(
         gm_path,
     )
     return hl.read_table(gm_path), False
+
+
+def _min_rep_biallelic_rows(vmt: hl.MatrixTable) -> hl.MatrixTable:
+    """
+    Minimal-represent the bi-allelic rows of the variant data before ``split_multi``.
+
+    ``get_aou_vds`` removes the hard-filtered samples with ``remove_dead_alleles=True``.
+    When that drops an alternate allele from a multi-allelic row, the row becomes
+    bi-allelic but its remaining alleles can still share the dropped allele's prefix
+    or suffix (e.g. ``['TA', 'CA']`` left behind by ``['TA', 'CA', 'T']``).
+    ``hl.vds.split_multi`` minimal-represents only rows with three or more alleles,
+    so such a row would keep a non-minimal key that never matches another table's
+    (15 of 311k rows on the chr22 test region, 2026-09-30). Give bi-allelic rows the
+    same treatment ``split_multi`` gives multi-allelic ones: ``hl.min_rep`` the
+    allele pair and drop the row if its locus would move (``filter_changed_loci``).
+    Entry fields are untouched -- the allele indices do not change, only the allele
+    strings -- and the re-key asserts sortedness exactly as ``split_multi`` does.
+
+    :param vmt: Variant data keyed by ``locus, alleles``.
+    :return: Variant data with every bi-allelic row in minimal representation.
+    """
+    vmt = vmt.key_rows_by("locus")
+    mr = hl.min_rep(vmt.locus, vmt.alleles)
+    biallelic = hl.len(vmt.alleles) == 2
+    vmt = vmt.filter_rows(~biallelic | (mr.locus == vmt.locus))
+    mr = hl.min_rep(vmt.locus, vmt.alleles)
+    biallelic = hl.len(vmt.alleles) == 2
+    vmt = vmt.annotate_rows(alleles=hl.if_else(biallelic, mr.alleles, vmt.alleles))
+    return vmt._key_rows_by_assert_sorted("locus", "alleles")
 
 
 def _spans_sex_chromosome(
@@ -471,6 +441,7 @@ def _prepare_aou_vds(
     # AoU adj uses the shared helper (also used by coverage and variant QC):
     # the usual gnomAD cutoffs with DP approximated as sum(LAD).
     aou_vmt = annotate_adj_no_dp(aou_vmt)
+    aou_vmt = _min_rep_biallelic_rows(aou_vmt)
     aou_vds = hl.vds.VariantDataset(aou_vds.reference_data, aou_vmt)
     aou_vds = hl.vds.split_multi(aou_vds, filter_changed_loci=True)
     aou_vmt = aou_vds.variant_data
@@ -684,16 +655,6 @@ def _calculate_aou_frequencies_and_hists_using_all_sites_ans(
             freq_meta_sample_count=freq_meta_sample_count_full,
         )
 
-    # Keep only rows with at least one alt allele among the release samples. This is
-    # the row-set rule that makes the loader's per-row passes unnecessary (see
-    # _load_release_aou_vds): alleles carried only by non-release samples, which used
-    # to appear as AC 0 rows, are dropped.
-    freq_meta_now = [dict(m) for m in hl.eval(aou_variant_freq_ht.freq_meta)]
-    raw_idx = freq_meta_now.index({"group": "raw"})
-    aou_variant_freq_ht = aou_variant_freq_ht.filter(
-        aou_variant_freq_ht.AC[raw_idx] > 0
-    )
-
     # Checkpoint the per-variant aggregated freq HT (AC/homozygote_count arrays +
     # hist_fields) before the AN join, freq-struct build, and write. Running the whole
     # pipeline (split_multi -> sparse hists + strata aggregation -> AN left-join -> write)
@@ -799,18 +760,21 @@ def process_aou_dataset(
 
     # --test-region scopes via read-time interval pruning (read_intervals), NOT a
     # post-read filter_intervals: the latter leaves the variant_data read fanned across
-    # thousands of (empty) partitions for a small region. Columns are filtered to the
-    # release samples with no per-row passes (see _load_release_aou_vds).
-    aou_vds = _load_release_aou_vds(
-        environment,
-        test_vds=test_vds,
+    # thousands of (empty) partitions for a small region. sex_karyotype / age come from
+    # the small meta table joined in _prepare_aou_vds, not annotate_meta.
+    aou_vds = get_aou_vds(
+        annotate_meta=False,
+        release_only=True,
+        test=test_vds,
         filter_partitions=(
             list(range(test_partitions))
             if (test_partitions and not region_intervals)
             else None
         ),
-        read_intervals=region_intervals,
         chrom=chrom,
+        read_intervals=region_intervals,
+        log_sample_counts=False,
+        environment=environment,
     )
     aou_vmt = _prepare_aou_vds(
         aou_vds,
@@ -2539,14 +2503,17 @@ def _run_aou_freq_chunk_all_sites_ans(args: argparse.Namespace) -> None:
         logger.info("Auto-derived --chunk-output: %s", output_path)
 
     # (3) Read the AoU VDS pruned to this chunk's sub-intervals (no straddle-widening --
-    # all-sites-AN is variant-only), columns filtered to the release samples with no
-    # per-row passes (see _load_release_aou_vds); sex_karyotype / age come from the
-    # small meta table joined in _prepare_aou_vds.
-    vds = _load_release_aou_vds(
-        environment,
-        test_vds=args.test_vds,
+    # all-sites-AN is variant-only). get_aou_vds reads the permanent collision /
+    # release sample JSONs itself, so the release filter costs no table scan per chunk;
+    # sex_karyotype / age come from the small meta table joined in _prepare_aou_vds.
+    vds = get_aou_vds(
+        annotate_meta=False,
+        release_only=True,
+        test=args.test_vds,
         read_intervals=sub_intervals,
         chrom=args.chrom,
+        log_sample_counts=False,
+        environment=environment,
     )
 
     # (4) Prepare (ploidy adjust -> adj -> split, LGT-preserving). A chunk never
