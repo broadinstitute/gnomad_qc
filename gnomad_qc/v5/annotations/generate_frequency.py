@@ -257,20 +257,35 @@ def mt_hist_fields(mt: hl.MatrixTable) -> hl.StructExpression:
     )
 
 
-def _aou_age_distribution(environment: str = "batch"):
+def _aou_release_meta_small(environment: str = "batch") -> hl.Table:
     """
-    Return the AoU release age-distribution histogram (over ``project=='aou' & release``).
+    Return sex karyotype and age for the AoU release samples as a 10-partition Table.
 
-    One aggregate over the sample meta table (~365k rows). It is chunk-independent, so
-    each fan-out chunk recomputes the same value; that costs one small aggregate per
-    chunk, which is cheaper than maintaining a precomputed artifact.
+    The sample meta HT is ~330 partitions for ~365k rows, so joining or aggregating it
+    directly fans ~330 tiny QoB tasks per use. Selecting the two fields freq needs and
+    coalescing (lazily; nothing is written) cuts that to 10 tasks per use.
 
     :param environment: Environment to use. Default is "batch".
-    :return: Age histogram struct over ``project == 'aou' & release`` samples.
+    :return: Table keyed by ``s`` with ``sex_karyotype`` and ``age``.
     """
     meta_ht = meta(data_type="genomes", environment=environment).ht()
     meta_ht = meta_ht.filter((meta_ht.project_meta.project == "aou") & meta_ht.release)
-    return meta_ht.aggregate(hl.agg.hist(meta_ht.project_meta.age, 30, 80, 10))
+    return meta_ht.select("sex_karyotype", age=meta_ht.project_meta.age).naive_coalesce(
+        10
+    )
+
+
+def _aou_age_distribution(meta_small: hl.Table):
+    """
+    Return the AoU release age-distribution histogram.
+
+    Chunk-independent, so each fan-out chunk recomputes the same value; over the
+    10-partition table from :func:`_aou_release_meta_small` that is one small aggregate.
+
+    :param meta_small: Table from :func:`_aou_release_meta_small`.
+    :return: Age histogram struct over the AoU release samples.
+    """
+    return meta_small.aggregate(hl.agg.hist(meta_small.age, 30, 80, 10))
 
 
 def _aou_group_membership_ht(
@@ -378,10 +393,12 @@ def _prepare_aou_vds(
     )
 
     logger.info("Selecting cols for frequency stratification...")
-    # Only sex_karyotype (sex-ploidy adjustment) and age (age_hists) are read off the
-    # columns.
+    # Only sex_karyotype (sex-ploidy adjustment) and age (age_hists) are needed on the
+    # columns; join them from the small coalesced meta table, not the 330-partition one.
+    meta_small = _aou_release_meta_small(environment)
+    meta_indexed = meta_small[aou_vmt.col_key]
     aou_vmt = aou_vmt.select_cols(
-        sex_karyotype=aou_vmt.meta.sex_karyotype, age=aou_vmt.meta.project_meta.age
+        sex_karyotype=meta_indexed.sex_karyotype, age=meta_indexed.age
     )
     if skip_sex_ploidy:
         logger.info("Read scope has no chrX/chrY loci; skipping sex-ploidy adjustment.")
@@ -406,7 +423,7 @@ def _prepare_aou_vds(
     # latter would force a full variant-MT pass per downstream eager action. Set as a
     # literal global, so it survives agg_by_strata.
     if age_distribution is None:
-        age_distribution = _aou_age_distribution(environment)
+        age_distribution = _aou_age_distribution(meta_small)
     # The cells HT keeps the full strata list under the `_full` globals.
     gg = group_membership_ht.index_globals()
     return aou_vmt.select_globals(
@@ -654,7 +671,8 @@ def process_aou_dataset(
         )
 
     aou_vds = get_aou_vds(
-        annotate_meta=True,
+        # sex_karyotype / age are joined from a small meta table in _prepare_aou_vds.
+        annotate_meta=False,
         release_only=True,
         test=test_vds,
         # --test-region scopes via read-time interval pruning (read_intervals), NOT
@@ -2400,9 +2418,10 @@ def _run_aou_freq_chunk_all_sites_ans(args: argparse.Namespace) -> None:
     # (3) Read the AoU VDS pruned to this chunk's sub-intervals (no straddle-widening --
     # all-sites-AN is variant-only). Skip the count_cols logging scans. get_aou_vds
     # reads the permanent collision / release sample JSONs itself, so the release
-    # filter costs no table scan per chunk; the meta join supplies sex_karyotype/age.
+    # filter costs no table scan per chunk; sex_karyotype / age come from the small
+    # meta table joined in _prepare_aou_vds (the full meta join fans ~330 tasks).
     vds = get_aou_vds(
-        annotate_meta=True,
+        annotate_meta=False,
         release_only=True,
         test=args.test_vds,
         read_intervals=sub_intervals,
