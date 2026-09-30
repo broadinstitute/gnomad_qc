@@ -97,7 +97,7 @@ from gnomad_qc.v5.resources.basics import (
     get_logging_path,
     qc_temp_prefix,
 )
-from gnomad_qc.v5.resources.meta import get_sample_id_collisions, meta
+from gnomad_qc.v5.resources.meta import meta
 
 # Use force=True so that our root handler wins over any handler that
 # Hail / hailtop / absl / other deps installed during their imports above.
@@ -257,82 +257,20 @@ def mt_hist_fields(mt: hl.MatrixTable) -> hl.StructExpression:
     )
 
 
-def _aou_age_distribution_path(environment: str, test: bool = False) -> str:
-    """
-    Return the path to the precomputed AoU age-distribution histogram JSON (30-day).
-
-    :param environment: Compute environment.
-    :param test: If True, return the test-scoped path.
-    :return: GCS path to the age-distribution JSON.
-    """
-    name = "aou_age_distribution_test.json" if test else "aou_age_distribution.json"
-    return f"{qc_temp_prefix(environment=environment, days=30)}{name}"
-
-
-def _aou_age_distribution(environment: str = "batch", test: bool = False):
+def _aou_age_distribution(environment: str = "batch"):
     """
     Return the AoU release age-distribution histogram (over ``project=='aou' & release``).
 
-    Precomputed once by ``--write-age-distribution`` and read here, so the fan-out worker
-    never re-aggregates the ~330-partition meta per chunk.
+    One aggregate over the sample meta table (~365k rows). It is chunk-independent, so
+    each fan-out chunk recomputes the same value; that costs one small aggregate per
+    chunk, which is cheaper than maintaining a precomputed artifact.
 
     :param environment: Environment to use. Default is "batch".
-    :param test: Whether to read the test-scoped precomputed path.
     :return: Age histogram struct over ``project == 'aou' & release`` samples.
     """
-    # Chunk-independent: read the value precomputed by --write-age-distribution so the
-    # fan-out worker never re-aggregates the ~330-partition meta per chunk. Rebuild with
-    # hl.agg.hist's types (float64 edges, int64 counts) so it still merges with gnomAD's
-    # age_distribution. Fall back to computing it directly if the JSON is absent.
-    path = _aou_age_distribution_path(environment, test)
-    if file_exists(path):
-        with hfs.open(path) as f:
-            d = json.load(f)
-        return hl.struct(
-            bin_edges=hl.literal(d["bin_edges"], "array<float64>"),
-            bin_freq=hl.literal(d["bin_freq"], "array<int64>"),
-            n_smaller=hl.int64(d["n_smaller"]),
-            n_larger=hl.int64(d["n_larger"]),
-        )
     meta_ht = meta(data_type="genomes", environment=environment).ht()
     meta_ht = meta_ht.filter((meta_ht.project_meta.project == "aou") & meta_ht.release)
     return meta_ht.aggregate(hl.agg.hist(meta_ht.project_meta.age, 30, 80, 10))
-
-
-def _aou_sample_artifact_path(name: str, environment: str, test: bool = False) -> str:
-    """
-    Return the path to a chunk-invariant sample-level artifact (30-day storage).
-
-    These are written once per run by ``--write-sample-artifacts`` so chunk workers
-    read a small file instead of each rescanning the ~330-partition sample tables:
-    ``collisions.json`` (colliding sample IDs), ``release_samples.json`` (AoU release
-    sample IDs), and ``meta_small.ht`` (10-partition sex_karyotype/age). Chunk workers
-    fall back to computing each one when its file is absent. Group membership is not
-    copied here: freq reads the 10-partition cells HT ``compute_coverage.py`` writes.
-
-    :param name: Artifact file name (with extension).
-    :param environment: Compute environment.
-    :param test: If True, return the test-scoped path.
-    :return: GCS path to the artifact.
-    """
-    scope = "test" if test else "full"
-    return f"{qc_temp_prefix(environment=environment, days=30)}aou_sample_artifacts_{scope}/{name}"
-
-
-def _read_sample_artifact_json(name: str, environment: str, test: bool = False):
-    """
-    Return the parsed JSON sample artifact, or None when it has not been precomputed.
-
-    :param name: Artifact file name (with extension).
-    :param environment: Compute environment.
-    :param test: If True, read the test-scoped path.
-    :return: Parsed JSON value, or None if the file is absent.
-    """
-    path = _aou_sample_artifact_path(name, environment, test)
-    if not file_exists(path):
-        return None
-    with hfs.open(path) as f:
-        return json.load(f)
 
 
 def _aou_group_membership_ht(
@@ -411,12 +349,13 @@ def _prepare_aou_vds(
     """
     Prepare the AoU variant data for the all-sites-AN frequency calculation.
 
-    Joins sex karyotype and age onto the columns, adjusts sex ploidy, annotates adj,
-    splits multi-allelics, and sets the strata globals from the group membership HT
-    ``compute_coverage.py`` built the all-sites AN with. Order matters: ploidy ->
-    adj -> split, so adj is computed on the local (``LGT``/``LAD``) fields.
+    Keeps sex karyotype and age from the ``meta`` column (``get_aou_vds(annotate_meta=
+    True)``), adjusts sex ploidy, annotates adj, splits multi-allelics, and sets the
+    strata globals from the group membership HT ``compute_coverage.py`` built the
+    all-sites AN with. Order matters: ploidy -> adj -> split, so adj is computed on the
+    local (``LGT``/``LAD``) fields.
 
-    :param aou_vds: AoU VariantDataset.
+    :param aou_vds: AoU VariantDataset with the ``meta`` column annotation.
     :param test: Whether running in test mode.
     :param environment: Environment being used. Default is "batch". Must be one of "rwb"
         or "batch".
@@ -440,22 +379,9 @@ def _prepare_aou_vds(
 
     logger.info("Selecting cols for frequency stratification...")
     # Only sex_karyotype (sex-ploidy adjustment) and age (age_hists) are read off the
-    # columns. The full sample meta is ~330 partitions (365k samples); joining it onto
-    # the columns fans every downstream collect to ~330 tasks, so pull the two fields
-    # into a small coalesced HT and join that instead.
-    meta_small_path = _aou_sample_artifact_path("meta_small.ht", environment, test)
-    if file_exists(f"{meta_small_path}/_SUCCESS"):
-        meta_small = hl.read_table(meta_small_path)
-    else:
-        meta_ht = meta(data_type="genomes", environment=environment).ht()
-        meta_small = (
-            meta_ht.select("sex_karyotype", age=meta_ht.project_meta.age)
-            .naive_coalesce(10)
-            .checkpoint(new_temp_file("aou_meta_small", "ht"))
-        )
-    meta_indexed = meta_small[aou_vmt.col_key]
+    # columns.
     aou_vmt = aou_vmt.select_cols(
-        sex_karyotype=meta_indexed.sex_karyotype, age=meta_indexed.age
+        sex_karyotype=aou_vmt.meta.sex_karyotype, age=aou_vmt.meta.project_meta.age
     )
     if skip_sex_ploidy:
         logger.info("Read scope has no chrX/chrY loci; skipping sex-ploidy adjustment.")
@@ -480,7 +406,7 @@ def _prepare_aou_vds(
     # latter would force a full variant-MT pass per downstream eager action. Set as a
     # literal global, so it survives agg_by_strata.
     if age_distribution is None:
-        age_distribution = _aou_age_distribution(environment, test)
+        age_distribution = _aou_age_distribution(environment)
     # The cells HT keeps the full strata list under the `_full` globals.
     gg = group_membership_ht.index_globals()
     return aou_vmt.select_globals(
@@ -2472,23 +2398,12 @@ def _run_aou_freq_chunk_all_sites_ans(args: argparse.Namespace) -> None:
         logger.info("Auto-derived --chunk-output: %s", output_path)
 
     # (3) Read the AoU VDS pruned to this chunk's sub-intervals (no straddle-widening --
-    # all-sites-AN is variant-only; see assumption 2). Skip the count_cols
-    # logging scans. The collision set and release-sample list are precomputed by
-    # --write-sample-artifacts; without them, each chunk pays a full scan of the
-    # corresponding ~330-partition table inside get_aou_vds.
-    collisions = _read_sample_artifact_json("collisions.json", environment, test)
-    release_samples = _read_sample_artifact_json(
-        "release_samples.json", environment, test
-    )
+    # all-sites-AN is variant-only). Skip the count_cols logging scans. get_aou_vds
+    # reads the permanent collision / release sample JSONs itself, so the release
+    # filter costs no table scan per chunk; the meta join supplies sex_karyotype/age.
     vds = get_aou_vds(
-        annotate_meta=False,
-        release_only=release_samples is None,
-        filter_samples=release_samples,
-        # The release list holds post-prefix IDs, and prefixing only runs when one of
-        # release_only/annotate_meta/add_project_prefix is set -- so it must be forced
-        # on when release_only is skipped in favor of the precomputed list.
-        add_project_prefix=release_samples is not None,
-        sample_collisions=set(collisions) if collisions is not None else None,
+        annotate_meta=True,
+        release_only=True,
         test=args.test_vds,
         read_intervals=sub_intervals,
         chrom=args.chrom,
@@ -2834,62 +2749,6 @@ def main(args):
             output_path=args.merge_output,
             coalesce_to=args.merge_coalesce_to,
         )
-        return
-
-    # --write-age-distribution: aggregate the chunk-independent AoU age distribution once
-    # so chunk workers read it instead of re-aggregating the meta per chunk
-    # (needs Hail).
-    if args.write_age_distribution:
-        args.test = (
-            args.test_vds
-            or args.test_partitions is not None
-            or args.test_region is not None
-        )
-        _initialize_hail(args)
-        meta_ht = meta(data_type="genomes", environment=args.environment).ht()
-        meta_ht = meta_ht.filter(
-            (meta_ht.project_meta.project == "aou") & meta_ht.release
-        )
-        dist = meta_ht.aggregate(hl.agg.hist(meta_ht.project_meta.age, 30, 80, 10))
-        path = _aou_age_distribution_path(args.environment, args.test)
-        with hfs.open(path, "w") as f:
-            json.dump({k: dist[k] for k in dist}, f)
-        logger.info("Wrote AoU age distribution JSON: %s", path)
-        return
-
-    # --write-sample-artifacts: materialize the chunk-invariant sample artifacts once so
-    # chunk workers read small files instead of each rescanning the ~330-partition
-    # sample tables (needs Hail).
-    if args.write_sample_artifacts:
-        args.test = (
-            args.test_vds
-            or args.test_partitions is not None
-            or args.test_region is not None
-        )
-        _initialize_hail(args)
-        env = args.environment
-
-        sc_ht = get_sample_id_collisions(environment=env).ht()
-        collisions = sorted(sc_ht.aggregate(hl.agg.collect_as_set(sc_ht.s)))
-        path = _aou_sample_artifact_path("collisions.json", env, args.test)
-        with hfs.open(path, "w") as f:
-            json.dump(collisions, f)
-        logger.info("Wrote %d collision sample IDs: %s", len(collisions), path)
-
-        meta_ht = meta(data_type="genomes", environment=env).ht()
-        release_samples = meta_ht.filter(
-            (meta_ht.project_meta.project == "aou") & meta_ht.release
-        ).s.collect()
-        path = _aou_sample_artifact_path("release_samples.json", env, args.test)
-        with hfs.open(path, "w") as f:
-            json.dump(release_samples, f)
-        logger.info("Wrote %d release sample IDs: %s", len(release_samples), path)
-
-        meta_small_path = _aou_sample_artifact_path("meta_small.ht", env, args.test)
-        meta_ht.select("sex_karyotype", age=meta_ht.project_meta.age).naive_coalesce(
-            10
-        ).write(meta_small_path, overwrite=True)
-        logger.info("Wrote coalesced meta_small HT: %s", meta_small_path)
         return
 
     # --- Normal orchestrator flow ---
@@ -3408,23 +3267,6 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         "Parameters for the --process-aou Hail Batch relay fan-out and its merge.",
     )
     fanout_group.add_argument(
-        "--write-age-distribution",
-        action="store_true",
-        help=(
-            "All-sites-AN relay fan-out: aggregate the AoU release age distribution ONCE"
-            " and write it to a small JSON the chunk workers read (instead of each chunk"
-            " re-aggregating the ~330-partition meta). Run before the fan-out."
-        ),
-    )
-    fanout_group.add_argument(
-        "--write-sample-artifacts",
-        action="store_true",
-        help=(
-            "All-sites-AN relay fan-out: write the chunk-invariant sample artifacts ONCE"
-            " (collision-sample JSON, release-sample JSON, 10-partition meta_small HT)"
-        ),
-    )
-    fanout_group.add_argument(
         "--wave-size",
         type=int,
         default=1000,
@@ -3436,15 +3278,20 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
     fanout_group.add_argument(
         "--chunk-driver-cores",
         type=int,
-        default=2,
-        help="All-sites-AN relay: nested-QoB driver cores per chunk. Default 2.",
+        default=1,
+        help=(
+            "Relay: nested-QoB driver cores per chunk. The driver only builds the IR"
+            " and waits on the workers, so 1 core suffices. Default 1."
+        ),
     )
     fanout_group.add_argument(
         "--chunk-driver-memory",
         type=str,
-        default="standard",
+        default="highmem",
         help=(
-            "All-sites-AN relay: nested-QoB driver memory per chunk. Default 'standard'."
+            "Relay: nested-QoB driver memory per chunk. 1-core 'highmem' (6.5 GB) is"
+            " the measured minimum: 1-core 'standard' (4 GB) OOMs while lowering the"
+            " fused compute IR. Default 'highmem'."
         ),
     )
     fanout_group.add_argument(
@@ -3521,18 +3368,18 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
     fanout_group.add_argument(
         "--chunk-cpu",
         type=float,
-        default=2,
+        default=0.5,
         help=(
-            "CPU request per chunk job; fractional values (e.g. 0.5) are allowed --"
-            " the relay coordinator is a QoB client that mostly waits on the nested"
-            " batch. Default 2."
+            "CPU request per chunk relay job; fractional values are allowed -- the"
+            " relay is a QoB client that builds the query and waits on the nested"
+            " batch, and 0.5 core is the measured working size. Default 0.5."
         ),
     )
     fanout_group.add_argument(
         "--chunk-memory",
         type=str,
-        default="highmem",
-        help="Memory preset per chunk job. Default 'highmem'.",
+        default="standard",
+        help="Memory preset per chunk relay job. Default 'standard'.",
     )
     fanout_group.add_argument(
         "--chunk-storage",
