@@ -1877,6 +1877,8 @@ def _build_freq_relay_common_flags(args: argparse.Namespace, *, chunk: bool) -> 
         flags.append(f"--driver-memory {args.chunk_driver_memory}")
     if args.chunk_worker_memory:
         flags.append(f"--worker-memory {args.chunk_worker_memory}")
+    if args.chunk_worker_cores:
+        flags.append(f"--worker-cores {args.chunk_worker_cores}")
     if chunk:
         flags.append(f"--read-subintervals {args.read_subintervals}")
         if args.test_region:
@@ -3327,9 +3329,12 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
     )
     batch_group.add_argument(
         "--worker-cores",
-        type=int,
+        type=str,
         default=None,
-        help="Number of cores for worker nodes.",
+        help=(
+            "Cores per QoB worker job. Hail Batch accepts fractional values (e.g."
+            " '0.5'); passed through to hl.init as a string."
+        ),
     )
     batch_group.add_argument(
         "--worker-memory",
@@ -3376,10 +3381,18 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         type=str,
         default=None,
         help=(
-            "All-sites-AN relay: nested-QoB worker memory class per chunk"
-            " ('lowmem'/'standard'/'highmem'). Chunk workers peak well under 1 GB, so"
-            " 'lowmem' is a cost-reduction candidate. Default None (Hail's default,"
-            " 'standard')."
+            "Relay: nested-QoB worker memory class per chunk ('standard'/'highmem')."
+            " Chunk workers peak under 200 MB, but Hail Batch rejects 'lowmem' for JVM"
+            " jobs. Default None (Hail's default, 'standard')."
+        ),
+    )
+    fanout_group.add_argument(
+        "--chunk-worker-cores",
+        type=str,
+        default=None,
+        help=(
+            "Relay: cores per nested-QoB worker job (fractional allowed, e.g. '0.5')."
+            " Default None (Hail's default, 1)."
         ),
     )
     fanout_group.add_argument(
