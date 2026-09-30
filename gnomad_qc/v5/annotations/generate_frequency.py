@@ -368,11 +368,45 @@ def _aou_group_membership_ht(
     return hl.read_table(gm_path), False
 
 
+def _spans_sex_chromosome(
+    intervals: list[hl.utils.Interval] | None, chrom: str | None = None
+) -> bool:
+    """
+    Return whether the read scope touches chrX or chrY.
+
+    ``adjusted_sex_ploidy_expr`` only changes genotypes on those contigs (its first
+    case returns the genotype unchanged on autosomes), so a chunk, region, or
+    ``--chrom`` scope that touches neither can skip it. Skipping saves the self-join
+    of the variant rows and columns the expression builds
+    (``annotate_and_index_source_mt_for_sex_ploidy``). An unscoped (whole-genome)
+    read is treated as spanning.
+
+    :param intervals: Locus intervals of the read scope, or None.
+    :param chrom: Single contig of the read scope, or None.
+    :return: True if the scope may include chrX or chrY.
+    """
+    if intervals:
+        rg = intervals[0].start.reference_genome
+        sex = set(rg.x_contigs) | set(rg.y_contigs)
+        order = {c: k for k, c in enumerate(rg.contigs)}
+        contigs: set[str] = set()
+        for iv in intervals:
+            contigs.update(
+                rg.contigs[order[iv.start.contig] : order[iv.end.contig] + 1]
+            )
+        return bool(contigs & sex)
+    if chrom:
+        rg = hl.get_reference("GRCh38")
+        return chrom in set(rg.x_contigs) | set(rg.y_contigs)
+    return True
+
+
 def _prepare_aou_vds(
     aou_vds: hl.vds.VariantDataset,
     test: bool = False,
     environment: str = "batch",
     age_distribution=None,
+    skip_sex_ploidy: bool = False,
 ) -> hl.MatrixTable:
     """
     Prepare the AoU variant data for the all-sites-AN frequency calculation.
@@ -388,6 +422,9 @@ def _prepare_aou_vds(
         or "batch".
     :param age_distribution: Precomputed AoU age-distribution histogram to set as the
         global. When None, computed here via ``_aou_age_distribution``.
+    :param skip_sex_ploidy: Skip the sex-ploidy adjustment. Only valid when the read
+        scope has no chrX/chrY loci (see :func:`_spans_sex_chromosome`), where the
+        adjustment is the identity. Default False.
     :return: Prepared, split AoU variant MatrixTable.
     """
     aou_vmt = aou_vds.variant_data
@@ -420,11 +457,15 @@ def _prepare_aou_vds(
     aou_vmt = aou_vmt.select_cols(
         sex_karyotype=meta_indexed.sex_karyotype, age=meta_indexed.age
     )
+    if skip_sex_ploidy:
+        logger.info("Read scope has no chrX/chrY loci; skipping sex-ploidy adjustment.")
+        lgt = aou_vmt.LGT
+    else:
+        lgt = adjusted_sex_ploidy_expr(
+            aou_vmt.locus, aou_vmt.LGT, aou_vmt.sex_karyotype
+        )
     aou_vmt = aou_vmt.select_entries(
-        LGT=adjusted_sex_ploidy_expr(aou_vmt.locus, aou_vmt.LGT, aou_vmt.sex_karyotype),
-        GQ=aou_vmt.GQ,
-        LAD=aou_vmt.LAD,
-        LA=aou_vmt.LA,
+        LGT=lgt, GQ=aou_vmt.GQ, LAD=aou_vmt.LAD, LA=aou_vmt.LA
     )
     # AoU adj uses the shared helper (also used by coverage and variant QC):
     # the usual gnomAD cutoffs with DP approximated as sum(LAD).
@@ -706,7 +747,12 @@ def process_aou_dataset(
         log_sample_counts=False,
         environment=environment,
     )
-    aou_vmt = _prepare_aou_vds(aou_vds, test=test, environment=environment)
+    aou_vmt = _prepare_aou_vds(
+        aou_vds,
+        test=test,
+        environment=environment,
+        skip_sex_ploidy=not _spans_sex_chromosome(region_intervals, chrom),
+    )
 
     logger.info("Calculating AoU frequencies and age histograms...")
     aou_freq_ht = _calculate_aou_frequencies_and_hists_using_all_sites_ans(
@@ -2450,8 +2496,14 @@ def _run_aou_freq_chunk_all_sites_ans(args: argparse.Namespace) -> None:
         environment=environment,
     )
 
-    # (4) Prepare (ploidy adjust -> adj -> split, LGT-preserving).
-    vmt = _prepare_aou_vds(vds, test=test, environment=environment)
+    # (4) Prepare (ploidy adjust -> adj -> split, LGT-preserving). A chunk never
+    # spans a contig, so an autosomal chunk skips the (identity) ploidy adjustment.
+    vmt = _prepare_aou_vds(
+        vds,
+        test=test,
+        environment=environment,
+        skip_sex_ploidy=not _spans_sex_chromosome(sub_intervals),
+    )
 
     # (5) All-sites-AN compute, with the AN HT read pruned to this chunk's intervals.
     freq_ht = _calculate_aou_frequencies_and_hists_using_all_sites_ans(
