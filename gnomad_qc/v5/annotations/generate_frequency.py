@@ -393,10 +393,12 @@ def _prepare_aou_vds(
     Prepare the AoU variant data for the all-sites-AN frequency calculation.
 
     Joins sex karyotype and age onto the columns from a small meta view
-    (:func:`_aou_release_meta_small`), adjusts sex ploidy, annotates adj, splits
-    multi-allelics, and sets the strata globals from the group membership HT
-    ``compute_coverage.py`` built the all-sites AN with. Order matters: ploidy ->
-    adj -> split, so adj is computed on the local (``LGT``/``LAD``) fields.
+    (:func:`_aou_release_meta_small`), adjusts sex ploidy, annotates adj,
+    minimal-represents the bi-allelic rows, and sets the strata globals from the
+    group membership HT ``compute_coverage.py`` built the all-sites AN with. The
+    rows are NOT split here: adj is computed on the local (``LGT``/``LAD``) fields,
+    and :func:`_sparse_split_strata_and_hists` splits each row after compacting its
+    entries to the carriers.
 
     :param aou_vds: AoU VariantDataset (release samples).
     :param test: Whether running in test mode.
@@ -407,7 +409,7 @@ def _prepare_aou_vds(
     :param skip_sex_ploidy: Skip the sex-ploidy adjustment. Only valid when the read
         scope has no chrX/chrY loci (see :func:`_spans_sex_chromosome`), where the
         adjustment is the identity. Default False.
-    :return: Prepared, split AoU variant MatrixTable.
+    :return: Prepared, unsplit AoU variant MatrixTable.
     """
     aou_vmt = aou_vds.variant_data
     # The group membership HT compute_coverage built the all-sites AN with (its
@@ -442,9 +444,6 @@ def _prepare_aou_vds(
     # the usual gnomAD cutoffs with DP approximated as sum(LAD).
     aou_vmt = annotate_adj_no_dp(aou_vmt)
     aou_vmt = _min_rep_biallelic_rows(aou_vmt)
-    aou_vds = hl.vds.VariantDataset(aou_vds.reference_data, aou_vmt)
-    aou_vds = hl.vds.split_multi(aou_vds, filter_changed_loci=True)
-    aou_vmt = aou_vds.variant_data
 
     logger.info("Annotating globals...")
     # Age-distribution global comes from the sample metadata table (one scan of the
@@ -465,21 +464,31 @@ def _prepare_aou_vds(
     )
 
 
-def _sparse_strata_and_hists(
+def _sparse_split_strata_and_hists(
     mt: hl.MatrixTable, group_membership_ht: hl.Table
 ) -> hl.Table:
     """
-    Aggregate AC / homozygote_count per stratum and the histograms over defined entries only.
+    Split multi-allelics and aggregate AC / homozygote_count per stratum and the histograms over defined entries only.
 
-    Output-identical to ``agg_by_strata`` over the same MatrixTable plus
-    ``mt_hist_fields``, but each row visits only its defined entries. VDS variant data
-    stores an entry only for samples with a non-reference call, so a row's entries
-    array (one slot per sample, ~365k) is ~99.9% missing: the median variant has 3
-    carriers. Aggregating over the full array walks every slot once per aggregation
-    pass; here the array is compacted once and every aggregator runs over the
-    carriers.
+    Output-identical to ``hl.vds.split_multi(filter_changed_loci=True)`` followed by
+    ``agg_by_strata`` plus :func:`mt_hist_fields`, but the entries array (one slot
+    per sample, ~365k, ~99.9% missing: the median variant has 3 carriers) is walked
+    ONCE per unsplit row. Splitting after compaction turns a row with k alternate
+    alleles into k rows of a few carriers each, instead of k copies of the full
+    array, and every aggregator then runs over the carriers.
 
-    Semantics reproduced exactly:
+    The split reproduces ``hl.experimental.sparse_split_multi`` (what
+    ``hl.vds.split_multi`` calls on the variant data) exactly:
+      - a row with fewer than three alleles is unchanged (``a_index`` 1);
+      - each alternate allele of a multi-allelic row becomes one row keyed by the
+        ``hl.min_rep`` of (ref, alt); an alt whose locus would move is dropped
+        (``filter_changed_loci=True``); the split rows are ordered by alleles;
+      - per carrier, ``GT`` is ``LGT`` downcoded to the split allele's index in
+        ``LA`` (a non-ref call whose ``LA`` lacks the allele downcodes to hom-ref),
+        ``AD`` is ``[sum(LAD) - LAD[local], LAD[local]]`` (0 when the allele is not
+        in ``LA``); ``GQ`` and ``adj`` are carried over unchanged.
+
+    Aggregation semantics reproduced exactly:
       - a call is counted in each stratum its sample belongs to; for adj strata only
         when ``adj`` is True (a missing ``adj`` counts as False, as ``hl.agg.filter``
         does);
@@ -489,12 +498,13 @@ def _sparse_strata_and_hists(
       - the histograms come from the same ``qual_hist_expr`` / ``age_hists_expr``
         expressions as :func:`mt_hist_fields`, so binning is unchanged.
 
-    :param mt: Prepared, split variant MatrixTable with entry fields ``GT``, ``GQ``,
-        ``AD``, ``adj`` and column field ``age``.
+    :param mt: Prepared, UNSPLIT variant MatrixTable with entry fields ``LGT``,
+        ``LA``, ``LAD``, ``GQ``, ``adj`` and column field ``age``.
     :param group_membership_ht: Group membership HT (full or cells); its
         ``group_membership`` array and ``freq_meta`` global define the strata.
-    :return: Table keyed like ``mt`` with row fields ``hist_fields``, ``AC``,
-        ``homozygote_count`` (arrays over the HT's strata) and ``mt``'s globals.
+    :return: Table keyed by the split ``locus, alleles`` with row fields
+        ``hist_fields``, ``AC``, ``homozygote_count`` (arrays over the HT's strata)
+        and ``mt``'s globals.
     """
     freq_meta = [dict(m) for m in hl.eval(group_membership_ht.freq_meta)]
     n_groups = len(freq_meta)
@@ -509,6 +519,7 @@ def _sparse_strata_and_hists(
     lt = mt.localize_entries("entries", "cols")
     # Compact to the defined entries, carrying each carrier's age and the strata its
     # call is counted in (raw strata always, adj strata only when the call is adj).
+    # adj is computed on the local fields before the split, exactly as before.
     carriers = (
         hl.enumerate(lt.entries)
         .filter(lambda t: hl.is_defined(t[1]))
@@ -521,10 +532,71 @@ def _sparse_strata_and_hists(
             )
         )
     )
+    lt = lt.select(carriers=carriers)
+
+    # Split rows: sparse_split_multi's explode structs (minus `was_split`, unused).
+    def _split_struct(i):
+        return hl.bind(
+            lambda mr: hl.or_missing(
+                mr.locus == lt.locus,
+                hl.struct(locus=lt.locus, alleles=mr.alleles, a_index=i),
+            ),
+            hl.min_rep(lt.locus, [lt.alleles[0], lt.alleles[i]]),
+        )
+
+    splits = hl.if_else(
+        hl.len(lt.alleles) < 3,
+        [hl.struct(locus=lt.locus, alleles=lt.alleles, a_index=1)],
+        hl._sort_by(
+            hl.range(1, hl.len(lt.alleles)).map(_split_struct).filter(hl.is_defined),
+            lambda l, r: hl._compare(l.alleles, r.alleles) < 0,
+        ),
+    )
+
+    # Split carriers: sparse_split_multi's entry transform for the fields present
+    # (LGT, LAD, LA, GQ; no LPL/LPGT). `mono` is the unsplit row's "one allele" case,
+    # where the local fields are renamed as-is.
+    def _split_carrier(e, a_index, mono):
+        lai = hl.fold(
+            lambda acc, k: hl.if_else(e.LA[k] == a_index, k, acc),
+            hl.missing(hl.tint32),
+            hl.range(hl.len(e.LA)),
+        )
+
+        def _with_lai(lai):
+            non_ref_ad = hl.or_else(e.LAD[lai], 0)
+            split = e.annotate(
+                GT=hl.if_else(
+                    e.LGT.is_non_ref(),
+                    hl.downcode(e.LGT, hl.or_else(lai, hl.len(e.LA))),
+                    e.LGT,
+                ),
+                AD=hl.or_missing(
+                    hl.is_defined(e.LAD), [hl.sum(e.LAD) - non_ref_ad, non_ref_ad]
+                ),
+            )
+            return hl.if_else(mono, e.annotate(GT=e.LGT, AD=e.LAD), split).drop(
+                "LGT", "LAD", "LA"
+            )
+
+        return hl.bind(_with_lai, lai)
+
+    lt = lt.annotate(_split=splits).explode("_split")
+    # Re-key as sparse_split_multi does: drop to the locus key (a prefix; no sort),
+    # replace alleles, then assert the (locus, alleles) order.
+    lt = lt._key_by_assert_sorted("locus")
+    lt = lt.transmute(
+        alleles=lt._split.alleles,
+        carriers=lt.carriers.map(
+            lambda e: _split_carrier(e, lt._split.a_index, hl.len(lt.alleles) == 1)
+        ),
+    )
+    lt = lt._key_by_assert_sorted("locus", "alleles")
+
     empty = hl.struct(AC=hl.int64(0), homozygote_count=hl.int64(0))
     lt = lt.annotate(
-        hist_fields=carriers.aggregate(lambda c: mt_hist_fields(c)),
-        _by_stratum=carriers.aggregate(
+        hist_fields=lt.carriers.aggregate(lambda c: mt_hist_fields(c)),
+        _by_stratum=lt.carriers.aggregate(
             lambda c: hl.agg.explode(
                 lambda g: hl.agg.group_by(
                     g,
@@ -607,11 +679,14 @@ def _calculate_aou_frequencies_and_hists_using_all_sites_ans(
     if not reduced:
         group_membership_ht = group_membership_ht.naive_coalesce(10)
 
-    # Per-stratum AC / homozygote_count and the histograms, aggregated over each row's
-    # defined entries only (see _sparse_strata_and_hists). Only the adj qual_hists is
-    # kept in v5 (raw_qual_hists was approved for removal); dropping it here, before the
+    # Split multi-allelics and aggregate per-stratum AC / homozygote_count and the
+    # histograms over each row's defined entries only (see
+    # _sparse_split_strata_and_hists). Only the adj qual_hists is kept in v5
+    # (raw_qual_hists was approved for removal); dropping it here, before the
     # checkpoint, lets Hail prune its aggregators.
-    aou_variant_freq_ht = _sparse_strata_and_hists(aou_variant_mt, group_membership_ht)
+    aou_variant_freq_ht = _sparse_split_strata_and_hists(
+        aou_variant_mt, group_membership_ht
+    )
     aou_variant_freq_ht = aou_variant_freq_ht.annotate(
         hist_fields=aou_variant_freq_ht.hist_fields.annotate(
             qual_hists=aou_variant_freq_ht.hist_fields.qual_hists.drop("raw_qual_hists")
