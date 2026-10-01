@@ -2031,6 +2031,16 @@ def compute_an_per_ref_site_sweep(
 
     lead = max_ref_block_len - 1
     pieces = _sweep_pieces(sub_intervals, max_ref_block_len, piece_bp)
+    # End events are binned by offset from the piece start with 1-bp bins; the
+    # bin count must cover the longest piece (regular cuts within
+    # max_ref_block_len of a special cut are dropped, so a piece can exceed
+    # piece_bp by up to twice that).
+    n_bins = max(piece_bp, 2 * max_ref_block_len) + 2 * max_ref_block_len
+    longest = max(e - s for _, s, e in pieces)
+    if longest > n_bins:
+        raise ValueError(
+            f"sweep piece of {longest} bp exceeds the {n_bins} end-event bins"
+        )
     families = _assign_sweep_families(pieces, lead)
     contig = pieces[0][0]
     rg = sub_intervals[0].start.reference_genome
@@ -2114,8 +2124,9 @@ def compute_an_per_ref_site_sweep(
                 )
             )
         )
-        rl = rl.select(_blocks=blocks)
+        rl = rl.select("_p", _blocks=blocks)
         rl = rl.select(
+            "_p",
             starts=hl.bind(
                 lambda d: hl.range(n_cats).map(lambda i: d.get(i, hl.int64(0))),
                 rl._blocks.flatmap(lambda b: b.events).aggregate(
@@ -2146,8 +2157,9 @@ def compute_an_per_ref_site_sweep(
                 )
             )
         )
-        vl = vl.select(_ev=carriers)
+        vl = vl.select("_p", _ev=carriers)
         vl = vl.select(
+            "_p",
             starts=hl.bind(
                 lambda d: hl.range(n_cats).map(lambda i: d.get(i, hl.int64(0))),
                 vl._ev.aggregate(lambda c: hl.agg.group_by(c.cat, hl.agg.sum(c.w))),
@@ -2156,7 +2168,7 @@ def compute_an_per_ref_site_sweep(
                 lambda c: hl.struct(pos=vl.locus.position + 1, cat=c.cat, w=c.w)
             ),
         )
-        vl = vl._key_by_assert_sorted("locus").select("starts", "ends")
+        vl = vl._key_by_assert_sorted("locus").select("_p", "starts", "ends")
         events = rl.union(vl)
 
         zeros = hl.range(n_cats).map(lambda i: hl.int64(0))
@@ -2167,15 +2179,27 @@ def compute_an_per_ref_site_sweep(
             )
 
         def sweep_partition(rows):
+            # Bounded-memory aggregation. Start events are one dense vector per
+            # row, collected as (offset, vector). End events are binned with
+            # hl.agg.hist over their offset from the piece start (1-bp bins, so
+            # an end at offset o lands in bin o; +0.5 keeps float binning from
+            # rounding an integer offset down), grouped only by (cat, weight):
+            # a few hundred fixed-size states. A lead-in end (offset < 0) is
+            # counted in n_smaller, an end past the bins in n_larger (never
+            # applied). A dictionary-keyed group_by over (position, cat) was
+            # measured at ~1 KB per key and OOMed a 3.75 GB worker.
             agg = rows.aggregate(
                 lambda r: hl.struct(
                     first=hl.agg.take(r.locus, 1),
-                    starts=hl.agg.group_by(
-                        r.locus.position, hl.agg.array_sum(r.starts)
+                    starts=hl.agg.collect(
+                        hl.tuple([r.locus.position - r._p, r.starts])
                     ),
                     ends=hl.agg.explode(
                         lambda e: hl.agg.group_by(
-                            hl.tuple([e.pos, e.cat]), hl.agg.sum(e.w)
+                            hl.tuple([e.cat, e.w]),
+                            hl.agg.hist(
+                                hl.float64(e.pos - r._p) + 0.5, 0, n_bins, n_bins
+                            ),
                         ),
                         r.ends,
                     ),
@@ -2185,66 +2209,67 @@ def compute_an_per_ref_site_sweep(
             # Every intermediate is hl.bind-bound: an unbound Python expression
             # variable is inlined at each use, which would recompute the whole
             # prefix sum per output cell.
+            # Every intermediate is hl.bind-bound: an unbound Python expression
+            # variable is inlined at each use and recomputed per output cell.
             def emit(agg):
                 has_rows = hl.len(agg.first) > 0
                 k = piece_of(hl.or_else(agg.first.first().position, 1))
 
                 def with_piece(p, span):
-                    # Lead-in events fold onto offset 0; events past the piece end
-                    # are never applied.
-                    start0 = vec_sum(
-                        agg.starts.items()
-                        .filter(lambda t: t[0] <= p)
-                        .map(lambda t: t[1])
-                    )
-                    end0 = hl.bind(
-                        lambda d: hl.range(n_cats).map(lambda i: d.get(i, hl.int64(0))),
-                        agg.ends.items()
-                        .filter(lambda t: t[0][0] <= p)
-                        .aggregate(
-                            lambda t: hl.agg.group_by(t[0][1], hl.agg.sum(t[1]))
-                        ),
+                    # Start vectors by offset; lead-in rows (offset < 0) fold
+                    # onto offset 0.
+                    start_d = hl.dict(
+                        agg.starts.group_by(lambda t: hl.max(t[0], 0))
+                        .items()
+                        .map(lambda kv: (kv[0], vec_sum(kv[1].map(lambda t: t[1]))))
                     )
 
-                    def with_delta0(delta0):
-                        delta = hl.range(span).map(
-                            lambda off: hl.if_else(
-                                off == 0,
-                                delta0,
-                                hl.bind(
-                                    lambda pos: hl.range(n_cats).map(
-                                        lambda c: agg.starts.get(pos, zeros)[c]
-                                        - agg.ends.get(hl.tuple([pos, c]), hl.int64(0))
-                                    ),
-                                    p + off,
+                    def with_start_d(start_d):
+                        cum_start = hl.range(n_cats).map(
+                            lambda c: hl.cumulative_sum(
+                                hl.range(span).map(
+                                    lambda off: start_d.get(off, zeros)[c]
+                                )
+                            )
+                        )
+                        # Weighted cumulative end counts per cat: n_smaller holds
+                        # the lead-in ends, the bins the in-piece ends.
+                        end_items = agg.ends.items()
+                        cum_end = hl.range(n_cats).map(
+                            lambda c: hl.bind(
+                                lambda per_c: hl.range(span).map(
+                                    lambda off: hl.sum(
+                                        per_c.map(lambda t: t[0] * t[1][off])
+                                    )
+                                ),
+                                end_items.filter(lambda kv: kv[0][0] == c).map(
+                                    lambda kv: hl.tuple(
+                                        [
+                                            kv[0][1],
+                                            hl.cumulative_sum(kv[1].bin_freq).map(
+                                                lambda x: x + kv[1].n_smaller
+                                            ),
+                                        ]
+                                    )
                                 ),
                             )
                         )
 
-                        def with_delta(delta):
-                            cum = hl.range(n_cats).map(
-                                lambda c: hl.cumulative_sum(delta.map(lambda d: d[c]))
+                        def with_cums(cum_start, cum_end):
+                            return hl._stream_range(0, span).map(
+                                lambda off: hl.struct(
+                                    locus=hl.locus(
+                                        contig, p + off, reference_genome=rg
+                                    ),
+                                    counts=hl.range(n_cats).map(
+                                        lambda c: cum_start[c][off] - cum_end[c][off]
+                                    ),
+                                )
                             )
 
-                            def with_cum(cum):
-                                return hl._stream_range(0, span).map(
-                                    lambda off: hl.struct(
-                                        locus=hl.locus(
-                                            contig, p + off, reference_genome=rg
-                                        ),
-                                        counts=hl.range(n_cats).map(
-                                            lambda c: cum[c][off]
-                                        ),
-                                    )
-                                )
+                        return hl.bind(with_cums, cum_start, cum_end)
 
-                            return hl.bind(with_cum, cum)
-
-                        return hl.bind(with_delta, delta)
-
-                    return hl.bind(
-                        with_delta0, hl.zip(start0, end0).map(lambda t: t[0] - t[1])
-                    )
+                    return hl.bind(with_start_d, start_d)
 
                 return hl.bind(
                     with_piece,
