@@ -1714,17 +1714,68 @@ def _normalize_chunk_intervals(data: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _group_chunk_intervals(
+    data: dict[str, Any], n_chunks: int | None = None
+) -> dict[str, Any]:
+    """
+    Regroup coverage's chunks into about ``n_chunks`` freq chunks.
+
+    ``compute_coverage.py`` sizes its chunks for its own, far heavier, per-chunk
+    compute (default 3 VDS partitions per chunk, ~48k chunks genome-wide). Freq's
+    compute on such a chunk is small (~$0.02-0.03), so freq's fixed cost per chunk
+    -- the 0.5-core relay plus the nested QoB driver, ~$0.02 -- is a comparable
+    share. Folding consecutive coverage chunks into one freq chunk divides that
+    fixed cost without moving any read boundary: a freq chunk reads exactly the
+    union of its coverage chunks' sub-intervals (still one read partition per
+    sub-interval), so the per-row aggregation and the AN join by locus are
+    unaffected.
+
+    Consecutive coverage chunks are folded ``ceil(n_coverage / n_chunks)`` at a
+    time, starting a new freq chunk at every contig change, so the result has at
+    least ``n_chunks`` chunks (a few more when contig breaks fall mid-group). The
+    grouped layout hashes differently from the ungrouped one, so its chunk outputs
+    live in their own directory.
+
+    :param data: Chunk-intervals data in freq's layout.
+    :param n_chunks: Target number of freq chunks. None (or at least the number of
+        coverage chunks) returns ``data`` unchanged.
+    :return: Layout with the grouped ``chunks``; other keys unchanged.
+    """
+    n_coverage = len(data["chunks"])
+    if n_chunks is None or n_chunks >= n_coverage:
+        return data
+    if n_chunks < 1:
+        raise ValueError(f"n_chunks must be >= 1, got {n_chunks}")
+    per_job = -(-n_coverage // n_chunks)
+    grouped: list[dict[str, Any]] = []
+    sizes: list[int] = []
+    for c in data["chunks"]:
+        if grouped and grouped[-1]["contig"] == c["contig"] and sizes[-1] < per_job:
+            grouped[-1]["sub_intervals"].extend(c["sub_intervals"])
+            sizes[-1] += 1
+        else:
+            grouped.append(
+                {"contig": c["contig"], "sub_intervals": list(c["sub_intervals"])}
+            )
+            sizes.append(1)
+    return {**data, "chunks": grouped}
+
+
 def _load_freq_chunk_intervals(
-    an_environment: str, test: bool = False
+    an_environment: str, test: bool = False, n_chunks: int | None = None
 ) -> tuple[dict[str, Any], str, str]:
     """
     Load the chunk layout the fan-out, merge, and workers share.
 
     Read driver-side with ``hailtop.fs`` (no QoB job) from the coverage chunk-intervals
-    JSON beside the all-sites-AN HT (see :func:`_coverage_chunk_intervals_path`).
+    JSON beside the all-sites-AN HT (see :func:`_coverage_chunk_intervals_path`), then
+    regrouped to about ``n_chunks`` freq chunks (see :func:`_group_chunk_intervals`).
+    Every caller must pass the same ``n_chunks`` (``--n-chunks``) so the fan-out,
+    workers, and merge agree on the chunk indices and the layout hash.
 
     :param an_environment: Environment the all-sites-AN HT is read from.
     :param test: If True, read the test-scoped path.
+    :param n_chunks: Target number of freq chunks; None keeps coverage's chunks 1:1.
     :return: ``(data in freq's layout, path it was read from, layout hash)``.
     :raises FileNotFoundError: if the JSON is absent.
     """
@@ -1738,7 +1789,14 @@ def _load_freq_chunk_intervals(
         )
     with hfs.open(path) as f:
         data = _normalize_chunk_intervals(json.load(f))
-    logger.info("Using chunk layout from %s (%d chunks).", path, len(data["chunks"]))
+    n_coverage = len(data["chunks"])
+    data = _group_chunk_intervals(data, n_chunks)
+    logger.info(
+        "Using chunk layout from %s (%d coverage chunks -> %d freq chunks).",
+        path,
+        n_coverage,
+        len(data["chunks"]),
+    )
     return data, path, _freq_chunk_intervals_hash(data)
 
 
@@ -1971,6 +2029,9 @@ def _build_freq_relay_common_flags(args: argparse.Namespace, *, chunk: bool) -> 
     ]
     if args.app_name:
         flags.append(f"--app-name {args.app_name}")
+    if args.n_chunks is not None:
+        # The worker regroups the coverage layout the same way to find its chunk.
+        flags.append(f"--n-chunks {args.n_chunks}")
     # Nested-QoB driver/worker sizing (decoupled from the orchestrator's own
     # --driver-*/--worker-*).
     if args.chunk_driver_cores is not None:
@@ -2026,7 +2087,7 @@ def _eligible_freq_chunk_indices(
         intervals_hash = "test_region"
     else:
         data, _path, intervals_hash = _load_freq_chunk_intervals(
-            args.an_environment, args.test
+            args.an_environment, args.test, args.n_chunks
         )
         chunk_contigs = [c["contig"] for c in data["chunks"]]
     n_chunks = len(chunk_contigs)
@@ -2170,7 +2231,9 @@ def _write_failed_chunks_manifest(
             for i in sorted(failed_indices)
         ]
     else:
-        chunks = _load_freq_chunk_intervals(args.an_environment, args.test)[0]["chunks"]
+        chunks = _load_freq_chunk_intervals(
+            args.an_environment, args.test, args.n_chunks
+        )[0]["chunks"]
         records = [
             {
                 "index": i,
@@ -2461,7 +2524,7 @@ def _orchestrate_freq_fanout(
     # fan-out and merge enumerate chunks from it. A --test-region run has no JSON (the
     # region is the single chunk), so skip the check there.
     if not args.test_region:
-        _load_freq_chunk_intervals(args.an_environment, args.test)
+        _load_freq_chunk_intervals(args.an_environment, args.test, args.n_chunks)
 
     commit = subprocess.check_output(["git", "rev-parse", "HEAD"]).decode().strip()
     # Reuse freq's _build_setup_command (targets v5_freq_batch:0.2.137, no
@@ -2544,7 +2607,7 @@ def _run_aou_freq_chunk_all_sites_ans(args: argparse.Namespace) -> None:
         )
     else:
         data, intervals_path, intervals_hash = _load_freq_chunk_intervals(
-            args.an_environment, test
+            args.an_environment, test, args.n_chunks
         )
         chunk_meta = data["chunks"]
         if not 0 <= start < len(chunk_meta):
@@ -3390,6 +3453,21 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
             " membership, chunk outputs) stays on --environment. Pass 'dataproc' when"
             " compute_coverage ran with --results-environment dataproc. Default is the"
             " value of --environment."
+        ),
+    )
+    env_group.add_argument(
+        "--n-chunks",
+        type=int,
+        default=None,
+        help=(
+            "All-sites-AN fan-out: target number of freq chunks (relay jobs). Coverage's"
+            " chunk layout is kept, but consecutive coverage chunks are folded into one"
+            " freq chunk each (never across a contig) until about this many remain,"
+            " dividing freq's fixed per-chunk cost (relay + nested QoB driver, ~$0.02)"
+            " by the fold. Read boundaries, results, and the AN join are unchanged."
+            " The fan-out, workers, and merge must all see the same value (the"
+            " orchestrator forwards it to the relays). Default: one freq chunk per"
+            " coverage chunk."
         ),
     )
     env_group.add_argument(
