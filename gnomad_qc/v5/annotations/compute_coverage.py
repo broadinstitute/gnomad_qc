@@ -80,7 +80,18 @@ import sys
 from datetime import datetime, timezone
 from functools import reduce
 from itertools import groupby
-from typing import Any, Dict, List, NamedTuple, Optional, Sequence, Set, Tuple, Union
+from typing import (
+    Any,
+    Callable,
+    Dict,
+    List,
+    NamedTuple,
+    Optional,
+    Sequence,
+    Set,
+    Tuple,
+    Union,
+)
 
 import hail as hl
 import hailtop.batch as hb
@@ -94,12 +105,17 @@ from gnomad.resources.grch38.reference_data import (
     telomeres_and_centromeres,
     vep_context,
 )
+from gnomad.sample_qc.sex import _sex_ploidy_case_expr
 from gnomad.utils.annotations import (
     COVERAGE_OVER_X_BINS,
+    _read_reduction_globals,
     annotate_downsamplings,
     build_freq_stratification_list,
+    expand_strata_array_from_leaves,
     generate_freq_group_membership_array,
     get_adj_expr,
+    get_sex_ploidy_col_flags_expr,
+    get_sex_ploidy_row_flags_expr,
     merge_array_expressions,
     merge_histograms,
     qual_hist_expr,
@@ -1827,6 +1843,419 @@ def _expand_leading_edges(
     return expanded
 
 
+def _sweep_pieces(
+    sub_intervals: List[hl.utils.Interval], max_ref_block_len: int, piece_bp: int
+) -> List[Tuple[str, int, int]]:
+    """
+    Tile a chunk's span into half-open pieces of about ``piece_bp`` base pairs.
+
+    Each piece becomes one self-contained read partition of the AN sweep (see
+    :func:`compute_an_per_ref_site_sweep`). Pieces on chrX/chrY are also cut at
+    the PAR boundaries, so the sex-ploidy rules are uniform within a piece.
+    Regular cuts that fall within ``max_ref_block_len`` of a PAR cut or of the
+    chunk's edges are dropped, so pieces are at least that long wherever
+    possible (a piece shorter than that only costs one extra read family; see
+    :func:`_assign_sweep_families`).
+
+    :param sub_intervals: The chunk's contiguous, single-contig read intervals.
+    :param max_ref_block_len: The VDS ``ref_block_max_length`` global.
+    :param piece_bp: Target piece length. Raised to ``2 * max_ref_block_len``
+        when smaller.
+    :return: ``(contig, start, end)`` half-open pieces covering the chunk span.
+    """
+    contig = sub_intervals[0].start.contig
+    rg = sub_intervals[0].start.reference_genome
+    start = min(
+        iv.start.position + (0 if iv.includes_start else 1) for iv in sub_intervals
+    )
+    end = max(iv.end.position + (1 if iv.includes_end else 0) for iv in sub_intervals)
+    piece_bp = max(piece_bp, 2 * max_ref_block_len)
+    special = {start, end}
+    for par in rg.par:
+        if par.start.contig == contig:
+            for pos in (par.start.position, par.end.position):
+                if start < pos < end:
+                    special.add(pos)
+    regular = {
+        c
+        for c in range(start, end, piece_bp)
+        if all(abs(c - s) >= max_ref_block_len or c == s for s in special)
+    }
+    cuts = sorted(special | regular)
+    return [(contig, a, b) for a, b in zip(cuts[:-1], cuts[1:])]
+
+
+def _assign_sweep_families(
+    pieces: List[Tuple[str, int, int]], lead: int
+) -> List[List[int]]:
+    """
+    Group pieces into read families whose lead-in-widened intervals do not overlap.
+
+    A family is read with one ``read_vds(intervals=...)`` call where each piece
+    is widened backwards by ``lead`` base pairs; Hail requires those intervals
+    to be disjoint, so consecutive members of a family must be at least ``lead``
+    apart. Pieces at least ``lead`` long need two families (even and odd); a
+    shorter piece is placed in the first family that can take it, adding a
+    family only when necessary.
+
+    :param pieces: Sorted ``(contig, start, end)`` pieces.
+    :param lead: Lead-in length, ``max_ref_block_len - 1``.
+    :return: Families as lists of piece indices.
+    """
+    families: List[List[int]] = []
+    for i, (_, p, _) in enumerate(pieces):
+        for fam in families:
+            if pieces[fam[-1]][2] <= p - lead:
+                fam.append(i)
+                break
+        else:
+            families.append([i])
+    return families
+
+
+# Sweep category layout: one counter per group-membership cell, then the 20 GQ
+# histogram bins, then n_smaller and n_larger (hl.agg.hist(GQ, 0, 100, 20)).
+_SWEEP_GQ_BINS = 20
+_SWEEP_GQ_EDGES = [float(5 * i) for i in range(_SWEEP_GQ_BINS + 1)]
+
+
+def _sweep_hist_cat(
+    gq: hl.expr.Int32Expression, n_cells: int
+) -> hl.expr.Int32Expression:
+    """
+    Map a GQ value to its histogram category, reproducing ``hl.agg.hist(gq, 0, 100, 20)``.
+
+    Values below 0 count in ``n_smaller``, above 100 in ``n_larger``, exactly 100
+    in the last bin, and a missing GQ in no bin (missing category).
+
+    :param gq: GQ expression.
+    :param n_cells: Number of cell categories preceding the histogram ones.
+    :return: Category index.
+    """
+    return (
+        hl.case()
+        .when(gq < 0, n_cells + _SWEEP_GQ_BINS)
+        .when(gq > 100, n_cells + _SWEEP_GQ_BINS + 1)
+        .when(gq == 100, n_cells + _SWEEP_GQ_BINS - 1)
+        .default(n_cells + hl.int32(gq // 5))
+    )
+
+
+def compute_an_per_ref_site_sweep(
+    load_vds: Callable[[List[hl.utils.Interval]], hl.vds.VariantDataset],
+    sub_intervals: List[hl.utils.Interval],
+    max_ref_block_len: int,
+    sites_ht: hl.Table,
+    group_membership_ht: hl.Table,
+    sex_karyotype_field: Optional[str],
+    piece_bp: int = 20000,
+) -> hl.Table:
+    """
+    Compute per-site AN and the adj GQ histogram by sweeping reference blocks.
+
+    Output-identical to :func:`compute_all_release_stats_per_ref_site` for
+    ``project="aou"`` (per-strata ``AN`` and ``qual_hists.qual_hists.gq_hist_all``
+    over the group-membership cells, expanded to the full strata), but the work
+    scales with the number of reference blocks and variant calls instead of
+    sites times samples. The dense path densifies every site to a 365k-entry
+    array and aggregates it; here a reference block covering ``[start, END]`` is
+    two events, ``+ploidy`` at ``start`` and ``-ploidy`` at ``END + 1``, in its
+    sample's raw cell, its adj cell when adj, and its GQ bin when adj, and a
+    variant call is the same with ``END = locus``. Prefix sums of the events
+    over positions give every site's counts.
+
+    Semantics reproduced from the dense path:
+      - a sample contributes at a site if a reference block covers it (its
+        ``GT`` after the sex-ploidy adjustment, ``adj`` as stored on the block)
+        or it has a variant entry there (``LGT`` adjusted, ``adj`` as stored);
+        a missing or ploidy-adjusted-to-missing call contributes 0 to AN;
+      - AN per cell = sum of ploidy; adj cells only count adj calls;
+      - ``gq_hist_all`` is the ``hl.agg.hist(GQ, 0, 100, 20)`` of adj calls;
+      - sites in ``sites_ht`` with no data get zeros.
+
+    Partitioning: the chunk span is tiled into pieces (:func:`_sweep_pieces`)
+    and each piece is read together with its ``max_ref_block_len - 1`` lead-in,
+    so blocks straddling in from before the piece are present (clipped to the
+    piece start) and every partition is computed on its own, with no
+    cross-partition scan. Pieces whose widened intervals would overlap are read
+    in separate families (:func:`_assign_sweep_families`), one ``load_vds`` call
+    each, and the families' results are unioned.
+
+    :param load_vds: Returns the VDS read on the given intervals (reference
+        blocks gated by start, like ``read_vds(intervals=...)``), with the
+        sample columns carrying ``sex_karyotype_field`` when set and the entry
+        ``adj`` fields the dense path uses.
+    :param sub_intervals: The chunk's un-widened, contiguous read intervals.
+    :param max_ref_block_len: The VDS ``ref_block_max_length`` global.
+    :param sites_ht: Locus-keyed sites to emit (read co-partitioned with the chunk).
+    :param group_membership_ht: The cell-reduced group-membership HT.
+    :param sex_karyotype_field: Dotted path to the sample's karyotype on the
+        columns, or None to skip the sex-ploidy adjustment (autosomes).
+    :param piece_bp: Target read-partition length in base pairs. Default 20000.
+    :return: HT keyed by locus with ``AN`` and ``qual_hists``, and the globals
+        ``strata_meta``, ``strata_sample_count``, ``coverage_stats_meta_sample_count``.
+    """
+    reduction = _read_reduction_globals(group_membership_ht.index_globals())
+    cells_meta = [dict(m) for m in hl.eval(group_membership_ht.freq_meta)]
+    n_cells = len(cells_meta)
+    n_cats = n_cells + _SWEEP_GQ_BINS + 2
+    adj_cells = hl.literal([m.get("group", "NA") == "adj" for m in cells_meta])
+    # Each sample is in exactly one raw cell and one adj cell.
+    idx = (
+        hl.enumerate(group_membership_ht.group_membership)
+        .filter(lambda t: t[1])
+        .map(lambda t: t[0])
+    )
+    gm = group_membership_ht.select(
+        cell_adj=idx.find(lambda i: adj_cells[i]),
+        cell_raw=idx.find(lambda i: ~adj_cells[i]),
+    )
+    event_t = hl.tstruct(cat=hl.tint32, w=hl.tint64)
+
+    def contributions(cell_raw, cell_adj, w, adj, gq):
+        """Events of one call: raw cell always; adj cell and GQ bin when adj."""
+        w = hl.or_else(w, hl.int64(0))
+        adj = hl.coalesce(adj, False)
+        base = hl.array([hl.struct(cat=cell_raw, w=w)])
+        adj_part = hl.if_else(
+            adj,
+            hl.array(
+                [
+                    hl.struct(cat=cell_adj, w=w),
+                    hl.struct(cat=_sweep_hist_cat(gq, n_cells), w=hl.int64(1)),
+                ]
+            ),
+            hl.empty_array(event_t),
+        )
+        return base.extend(adj_part).filter(lambda c: hl.is_defined(c.cat) & (c.w > 0))
+
+    lead = max_ref_block_len - 1
+    pieces = _sweep_pieces(sub_intervals, max_ref_block_len, piece_bp)
+    families = _assign_sweep_families(pieces, lead)
+    contig = pieces[0][0]
+    rg = sub_intervals[0].start.reference_genome
+    logger.info(
+        "AN sweep: %d pieces (target %d bp) in %d read families over %s:%d-%d.",
+        len(pieces),
+        piece_bp,
+        len(families),
+        contig,
+        pieces[0][1],
+        pieces[-1][2],
+    )
+
+    def sweep_family(members: List[int]) -> hl.Table:
+        """Sweep one family's pieces; returns per-position counts keyed by locus."""
+        fam = [pieces[i] for i in members]
+        read_starts = hl.literal([max(p - lead, 1) for _, p, _ in fam])
+        piece_starts = hl.literal([p for _, p, _ in fam])
+        piece_ends = hl.literal([e for _, _, e in fam])
+        read_intervals = [
+            hl.Interval(
+                hl.Locus(contig, max(p - lead, 1), reference_genome=rg),
+                hl.Locus(contig, e, reference_genome=rg),
+                includes_start=True,
+                includes_end=False,
+            )
+            for _, p, e in fam
+        ]
+        vds = load_vds(read_intervals)
+
+        def piece_of(pos):
+            """Index (within the family) of the read interval containing pos."""
+            return hl.binary_search(read_starts, pos + 1) - 1
+
+        def with_cols(mt: hl.MatrixTable) -> hl.MatrixTable:
+            cols = dict(gm[mt.col_key])
+            if sex_karyotype_field is not None:
+                kt = reduce(lambda x, f: x[f], sex_karyotype_field.split("."), mt)
+                cols["sex_flags"] = get_sex_ploidy_col_flags_expr(kt)
+            return mt.select_cols(**cols)
+
+        def adjusted(gt, col, locus):
+            if sex_karyotype_field is None:
+                return gt
+            return _sex_ploidy_case_expr(
+                gt, col.sex_flags, get_sex_ploidy_row_flags_expr(locus)
+            )
+
+        # Reference blocks: one row per block-start locus; blocks starting before
+        # the piece (lead-in) are clipped to the piece start, which is also where
+        # the sex-ploidy flags are evaluated.
+        rl = with_cols(vds.reference_data).localize_entries("_e", "_c")
+        k = piece_of(rl.locus.position)
+        p = piece_starts[k]
+        eff_locus = hl.locus(contig, hl.max(rl.locus.position, p), reference_genome=rg)
+        # The dense path merges the VDS with to_merged_sparse_mt, which gives a
+        # reference block the variant data's LGT field as a diploid hom-ref call
+        # when the block has no LGT of its own (its stored GT is ignored, so a
+        # haploid block counts as 2 before the sex-ploidy adjustment). Mirror it.
+        ref_entry = vds.reference_data.entry
+        if "LGT" in ref_entry:
+            block_gt = lambda e: e.LGT  # noqa: E731
+        elif "LGT" in vds.variant_data.entry or "GT" not in ref_entry:
+            block_gt = lambda e: hl.call(0, 0)  # noqa: E731
+        else:
+            block_gt = lambda e: e.GT  # noqa: E731
+        blocks = (
+            hl.enumerate(rl._e)
+            .filter(lambda t: hl.is_defined(t[1]) & (t[1].END >= p))
+            .map(
+                lambda t: hl.struct(
+                    end=t[1].END,
+                    events=contributions(
+                        rl._c[t[0]].cell_raw,
+                        rl._c[t[0]].cell_adj,
+                        adjusted(block_gt(t[1]), rl._c[t[0]], eff_locus).ploidy,
+                        t[1].adj if "adj" in vds.reference_data.entry else True,
+                        t[1].GQ,
+                    ),
+                )
+            )
+        )
+        rl = rl.select(_blocks=blocks)
+        rl = rl.select(
+            starts=hl.bind(
+                lambda d: hl.range(n_cats).map(lambda i: d.get(i, hl.int64(0))),
+                rl._blocks.flatmap(lambda b: b.events).aggregate(
+                    lambda c: hl.agg.group_by(c.cat, hl.agg.sum(c.w))
+                ),
+            ),
+            ends=rl._blocks.flatmap(
+                lambda b: b.events.map(
+                    lambda c: hl.struct(pos=b.end + 1, cat=c.cat, w=c.w)
+                )
+            ),
+        )
+
+        # Variant calls: point events; lead-in rows belong to another piece.
+        vl = with_cols(vds.variant_data).localize_entries("_e", "_c")
+        vk = piece_of(vl.locus.position)
+        vl = vl.filter(vl.locus.position >= piece_starts[vk])
+        carriers = (
+            hl.enumerate(vl._e)
+            .filter(lambda t: hl.is_defined(t[1]))
+            .flatmap(
+                lambda t: contributions(
+                    vl._c[t[0]].cell_raw,
+                    vl._c[t[0]].cell_adj,
+                    adjusted(t[1].LGT, vl._c[t[0]], vl.locus).ploidy,
+                    t[1].adj,
+                    t[1].GQ,
+                )
+            )
+        )
+        vl = vl.select(_ev=carriers)
+        vl = vl.select(
+            starts=hl.bind(
+                lambda d: hl.range(n_cats).map(lambda i: d.get(i, hl.int64(0))),
+                vl._ev.aggregate(lambda c: hl.agg.group_by(c.cat, hl.agg.sum(c.w))),
+            ),
+            ends=vl._ev.map(
+                lambda c: hl.struct(pos=vl.locus.position + 1, cat=c.cat, w=c.w)
+            ),
+        )
+        vl = vl._key_by_assert_sorted("locus").select("starts", "ends")
+        events = rl.union(vl)
+
+        zeros = hl.range(n_cats).map(lambda i: hl.int64(0))
+
+        def vec_sum(arrays):
+            return hl.fold(
+                lambda acc, a: hl.zip(acc, a).map(lambda t: t[0] + t[1]), zeros, arrays
+            )
+
+        def sweep_partition(rows):
+            agg = rows.aggregate(
+                lambda r: hl.struct(
+                    first=hl.agg.take(r.locus, 1),
+                    starts=hl.agg.group_by(
+                        r.locus.position, hl.agg.array_sum(r.starts)
+                    ),
+                    ends=hl.agg.explode(
+                        lambda e: hl.agg.group_by(
+                            hl.tuple([e.pos, e.cat]), hl.agg.sum(e.w)
+                        ),
+                        r.ends,
+                    ),
+                )
+            )
+
+            def emit(agg):
+                has_rows = hl.len(agg.first) > 0
+                k = piece_of(hl.or_else(agg.first.first().position, 1))
+                p = piece_starts[k]
+                span = hl.if_else(has_rows, piece_ends[k] - p, 0)
+                # Lead-in events fold onto offset 0; events past the piece end are
+                # never applied.
+                start0 = vec_sum(
+                    agg.starts.items().filter(lambda t: t[0] <= p).map(lambda t: t[1])
+                )
+                end0 = hl.bind(
+                    lambda d: hl.range(n_cats).map(lambda i: d.get(i, hl.int64(0))),
+                    agg.ends.items()
+                    .filter(lambda t: t[0][0] <= p)
+                    .aggregate(lambda t: hl.agg.group_by(t[0][1], hl.agg.sum(t[1]))),
+                )
+                delta = hl.range(span).map(
+                    lambda off: hl.if_else(
+                        off == 0,
+                        hl.zip(start0, end0).map(lambda t: t[0] - t[1]),
+                        hl.bind(
+                            lambda pos: hl.range(n_cats).map(
+                                lambda c: agg.starts.get(pos, zeros)[c]
+                                - agg.ends.get(hl.tuple([pos, c]), hl.int64(0))
+                            ),
+                            p + off,
+                        ),
+                    )
+                )
+                cum = hl.range(n_cats).map(
+                    lambda c: hl.cumulative_sum(delta.map(lambda d: d[c]))
+                )
+                return hl._stream_range(0, span).map(
+                    lambda off: hl.struct(
+                        locus=hl.locus(contig, p + off, reference_genome=rg),
+                        counts=hl.range(n_cats).map(lambda c: cum[c][off]),
+                    )
+                )
+
+            return hl.bind(emit, agg)
+
+        return events._map_partitions(sweep_partition)
+
+    counts = sweep_family(families[0])
+    for members in families[1:]:
+        counts = counts.union(sweep_family(members))
+
+    zeros = hl.range(n_cats).map(lambda i: hl.int64(0))
+    ht = sites_ht.select(_counts=hl.or_else(counts[sites_ht.locus].counts, zeros))
+    ht = ht.select(
+        AN=expand_strata_array_from_leaves(
+            ht._counts[:n_cells],
+            reduction["leaf_indices"],
+            reduction["decomposition"],
+            reduction["n_full"],
+        ),
+        qual_hists=hl.struct(
+            qual_hists=hl.struct(
+                gq_hist_all=hl.struct(
+                    bin_edges=hl.literal(_SWEEP_GQ_EDGES),
+                    bin_freq=ht._counts[n_cells : n_cells + _SWEEP_GQ_BINS],
+                    n_smaller=ht._counts[n_cells + _SWEEP_GQ_BINS],
+                    n_larger=ht._counts[n_cells + _SWEEP_GQ_BINS + 1],
+                )
+            )
+        ),
+    )
+    sample_counts = reduction["freq_meta_sample_count_full"]
+    return ht.select_globals(
+        strata_meta=reduction["freq_meta_full"],
+        strata_sample_count=sample_counts,
+        coverage_stats_meta_sample_count=sample_counts[0],
+    )
+
+
 def _run_coverage_chunk(args: argparse.Namespace) -> None:
     """
     Compute one chunk of the coverage/AN HT and write it to ``args.chunk_output``.
@@ -1862,6 +2291,9 @@ def _run_coverage_chunk(args: argparse.Namespace) -> None:
     vds_filter_intervals: Optional[List[hl.utils.Interval]] = None
     # Layout hash namespacing the output (see _test_region_hash for --test-region).
     intervals_hash: str
+    # The VDS ref_block_max_length global; None only for a one-interval
+    # --test-region read, which the sweep path rejects.
+    max_ref_block_len: Optional[int] = None
     if args.test_region:
         # Balance the region into n_sub sub-intervals with the same machinery as
         # the prod precompute: one partition per region OOMs a single worker at
@@ -1949,37 +2381,81 @@ def _run_coverage_chunk(args: argparse.Namespace) -> None:
         args.chunk_output = _chunk_path(cov_and_an_ht_path, start, intervals_hash)
         logger.info("Auto-derived --chunk-output: %s", args.chunk_output)
 
-    vds, sex_karyotype_field = _load_project_vds(
-        project=project,
-        environment=environment,
-        partition_range=partition_range,
-        sub_intervals=vds_read_intervals,
-        filter_intervals=vds_filter_intervals,
-        chrom=chrom,
-        test=test,
-        test_sample_subset=args.test_sample_subset,
-    )
+    if args.an_sweep:
+        # Sweep path (AoU only): no upfront VDS read -- the sweep reads each
+        # piece family itself through this loader (same sample filter, adj
+        # annotation and meta join as the dense path).
+        if project != "aou":
+            raise ValueError("--an-sweep is implemented for --project-name aou only.")
+        if sub_intervals is None or max_ref_block_len is None:
+            raise ValueError(
+                "--an-sweep needs the chunk layout's sub-intervals and"
+                " ref_block_max_length (a --test-region run must use"
+                " --read-subintervals-per-chunk > 1)."
+            )
 
-    ref_ht = _build_chunk_ref_ht(
-        vds_filtered=vds,
-        partition_count=n,
-        chrom=chrom,
-        sites_path=_vep_context_sites_path(test, args.test_region),
-        sub_intervals=sub_intervals,
-    )
+        def load_vds(read_intervals: List[hl.utils.Interval]) -> hl.vds.VariantDataset:
+            return _load_project_vds(
+                project=project,
+                environment=environment,
+                sub_intervals=read_intervals,
+                chrom=chrom,
+                test=test,
+                test_sample_subset=args.test_sample_subset,
+            )[0]
 
-    # No chunk crosses a contig (_build_chunk_intervals; --test-region is
-    # per-contig), so an autosomal chunk skips the sex-ploidy adjustment.
-    if not _spans_sex_chromosome(sub_intervals):
-        logger.info("Autosomal chunk: skipping the sex-karyotype ploidy adjustment.")
-        sex_karyotype_field = None
-    cov_and_an_ht = compute_all_release_stats_per_ref_site(
-        vds,
-        ref_ht,
-        sex_karyotype_field=sex_karyotype_field,
-        project=project,
-        group_membership_ht=hl.read_table(group_membership_ht_path),
-    )
+        ref_ht = hl.read_table(
+            _vep_context_sites_path(test, args.test_region), _intervals=sub_intervals
+        )
+        sex_karyotype_field = "meta.sex_karyotype"
+        if not _spans_sex_chromosome(sub_intervals):
+            logger.info(
+                "Autosomal chunk: skipping the sex-karyotype ploidy adjustment."
+            )
+            sex_karyotype_field = None
+        cov_and_an_ht = compute_an_per_ref_site_sweep(
+            load_vds,
+            sub_intervals,
+            max_ref_block_len,
+            ref_ht,
+            hl.read_table(group_membership_ht_path),
+            sex_karyotype_field,
+            piece_bp=args.sweep_piece_bp,
+        )
+    else:
+        vds, sex_karyotype_field = _load_project_vds(
+            project=project,
+            environment=environment,
+            partition_range=partition_range,
+            sub_intervals=vds_read_intervals,
+            filter_intervals=vds_filter_intervals,
+            chrom=chrom,
+            test=test,
+            test_sample_subset=args.test_sample_subset,
+        )
+
+        ref_ht = _build_chunk_ref_ht(
+            vds_filtered=vds,
+            partition_count=n,
+            chrom=chrom,
+            sites_path=_vep_context_sites_path(test, args.test_region),
+            sub_intervals=sub_intervals,
+        )
+
+        # No chunk crosses a contig (_build_chunk_intervals; --test-region is
+        # per-contig), so an autosomal chunk skips the sex-ploidy adjustment.
+        if not _spans_sex_chromosome(sub_intervals):
+            logger.info(
+                "Autosomal chunk: skipping the sex-karyotype ploidy adjustment."
+            )
+            sex_karyotype_field = None
+        cov_and_an_ht = compute_all_release_stats_per_ref_site(
+            vds,
+            ref_ht,
+            sex_karyotype_field=sex_karyotype_field,
+            project=project,
+            group_membership_ht=hl.read_table(group_membership_ht_path),
+        )
     # Provenance: the merge inherits globals from its first input, so the final
     # HT records the layout that produced it.
     cov_and_an_ht = cov_and_an_ht.annotate_globals(chunk_intervals_hash=intervals_hash)
@@ -2141,6 +2617,8 @@ def _build_relay_common_flags(args: argparse.Namespace, *, chunk: bool) -> str:
         )
         if args.test_sample_subset:
             flags.append("--test-sample-subset")
+        if args.an_sweep:
+            flags.append(f"--an-sweep --sweep-piece-bp {args.sweep_piece_bp}")
         if args.chrom:
             flags.append(f"--chrom {args.chrom}")
         if args.test_region:
@@ -3818,6 +4296,26 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
             " --write-chunk-intervals time); the VDS and vep_context are both"
             " read with these intervals -- co-partitioned, no shuffle."
             " Default 50."
+        ),
+    )
+    fanout_group.add_argument(
+        "--an-sweep",
+        action="store_true",
+        help=(
+            "AoU chunks: compute AN and the adj GQ histogram by sweeping reference"
+            " blocks (compute_an_per_ref_site_sweep) instead of densifying every"
+            " site. Output-identical; work scales with reference blocks and variant"
+            " calls, not sites times samples. Forwarded to the chunk relays."
+        ),
+    )
+    fanout_group.add_argument(
+        "--sweep-piece-bp",
+        type=int,
+        default=20000,
+        help=(
+            "--an-sweep: target length in bp of each self-contained read partition"
+            " (each is read with a ref_block_max_length-1 lead-in, so shorter pieces"
+            " re-read more). Default 20000."
         ),
     )
     fanout_group.add_argument(
