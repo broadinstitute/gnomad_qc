@@ -69,18 +69,14 @@ Usage Examples::
 """
 
 import argparse
-import hashlib
 import json
 import logging
-import os
 import re
 import shlex
-import subprocess
 import sys
-from datetime import datetime, timezone
 from functools import reduce
 from itertools import groupby
-from typing import Any, Dict, List, NamedTuple, Optional, Sequence, Set, Tuple, Union
+from typing import Any, Dict, List, Optional, Sequence, Set, Tuple
 
 import hail as hl
 import hailtop.batch as hb
@@ -115,6 +111,28 @@ from hail.utils.misc import new_temp_file
 from gnomad_qc.resource_utils import check_resource_existence
 from gnomad_qc.v3.resources.meta import meta as v3_meta
 from gnomad_qc.v4.resources.meta import meta as v4_meta
+from gnomad_qc.v5.annotations.batch_fanout import (
+    BATCH_REGIONS,
+    RelayJobSpec,
+    apply_path_suffix,
+    build_setup_command,
+    chunk_intervals_hash,
+    chunk_path,
+    group_path,
+    interval_from_list,
+    interval_to_list,
+    list_present_chunk_indices,
+    new_run_id,
+    orchestrate_tree_merge,
+    parse_region_interval,
+    relay_context,
+    resolve_commit,
+    spans_sex_chromosome,
+    submit_relay_batch,
+    test_region_hash,
+    union_and_write_hts,
+    write_failed_chunks_manifest,
+)
 from gnomad_qc.v5.resources.annotations import (
     coverage_and_an_path,
     get_aou_downsampling,
@@ -146,7 +164,6 @@ logger.setLevel(logging.INFO)
 
 # All Batch jobs are pinned to the region the input data lives in (AoU VDS,
 # vep_context, and outputs are us-central1) to avoid inter-region GCS egress.
-BATCH_REGIONS = ["us-central1"]
 
 # Consent-drop samples are removed from each release table they were in. The
 # two gnomAD release tables have different sample sets:
@@ -307,192 +324,6 @@ def get_group_membership_ht(
     return ht.naive_coalesce(GROUP_MEMBERSHIP_N_PARTITIONS)
 
 
-def _chunk_intervals_hash(data: Dict[str, Any]) -> str:
-    """
-    Return a stable 16-hex-char content hash of the chunk-intervals JSON.
-
-    ``repartition_for_join`` samples partition boundaries without a fixed seed,
-    so each ``--write-chunk-intervals`` run yields a different layout. Chunk
-    outputs are keyed only by index, so without namespacing by layout a stale
-    chunk from a prior run would pass the existence skip-check and merge into
-    overlapping loci. Computed over everything except any embedded
-    ``intervals_hash``.
-
-    :param data: Parsed chunk-intervals JSON.
-    :return: First 16 hex chars of the SHA-256 of the canonical serialization.
-    """
-    payload = {k: v for k, v in data.items() if k != "intervals_hash"}
-    canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"))
-    return hashlib.sha256(canonical.encode()).hexdigest()[:16]
-
-
-def _test_region_hash(args: argparse.Namespace) -> str:
-    """
-    Return the layout hash for a ``--test-region`` run.
-
-    Such runs have no chunk-intervals JSON, so the hash covers the region
-    strings instead. Two test runs on different regions under the same output
-    path then never see each other's chunk as already present. The
-    sub-interval count is deliberately not included: the merge and validate
-    steps do not pass it, and it does not change the chunk's contents.
-
-    :param args: Parsed CLI args with ``test_region`` set.
-    :return: ``test_region_`` plus a 16-hex-char hash.
-    """
-    return (
-        f"test_region_{_chunk_intervals_hash({'test_region': list(args.test_region)})}"
-    )
-
-
-def _chunk_path(cov_and_an_ht_path: str, idx: int, intervals_hash: str) -> str:
-    """
-    Return a sibling per-chunk HT path under ``<cov_and_an_path>_chunks/<hash>/``.
-
-    :param cov_and_an_ht_path: Canonical output cov_and_an HT path.
-    :param idx: Chunk index (zero-based).
-    :param intervals_hash: Layout hash namespacing the output (see :func:`_chunk_intervals_hash`).
-    :return: ``<cov_and_an_path>_chunks/<hash>/<idx:08d>.chunk.ht``.
-    """
-    base = cov_and_an_ht_path.rstrip("/").removesuffix(".ht")
-    return f"{base}_chunks/{intervals_hash}/{idx:08d}.chunk.ht"
-
-
-def _list_present_chunk_indices(
-    cov_and_an_ht_path: str, intervals_hash: str
-) -> Set[int]:
-    """
-    Return the set of chunk indices with a completed (``_SUCCESS``) output.
-
-    One ``ls`` glob instead of per-chunk serial existence probes. Scoped to
-    ``intervals_hash`` so only the current layout's chunks count; keying on
-    ``_SUCCESS`` treats a partially-written chunk as absent.
-
-    :param cov_and_an_ht_path: Canonical output cov_and_an HT path.
-    :param intervals_hash: Current chunk-intervals layout hash.
-    :return: Set of completed chunk indices for this layout.
-    """
-    base = cov_and_an_ht_path.rstrip("/").removesuffix(".ht")
-    present: Set[int] = set()
-    for entry in hfs.ls(f"{base}_chunks/{intervals_hash}/*/_SUCCESS"):
-        m = re.search(r"/(\d+)\.chunk\.ht/_SUCCESS$", entry.path)
-        if m:
-            present.add(int(m.group(1)))
-    return present
-
-
-def _failed_chunks_path(cov_and_an_ht_path: str, intervals_hash: str) -> str:
-    """
-    Return the path of the failed-chunk manifest for this layout.
-
-    :param cov_and_an_ht_path: Canonical output cov_and_an HT path.
-    :param intervals_hash: Current chunk-intervals layout hash.
-    :return: ``<cov_and_an_path>_chunks/<hash>/_failed_chunks.json``.
-    """
-    base = cov_and_an_ht_path.rstrip("/").removesuffix(".ht")
-    return f"{base}_chunks/{intervals_hash}/_failed_chunks.json"
-
-
-def _write_failed_chunks_manifest(
-    cov_and_an_ht_path: str,
-    intervals_hash: str,
-    failed: Sequence[int],
-    n_dispatched: int,
-    run_id: str,
-    commit: str,
-    app_name: Optional[str],
-    waves: Sequence[Dict[str, Any]],
-) -> str:
-    """
-    Record the chunk indices that did not land, for a later targeted rerun.
-
-    Written next to the chunks (log scrollback is not durable) and rewritten
-    after every wave. Rerunning ``--use-batch-fanout`` picks missing chunks up
-    automatically; the manifest is informational. Successive runs overwrite the
-    one path per layout, so each write is stamped with run id, time, commit,
-    app name, and per-wave batch ids to distinguish attempts.
-
-    :param cov_and_an_ht_path: Canonical output cov_and_an HT path.
-    :param intervals_hash: Current chunk-intervals layout hash.
-    :param failed: Dispatched chunk indices with no ``_SUCCESS``.
-    :param n_dispatched: Number of chunks dispatched so far in this run.
-    :param run_id: Identifier for this orchestrator run.
-    :param commit: gnomad_qc commit the relays ran.
-    :param app_name: ``--app-name`` passed to the relays.
-    :param waves: Per-wave records.
-    :return: Path the manifest was written to.
-    """
-    path = _failed_chunks_path(cov_and_an_ht_path, intervals_hash)
-    payload = {
-        "run_id": run_id,
-        "written_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
-        "commit": commit,
-        "app_name": app_name,
-        "intervals_hash": intervals_hash,
-        "n_dispatched": n_dispatched,
-        "n_failed": len(failed),
-        "failed_chunk_indices": sorted(failed),
-        "waves": list(waves),
-    }
-    with hfs.open(path, "w") as f:
-        f.write(json.dumps(payload, indent=2) + "\n")
-    return path
-
-
-def _new_run_id() -> str:
-    """
-    Return a UTC-timestamp identifier for one orchestrator run.
-
-    :return: ``run-YYYYmmddTHHMMSSZ``.
-    """
-    return "run-" + datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-
-
-def _group_path(
-    cov_and_an_ht_path: str,
-    level: int,
-    group_idx: int,
-    partitions_per_chunk: int,
-    merge_group_size: int,
-    intervals_hash: str,
-) -> str:
-    """
-    Return a per-group merged HT path under ``<cov_and_an_path>_merge_groups_*/<hash>/``.
-
-    Level-tagged so recursive merge levels don't overwrite each other. The
-    directory encodes the tree-shape params and the chunk-layout hash, so a
-    rerun with different values -- or a regenerated intervals JSON, which
-    always yields a new hash -- writes fresh rather than letting the
-    skip-check reuse group HTs merged from a previous layout's chunks.
-
-    :param cov_and_an_ht_path: Canonical output cov_and_an HT path.
-    :param level: Merge-tree level (1-indexed).
-    :param group_idx: Group index within this level (zero-based).
-    :param partitions_per_chunk: Partitions per chunk (tree-base shape).
-    :param merge_group_size: Chunk HTs per group-merge job (tree fan-in).
-    :param intervals_hash: Layout hash namespacing the output (see :func:`_chunk_intervals_hash`).
-    :return: Per-group HT path.
-    """
-    base = cov_and_an_ht_path.rstrip("/").removesuffix(".ht")
-    tree = f"pp{partitions_per_chunk}_gs{merge_group_size}"
-    return (
-        f"{base}_merge_groups_{tree}/{intervals_hash}/L{level:02d}_{group_idx:08d}.ht"
-    )
-
-
-def _apply_path_suffix(path: str, suffix: Optional[str]) -> str:
-    """
-    Insert ``_<suffix>`` before the ``.ht`` extension, or return unchanged if no suffix.
-
-    :param path: HT path ending in ``.ht``.
-    :param suffix: Optional suffix string (no leading underscore). If
-        falsy, ``path`` is returned unchanged.
-    :return: Suffix-applied path.
-    """
-    if not suffix:
-        return path
-    return path.rstrip("/").removesuffix(".ht") + f"_{suffix}.ht"
-
-
 def _results_environment(
     environment: str, test: bool, override: Optional[str] = None
 ) -> str:
@@ -538,7 +369,7 @@ def _resolve_cov_and_an_ht_path(
         test=test, data_set=project, environment=environment
     ).path
     full_suffix = f"{suffix}_{chrom}" if suffix and chrom else (suffix or chrom)
-    return _apply_path_suffix(path, full_suffix)
+    return apply_path_suffix(path, full_suffix)
 
 
 def _group_membership_ht_path(project: str, environment: str, test: bool) -> str:
@@ -555,7 +386,7 @@ def _group_membership_ht_path(project: str, environment: str, test: bool) -> str
     :return: Fully resolved group_membership HT path.
     """
     path = group_membership(test=test, data_set=project, environment=environment).path
-    return _apply_path_suffix(path, "cells")
+    return apply_path_suffix(path, "cells")
 
 
 def _gnomad_v5_merged_path(environment: str, coverage_type: str, test: bool) -> str:
@@ -678,27 +509,6 @@ def _derive_ref_partition_intervals(
     )
 
 
-def _spans_sex_chromosome(intervals: Sequence[hl.utils.Interval]) -> bool:
-    """
-    Return whether any locus interval touches chrX or chrY.
-
-    The sex-karyotype ploidy adjustment in ``compute_stats_per_ref_site`` only
-    changes genotypes on those contigs, so a chunk that touches neither can
-    skip it.
-
-    :param intervals: Locus intervals (Python ``hl.utils.Interval`` objects).
-    :return: True if any interval covers any part of an X or Y contig.
-    """
-    rg = intervals[0].start.reference_genome
-    order = {c: k for k, c in enumerate(rg.contigs)}
-    # An interval may span several contigs (partition bounds are not
-    # contig-aligned), so take every contig from its start to its end.
-    contigs: Set[str] = set()
-    for i in intervals:
-        contigs.update(rg.contigs[order[i.start.contig] : order[i.end.contig] + 1])
-    return bool(contigs & (set(rg.x_contigs) | set(rg.y_contigs)))
-
-
 def compute_all_release_stats_per_ref_site(
     vds: hl.vds.VariantDataset,
     ref_ht: hl.Table,
@@ -723,7 +533,7 @@ def compute_all_release_stats_per_ref_site(
         the sample's sex karyotype (sets per-sample ploidy on sex chromosomes),
         or None to skip the adjustment. It is the identity on autosomes, so
         pass None when ``ref_ht`` has no chrX/chrY sites (see
-        :func:`_spans_sex_chromosome`): that also skips the per-sample
+        :func:`spans_sex_chromosome`): that also skips the per-sample
         karyotype lookup and its column checkpoint.
     :param project: "aou" or "gnomad". AoU adds ``qual_hists`` and computes no
         coverage stats; gnomAD computes coverage and AN only.
@@ -1463,68 +1273,6 @@ def _chunk_intervals_path(project: str, results_environment: str, test: bool) ->
     return base.rstrip("/").removesuffix(".ht") + "_chunk_intervals.json"
 
 
-def _interval_to_list(iv: hl.utils.Interval) -> List[Union[str, int, bool]]:
-    """
-    Serialize a locus interval to a JSON-friendly list.
-
-    :param iv: Locus interval (Python ``hl.Interval`` with ``hl.Locus`` endpoints).
-    :return: ``[start_contig, start_pos, end_contig, end_pos, includes_start,
-        includes_end]``.
-    """
-    return [
-        iv.start.contig,
-        iv.start.position,
-        iv.end.contig,
-        iv.end.position,
-        iv.includes_start,
-        iv.includes_end,
-    ]
-
-
-def _interval_from_list(
-    t: List[Union[str, int, bool]], reference_genome: str
-) -> hl.utils.Interval:
-    """
-    Reconstruct a locus interval from its :func:``_interval_to_list`` serialization.
-
-    :param t: ``[start_contig, start_pos, end_contig, end_pos, includes_start,
-        includes_end]``.
-    :param reference_genome: Reference-genome name (e.g. "GRCh38").
-    :return: Locus interval.
-    """
-    sc, sp, ec, ep, incs, ince = t
-    return hl.Interval(
-        hl.Locus(sc, sp, reference_genome=reference_genome),
-        hl.Locus(ec, ep, reference_genome=reference_genome),
-        includes_start=incs,
-        includes_end=ince,
-    )
-
-
-def _parse_region_interval(
-    s: str, reference_genome: str = "GRCh38"
-) -> hl.utils.Interval:
-    """
-    Parse a ``contig:start-end`` string into a half-open Python locus interval.
-
-    A concrete ``hl.utils.Interval`` (not an ``IntervalExpression``) so it can
-    go to ``read_args={"_intervals": ...}``; half-open so adjacent intervals
-    stay disjoint. Used by ``--test-region``.
-
-    :param s: Interval string, e.g. ``chr1:55058666-55108666`` (commas allowed).
-    :param reference_genome: Reference-genome name. Default "GRCh38".
-    :return: ``[start, end)`` locus interval.
-    """
-    contig, span = s.split(":")
-    start_pos, end_pos = (int(p.replace(",", "")) for p in span.split("-"))
-    return hl.Interval(
-        hl.Locus(contig, start_pos, reference_genome=reference_genome),
-        hl.Locus(contig, end_pos, reference_genome=reference_genome),
-        includes_start=True,
-        includes_end=False,
-    )
-
-
 def _split_intervals_at_contigs(
     intervals: List[hl.utils.Interval], reference_genome: str
 ) -> List[hl.utils.Interval]:
@@ -1723,7 +1471,7 @@ def _build_chunk_intervals(
                 {
                     "contig": contig,
                     "intervals": [
-                        _interval_to_list(iv) for iv in contig_ivs[j : j + n_sub]
+                        interval_to_list(iv) for iv in contig_ivs[j : j + n_sub]
                     ],
                 }
             )
@@ -1860,14 +1608,14 @@ def _run_coverage_chunk(args: argparse.Namespace) -> None:
     vds_read_intervals: Optional[List[hl.utils.Interval]] = None
     # --test-region reads the VDS via filter_intervals instead; holds those.
     vds_filter_intervals: Optional[List[hl.utils.Interval]] = None
-    # Layout hash namespacing the output (see _test_region_hash for --test-region).
+    # Layout hash namespacing the output (see test_region_hash for --test-region).
     intervals_hash: str
     if args.test_region:
         # Balance the region into n_sub sub-intervals with the same machinery as
         # the prod precompute: one partition per region OOMs a single worker at
         # AoU's ~365k samples.
-        intervals_hash = _test_region_hash(args)
-        region_intervals = [_parse_region_interval(r) for r in args.test_region]
+        intervals_hash = test_region_hash(args.test_region)
+        region_intervals = [parse_region_interval(r) for r in args.test_region]
         if n_sub > 1:
             vds_probe = _probe_vds(
                 project, environment, None, chrom, filter_intervals=region_intervals
@@ -1916,7 +1664,7 @@ def _run_coverage_chunk(args: argparse.Namespace) -> None:
             )
         with hfs.open(intervals_path) as f:
             data = json.load(f)
-        intervals_hash = _chunk_intervals_hash(data)
+        intervals_hash = chunk_intervals_hash(data)
         chunk_meta = data["chunks"]
         if not 0 <= start < len(chunk_meta):
             raise ValueError(
@@ -1926,7 +1674,7 @@ def _run_coverage_chunk(args: argparse.Namespace) -> None:
             )
         entry = chunk_meta[start]
         rg = data["reference_genome"]
-        sub_intervals = [_interval_from_list(t, rg) for t in entry["intervals"]]
+        sub_intervals = [interval_from_list(t, rg) for t in entry["intervals"]]
         max_ref_block_len = data["ref_block_max_length"]
         logger.info(
             "Read %d sub-intervals for chunk %d (contig %s) from the precompute.",
@@ -1946,7 +1694,7 @@ def _run_coverage_chunk(args: argparse.Namespace) -> None:
             suffix=args.cov_and_an_output_suffix,
             chrom=args.chrom,
         )
-        args.chunk_output = _chunk_path(cov_and_an_ht_path, start, intervals_hash)
+        args.chunk_output = chunk_path(cov_and_an_ht_path, start, intervals_hash)
         logger.info("Auto-derived --chunk-output: %s", args.chunk_output)
 
     vds, sex_karyotype_field = _load_project_vds(
@@ -1970,7 +1718,7 @@ def _run_coverage_chunk(args: argparse.Namespace) -> None:
 
     # No chunk crosses a contig (_build_chunk_intervals; --test-region is
     # per-contig), so an autosomal chunk skips the sex-ploidy adjustment.
-    if not _spans_sex_chromosome(sub_intervals):
+    if not spans_sex_chromosome(sub_intervals):
         logger.info("Autosomal chunk: skipping the sex-karyotype ploidy adjustment.")
         sex_karyotype_field = None
     cov_and_an_ht = compute_all_release_stats_per_ref_site(
@@ -1985,115 +1733,6 @@ def _run_coverage_chunk(args: argparse.Namespace) -> None:
     cov_and_an_ht = cov_and_an_ht.annotate_globals(chunk_intervals_hash=intervals_hash)
     cov_and_an_ht.write(args.chunk_output, overwrite=True)
     logger.info("Wrote chunk [%d, %d) to %s", start, stop, args.chunk_output)
-
-
-def _run_coverage_merge(
-    input_paths: List[str],
-    output_path: str,
-    coalesce_to: Optional[int] = None,
-) -> None:
-    """
-    Union per-chunk coverage HTs and write the merged HT to ``output_path``.
-
-    Globals are identical across chunks, so the union inherits them from the
-    first input.
-
-    :param input_paths: HT paths to union.
-    :param output_path: Destination HT path.
-    :param coalesce_to: If set, ``naive_coalesce`` to this many partitions
-        before writing (group merges use len(inputs); the final merge uses
-        ``--n-partitions``).
-    """
-    logger.info(
-        "Merging %d HTs -> %s (coalesce_to=%s)",
-        len(input_paths),
-        output_path,
-        coalesce_to,
-    )
-    hts = [hl.read_table(p) for p in input_paths]
-    merged = hl.Table.union(*hts) if len(hts) > 1 else hts[0]
-    if coalesce_to is not None:
-        merged = merged.naive_coalesce(coalesce_to)
-    merged.write(output_path, overwrite=True)
-    logger.info("Wrote merged HT to %s", output_path)
-
-
-def _resolve_commit() -> str:
-    """
-    Return the gnomad_qc commit that relay containers should check out.
-
-    Prefers the ``GNOMAD_QC_COMMIT`` env var (set by ``--submit-orchestrator``:
-    the in-job checkout is a GitHub tarball with no ``.git``); else
-    ``git rev-parse HEAD``.
-
-    :return: Full commit hash.
-    """
-    commit = os.getenv("GNOMAD_QC_COMMIT")
-    if commit:
-        return commit
-    return subprocess.check_output(["git", "rev-parse", "HEAD"]).decode().strip()
-
-
-def _build_setup_command(
-    commit: str,
-    gcp_billing_project: str,
-    methods_branch: str = "main",
-) -> str:
-    """
-    Build the relay shell prefix: repo checkouts + Hail config + version pin.
-
-    Both repos are pulled at runtime (the image only provides hail + system
-    deps). Also writes the Hail config.ini (Batch billing project,
-    remote_tmpdir, requester-pays project) and patches ``/gsa-key/key.json``
-    with a ``quota_project_id`` so requester-pays reads succeed from the QoB
-    driver pod (Hail's own propagation doesn't reach the driver's Java GCS
-    client; works from a laptop only because gcloud supplies it there).
-
-    :param commit: gnomad_qc commit to pin.
-    :param gcp_billing_project: Requester-pays project; patched into the GSA key.
-    :param methods_branch: Branch/commit of gnomad_methods to pull.
-    :return: Shell command string (terminated with newline).
-    """
-    qc_tarball = f"https://github.com/broadinstitute/gnomad_qc/archive/{commit}.tar.gz"
-    methods_tarball = (
-        "https://github.com/broadinstitute/gnomad_methods/archive/"
-        f"{methods_branch}.tar.gz"
-    )
-    methods_dir_suffix = methods_branch.replace("/", "-")
-    # Hail config for hl.init(backend="batch"); write both the XDG path and
-    # the legacy ~/.hail path.
-    config_body = (
-        "[batch]\n"
-        "billing_project = gnomad-production\n"
-        "remote_tmpdir = gs://fc-11093c2b-590e-424a-91ac-0cc040d562fc/batch-tmp\n"
-        "[gcs_requester_pays]\n"
-        f"project = {gcp_billing_project}\n"
-    )
-    return (
-        "set -euxo pipefail\n"
-        "mkdir -p ~/.config/hail ~/.hail\n"
-        "cat > ~/.config/hail/config.ini <<'HAILCFG'\n"
-        f"{config_body}"
-        "HAILCFG\n"
-        "cp ~/.config/hail/config.ini ~/.hail/config.ini\n"
-        # TODO: drop this GSA-key patch once Hail propagates
-        # gcs_requester_pays_configuration to the QoB driver pod.
-        f"python3 -c \"import json, os; p='/gsa-key/key.json';"
-        f" d=json.load(open(p)); d['quota_project_id']='{gcp_billing_project}';"
-        f" json.dump(d, open(p+'.new','w')); os.replace(p+'.new', p)\"\n"
-        # Pin the pipeline's Hail version (the relay's Python version sets the
-        # QoB JAR, so this pins everything). WARNING: also a floor for every HT
-        # this pipeline reads -- Hail's table format is not backward
-        # compatible, so lowering the pin without rewriting the input HTs
-        # breaks the fan-out (JSON artifacts are immune).
-        "/opt/venv/bin/pip install --quiet --upgrade --force-reinstall"
-        " --no-deps hail==0.2.137\n"
-        f"curl -sSL {methods_tarball} | tar xz -C /tmp\n"
-        f"mv /tmp/gnomad_methods-{methods_dir_suffix} /tmp/gnomad_methods\n"
-        f"curl -sSL {qc_tarball} | tar xz -C /tmp\n"
-        f"mv /tmp/gnomad_qc-{commit} /tmp/gnomad_qc\n"
-        "export PYTHONPATH=/tmp/gnomad_qc:/tmp/gnomad_methods:${PYTHONPATH:-}\n"
-    )
 
 
 def _build_relay_common_flags(args: argparse.Namespace, *, chunk: bool) -> str:
@@ -2152,75 +1791,6 @@ def _build_relay_common_flags(args: argparse.Namespace, *, chunk: bool) -> str:
     return " ".join(flags)
 
 
-class _RelayJobSpec(NamedTuple):
-    """One relay job's per-job config for :func:``_submit_relay_batch``."""
-
-    name: str
-    cpu: float
-    memory: str
-    storage: str
-    chunk_attempts: int
-    command: str
-
-
-def _submit_relay_batch(
-    args: argparse.Namespace,
-    backend_kwargs: dict,
-    batch_name: str,
-    job_specs: List[_RelayJobSpec],
-    log_label: str,
-) -> Optional[int]:
-    """
-    Build and submit one Hail Batch of relay jobs sharing the same config.
-
-    Shared by chunk and merge submits. Each relay is a non-spot coordinator
-    (preemption mid-wait would orphan its inner QoB batch), pinned to
-    ``BATCH_REGIONS``, with ``--chunk-attempts`` attempts. No-ops on empty
-    ``job_specs``.
-
-    :param args: Parsed CLI args.
-    :param backend_kwargs: kwargs for ``hb.ServiceBackend``.
-    :param batch_name: Hail Batch name.
-    :param job_specs: Per-job config.
-    :param log_label: Noun for log messages ("chunk" / "merge").
-    :return: Batch id, or None (empty specs or ``--batch-dry-run``).
-    """
-    if not job_specs:
-        logger.info(
-            "  no pending %s jobs for %s; skipping batch.run()", log_label, batch_name
-        )
-        return None
-
-    backend = hb.ServiceBackend(**backend_kwargs)
-    try:
-        batch = hb.Batch(name=batch_name, backend=backend)
-        for spec in job_specs:
-            j = batch.new_job(name=spec.name)
-            j.image(args.batch_image)
-            j.cpu(spec.cpu)
-            j.memory(spec.memory)
-            j.storage(spec.storage)
-            j.regions(BATCH_REGIONS)
-            # Non-spot: preemption mid-wait would orphan the inner QoB batch.
-            j.spot(False)
-            # Default 1 attempt: a Batch-level retry cannot cancel the orphaned
-            # inner QoB batch and would race it. See --chunk-attempts.
-            j.n_max_attempts(spec.chunk_attempts)
-            j.command(spec.command)
-
-        logger.info(
-            "Submitting Hail Batch '%s': %d %s jobs (dry_run=%s)",
-            batch_name,
-            len(job_specs),
-            log_label,
-            args.batch_dry_run,
-        )
-        submitted = batch.run(dry_run=args.batch_dry_run)
-        return getattr(submitted, "id", None)
-    finally:
-        backend.close()
-
-
 def _submit_orchestrator_batch(args: argparse.Namespace) -> None:
     """
     Submit THIS orchestrator invocation as one small non-spot Hail Batch job.
@@ -2235,11 +1805,12 @@ def _submit_orchestrator_batch(args: argparse.Namespace) -> None:
     :param args: Parsed CLI args; forwarded verbatim to the wrapped run.
     :return: None.
     """
-    commit = _resolve_commit()
-    setup_cmd = _build_setup_command(
+    commit = resolve_commit()
+    setup_cmd = build_setup_command(
         commit,
-        gcp_billing_project=args.gcp_billing_project,
-        methods_branch=args.methods_branch,
+        args.gcp_billing_project,
+        args.methods_branch,
+        hail_version="0.2.137",
     )
     forwarded = [a for a in sys.argv[1:] if a != "--submit-orchestrator"]
     command = (
@@ -2307,7 +1878,7 @@ def _submit_chunk_batch(
     :param chunk_indices: Pending chunk indices to submit.
     :param cov_and_an_ht_path: Resolved canonical output HT path.
     :param intervals_hash: Layout hash namespacing each chunk's output.
-    :param setup_cmd: Shell prefix from ``_build_setup_command``.
+    :param setup_cmd: Shell prefix from ``build_setup_command``.
     :param common_flags_str: Shared CLI flags.
     :param script: Script path inside the relay container.
     :param wave_label: Optional batch-name suffix (e.g. ``"w003of049"``).
@@ -2326,7 +1897,7 @@ def _submit_chunk_batch(
 
     job_specs = []
     for idx in chunk_indices:
-        path = _chunk_path(cov_and_an_ht_path, idx, intervals_hash)
+        path = chunk_path(cov_and_an_ht_path, idx, intervals_hash)
         # Chunk identity is the index: the worker looks itself up in the JSON
         # by --chunk-start (= idx); --chunk-stop is idx+1.
         command = (
@@ -2336,16 +1907,23 @@ def _submit_chunk_batch(
             f" {common_flags_str}"
         )
         job_specs.append(
-            _RelayJobSpec(
+            RelayJobSpec(
                 name=f"cov_chunk_{idx:06d}",
                 cpu=args.chunk_cpu,
                 memory=args.chunk_memory,
                 storage=args.chunk_storage,
-                chunk_attempts=args.chunk_attempts,
+                attempts=args.chunk_attempts,
                 command=command,
             )
         )
-    return _submit_relay_batch(args, backend_kwargs, batch_name, job_specs, "chunk")
+    return submit_relay_batch(
+        args.batch_image,
+        backend_kwargs,
+        batch_name,
+        job_specs,
+        "chunk",
+        args.batch_dry_run,
+    )
 
 
 def _eligible_chunk_indices(
@@ -2361,12 +1939,12 @@ def _eligible_chunk_indices(
     :param args: Parsed CLI args.
     :return: ``(chunk_contigs, eligible, intervals_hash)`` -- per-chunk contig
         (None for the single ``--test-region`` chunk), eligible indices after
-        the ``--chrom`` filter, and the layout hash (:func:`_test_region_hash`
+        the ``--chrom`` filter, and the layout hash (:func:`test_region_hash`
         when there is no JSON).
     """
     if args.test_region:
         chunk_contigs: List[Optional[str]] = [None]
-        intervals_hash = _test_region_hash(args)
+        intervals_hash = test_region_hash(args.test_region)
     else:
         intervals_path = _chunk_intervals_path(
             args.project_name, args.results_environment, args.test
@@ -2380,7 +1958,7 @@ def _eligible_chunk_indices(
         with hfs.open(intervals_path) as f:
             data = json.load(f)
         chunk_contigs = [c["contig"] for c in data["chunks"]]
-        intervals_hash = _chunk_intervals_hash(data)
+        intervals_hash = chunk_intervals_hash(data)
     n_chunks = len(chunk_contigs)
     if args.chrom:
         eligible = [i for i in range(n_chunks) if chunk_contigs[i] == args.chrom]
@@ -2435,7 +2013,7 @@ def _orchestrate_coverage_batch(
     if args.overwrite:
         pending_indices = list(eligible)
     else:
-        present = _list_present_chunk_indices(cov_and_an_ht_path, intervals_hash)
+        present = list_present_chunk_indices(cov_and_an_ht_path, intervals_hash)
         pending_indices = [idx for idx in eligible if idx not in present]
     logger.info(
         "Coverage fan-out: %d chunks total, %d eligible%s, %d pending, %d skipped"
@@ -2453,11 +2031,12 @@ def _orchestrate_coverage_batch(
         logger.info("All chunks already complete; nothing to submit.")
         return
 
-    commit = _resolve_commit()
-    setup_cmd = _build_setup_command(
+    commit = resolve_commit()
+    setup_cmd = build_setup_command(
         commit,
-        gcp_billing_project=args.gcp_billing_project,
-        methods_branch=args.methods_branch,
+        args.gcp_billing_project,
+        args.methods_branch,
+        hail_version="0.2.137",
     )
 
     backend_kwargs = {"billing_project": args.batch_billing_project}
@@ -2484,7 +2063,7 @@ def _orchestrate_coverage_batch(
         wave_size if wave_size > 0 else len(pending_indices),
     )
 
-    run_id = _new_run_id()
+    run_id = new_run_id()
     logger.info(
         "Orchestrator run id: %s (stamped into the failed-chunk manifest)", run_id
     )
@@ -2519,7 +2098,7 @@ def _orchestrate_coverage_batch(
             logger.info("--batch-dry-run: wave %d DAG validated; stopping.", wi)
             return
         # batch.run() does not raise on per-job failure; re-check the outputs.
-        present = _list_present_chunk_indices(cov_and_an_ht_path, intervals_hash)
+        present = list_present_chunk_indices(cov_and_an_ht_path, intervals_hash)
         failed = [idx for idx in wave_indices if idx not in present]
         n_dispatched += len(wave_indices)
         all_failed.extend(failed)
@@ -2550,8 +2129,8 @@ def _orchestrate_coverage_batch(
                 len(wave_indices),
             )
         # Rewrite after every wave so the list survives an orchestrator death.
-        manifest = _write_failed_chunks_manifest(
-            cov_and_an_ht_path=cov_and_an_ht_path,
+        manifest = write_failed_chunks_manifest(
+            ht_path=cov_and_an_ht_path,
             intervals_hash=intervals_hash,
             failed=all_failed,
             n_dispatched=n_dispatched,
@@ -2597,7 +2176,7 @@ def _orchestrate_coverage_batch(
             script=script,
             wave_label=f"retry{pass_no}",
         )
-        present = _list_present_chunk_indices(cov_and_an_ht_path, intervals_hash)
+        present = list_present_chunk_indices(cov_and_an_ht_path, intervals_hash)
         all_failed = [idx for idx in retry_indices if idx not in present]
         n_dispatched += len(retry_indices)
         wave_records.append(
@@ -2608,8 +2187,8 @@ def _orchestrate_coverage_batch(
                 "failed_chunk_indices": all_failed,
             }
         )
-        manifest = _write_failed_chunks_manifest(
-            cov_and_an_ht_path=cov_and_an_ht_path,
+        manifest = write_failed_chunks_manifest(
+            ht_path=cov_and_an_ht_path,
             intervals_hash=intervals_hash,
             failed=all_failed,
             n_dispatched=n_dispatched,
@@ -2634,91 +2213,29 @@ def _orchestrate_coverage_batch(
             )
 
 
-def _submit_merge_batch(
-    args: argparse.Namespace,
-    backend_kwargs: dict,
-    group_indices: List[int],
-    groups: List[List[str]],
-    group_output_paths: List[str],
-    setup_cmd: str,
-    common_flags_str: str,
-    script: str,
-    level: int,
-) -> None:
-    """
-    Build and submit one Hail Batch containing all pending group-merge jobs.
-
-    Each job runs ``--run-merge`` and writes a per-group HT (``_group_path``).
-    Only intermediate levels go through here; the final union is submitted
-    separately. Per-group coalesce target is the group's input count.
-
-    :param args: Parsed CLI args.
-    :param backend_kwargs: kwargs for ``hb.ServiceBackend``.
-    :param group_indices: Pending group indices to submit.
-    :param groups: Input HT paths per group index.
-    :param group_output_paths: Output HT path per group index.
-    :param setup_cmd: Shell prefix from ``_build_setup_command``.
-    :param common_flags_str: Shared CLI flags.
-    :param script: Script path inside the relay container.
-    :param level: Merge-tree level (1-indexed).
-    :return: None.
-    """
-    project = args.project_name
-    batch_name = f"v5_cov_merge_L{level:02d}_{project}"
-    if args.cov_and_an_output_suffix:
-        batch_name += f"_{args.cov_and_an_output_suffix}"
-
-    job_specs = []
-    for group_idx in group_indices:
-        group_inputs = groups[group_idx]
-        command = (
-            f"{setup_cmd}{script} --run-merge"
-            f" --merge-output {group_output_paths[group_idx]}"
-            f" --merge-coalesce-to {len(group_inputs)}"
-            f" --merge-inputs {' '.join(group_inputs)}"
-            f" {common_flags_str}"
-        )
-        job_specs.append(
-            _RelayJobSpec(
-                name=f"cov_merge_L{level:02d}_{group_idx:06d}",
-                cpu=args.merge_cpu,
-                memory=args.merge_memory,
-                storage=args.merge_storage,
-                chunk_attempts=args.chunk_attempts,
-                command=command,
-            )
-        )
-    _submit_relay_batch(args, backend_kwargs, batch_name, job_specs, "merge")
-
-
 def _orchestrate_coverage_merge(
     args: argparse.Namespace, cov_and_an_ht_path: str
 ) -> None:
     """
-    Recursive tree-reduce merge of per-chunk HTs into ``cov_and_an_ht_path``.
+    Union the chunk HTs into ``cov_and_an_ht_path`` with a tree of relay merge jobs.
 
-    Runs after the fan-out; submits Batch jobs and never initializes Hail.
-    Chunks are enumerated with the same helper as the fan-out; missing chunks
-    fail loudly. Each level groups its inputs into windows of
-    ``--merge-group-size`` and emits one ``--run-merge`` job per group, until
-    one final union writes the canonical path. Levels are sequential; safe to
-    re-run (existing group HTs and final HT are skipped without
-    ``--overwrite``).
+    Runs after the fan-out and never initializes Hail. Chunks are enumerated with
+    the same helper as the fan-out, and a missing chunk stops the merge rather than
+    silently dropping loci. A final HT that already exists is left alone without
+    ``--overwrite``.
 
     :param args: Parsed CLI args.
     :param cov_and_an_ht_path: Canonical output cov_and_an HT path.
     :return: None.
     """
     project = args.project_name
-
     chunk_contigs, eligible, intervals_hash = _eligible_chunk_indices(args)
-    n_chunks = len(chunk_contigs)
     logger.info(
         "Verifying %d expected chunk HTs exist (of %d total)...",
         len(eligible),
-        n_chunks,
+        len(chunk_contigs),
     )
-    present = _list_present_chunk_indices(cov_and_an_ht_path, intervals_hash)
+    present = list_present_chunk_indices(cov_and_an_ht_path, intervals_hash)
     missing = [i for i in eligible if i not in present]
     if missing:
         raise FileNotFoundError(
@@ -2727,91 +2244,6 @@ def _orchestrate_coverage_merge(
             " to (re)compute missing chunks first."
         )
     logger.info("All %d expected chunks present.", len(eligible))
-
-    gs = args.merge_group_size
-
-    # Level shape, to log the full plan upfront.
-    shape = [len(eligible)]
-    while shape[-1] > gs:
-        shape.append((shape[-1] + gs - 1) // gs)
-    logger.info(
-        "Merge tree (group_size=%d): %s -> 1 final HT (%d intermediate level(s))",
-        gs,
-        " -> ".join(str(n) for n in shape),
-        len(shape) - 1,
-    )
-
-    commit = _resolve_commit()
-    setup_cmd = _build_setup_command(
-        commit,
-        gcp_billing_project=args.gcp_billing_project,
-        methods_branch=args.methods_branch,
-    )
-
-    backend_kwargs = {"billing_project": args.batch_billing_project}
-    if args.batch_remote_tmpdir:
-        backend_kwargs["remote_tmpdir"] = args.batch_remote_tmpdir
-
-    script = "python3 /tmp/gnomad_qc/gnomad_qc/v5/annotations/compute_coverage.py"
-    common_flags_str = _build_relay_common_flags(args, chunk=False)
-
-    # Intermediate levels: iterate while #inputs > gs.
-    inputs = [_chunk_path(cov_and_an_ht_path, i, intervals_hash) for i in eligible]
-    level = 1
-    while len(inputs) > gs:
-        n_in = len(inputs)
-        n_out = (n_in + gs - 1) // gs
-        groups = [inputs[i : i + gs] for i in range(0, n_in, gs)]
-        out_paths = [
-            _group_path(
-                cov_and_an_ht_path,
-                level,
-                idx,
-                args.partitions_per_chunk,
-                args.merge_group_size,
-                intervals_hash,
-            )
-            for idx in range(n_out)
-        ]
-
-        if args.overwrite:
-            pending = list(range(n_out))
-        else:
-            pending = []
-            for idx in range(n_out):
-                if file_exists(out_paths[idx]):
-                    logger.info(
-                        "Skipping already-complete L%d group %d at %s",
-                        level,
-                        idx,
-                        out_paths[idx],
-                    )
-                else:
-                    pending.append(idx)
-        logger.info(
-            "Level %d dispatch: %d groups total, %d pending, %d skipped" " (%d -> %d)",
-            level,
-            n_out,
-            len(pending),
-            n_out - len(pending),
-            n_in,
-            n_out,
-        )
-        _submit_merge_batch(
-            args=args,
-            backend_kwargs=backend_kwargs,
-            group_indices=pending,
-            groups=groups,
-            group_output_paths=out_paths,
-            setup_cmd=setup_cmd,
-            common_flags_str=common_flags_str,
-            script=script,
-            level=level,
-        )
-        inputs = out_paths
-        level += 1
-
-    # Final merge: one job unions the remaining (<= gs) inputs.
     if not args.overwrite and file_exists(cov_and_an_ht_path):
         logger.info(
             "Final merge HT exists at %s; skipping (pass --overwrite to rewrite).",
@@ -2819,31 +2251,41 @@ def _orchestrate_coverage_merge(
         )
         return
 
-    final_batch_name = f"v5_cov_merge_final_{project}"
+    setup_cmd, backend_kwargs, script = relay_context(
+        resolve_commit(),
+        args.methods_branch,
+        args.batch_billing_project,
+        args.batch_remote_tmpdir,
+        "compute_coverage.py",
+        gcp_billing_project=args.gcp_billing_project,
+        hail_version="0.2.137",
+    )
+    tree_tag = f"pp{args.partitions_per_chunk}_gs{args.merge_group_size}"
+    batch_prefix = f"v5_cov_merge_{project}"
     if args.cov_and_an_output_suffix:
-        final_batch_name += f"_{args.cov_and_an_output_suffix}"
-    coalesce_flag = (
-        f" --merge-coalesce-to {args.n_partitions}"
-        if args.n_partitions is not None
-        else ""
-    )
-    logger.info("Final merge: %d inputs -> %s", len(inputs), cov_and_an_ht_path)
-    final_spec = _RelayJobSpec(
-        name="cov_merge_final",
-        cpu=args.merge_cpu,
-        memory=args.merge_memory,
-        storage=args.final_merge_storage,
-        chunk_attempts=args.chunk_attempts,
-        command=(
-            f"{setup_cmd}{script} --run-merge"
-            f" --merge-output {cov_and_an_ht_path}"
-            f"{coalesce_flag}"
-            f" --merge-inputs {' '.join(inputs)}"
-            f" {common_flags_str}"
+        batch_prefix += f"_{args.cov_and_an_output_suffix}"
+    orchestrate_tree_merge(
+        inputs=[chunk_path(cov_and_an_ht_path, i, intervals_hash) for i in eligible],
+        final_output_path=cov_and_an_ht_path,
+        group_path_fn=lambda level, idx: group_path(
+            cov_and_an_ht_path, level, idx, tree_tag, intervals_hash
         ),
-    )
-    _submit_relay_batch(
-        args, backend_kwargs, final_batch_name, [final_spec], "final-merge"
+        merge_group_size=args.merge_group_size,
+        overwrite=args.overwrite,
+        final_coalesce_to=args.n_partitions,
+        batch_prefix=batch_prefix,
+        job_prefix="cov_merge",
+        setup_cmd=setup_cmd,
+        script=script,
+        common_flags=_build_relay_common_flags(args, chunk=False),
+        merge_cpu=args.merge_cpu,
+        merge_memory=args.merge_memory,
+        merge_storage=args.merge_storage,
+        final_merge_storage=args.final_merge_storage,
+        submit=lambda name, specs, label: submit_relay_batch(
+            args.batch_image, backend_kwargs, name, specs, label, args.batch_dry_run
+        ),
+        attempts=args.chunk_attempts,
     )
 
 
@@ -2928,7 +2370,7 @@ def main(args):
         _run_coverage_chunk(args)
         return
     if args.run_merge:
-        _run_coverage_merge(
+        union_and_write_hts(
             args.merge_inputs, args.merge_output, coalesce_to=args.merge_coalesce_to
         )
         return
@@ -2957,8 +2399,8 @@ def main(args):
                 _chunk_intervals_path(project, results_environment, test)
             ) as f:
                 contigs = sorted({c["contig"] for c in json.load(f)["chunks"]})
-            inputs = [_apply_path_suffix(cov_and_an_ht_path, c) for c in contigs]
-            _run_coverage_merge(
+            inputs = [apply_path_suffix(cov_and_an_ht_path, c) for c in contigs]
+            union_and_write_hts(
                 inputs, cov_and_an_ht_path, coalesce_to=args.n_partitions
             )
             return
@@ -2986,7 +2428,7 @@ def main(args):
             site_intervals = None
             if test and args.test_region:
                 # Scope the sites directly to the regions (no VDS probe needed).
-                site_intervals = [_parse_region_interval(r) for r in args.test_region]
+                site_intervals = [parse_region_interval(r) for r in args.test_region]
                 logger.info(
                     "Test sites scoped to %d explicit --test-region interval(s): %s",
                     len(site_intervals),
@@ -3005,7 +2447,7 @@ def main(args):
                         cm = json.load(f)
                     rg_name = cm["reference_genome"]
                     site_intervals = [
-                        _interval_from_list(t, rg_name)
+                        interval_from_list(t, rg_name)
                         for i in eligible
                         for t in cm["chunks"][i]["intervals"]
                     ]
@@ -3128,7 +2570,7 @@ def main(args):
                 # Explicit region: filter_intervals read; skip partition scoping.
                 strict_partition_range = None
                 strict_sub_intervals = [
-                    _parse_region_interval(r) for r in args.test_region
+                    parse_region_interval(r) for r in args.test_region
                 ]
                 strict_filter_intervals = strict_sub_intervals
             elif args.partitions_for_rep_on_read is not None:
@@ -3178,7 +2620,7 @@ def main(args):
             )
             # None (whole VDS) keeps the adjustment; a per-contig or --test-region
             # span on autosomes skips it.
-            if strict_sub_intervals and not _spans_sex_chromosome(strict_sub_intervals):
+            if strict_sub_intervals and not spans_sex_chromosome(strict_sub_intervals):
                 logger.info(
                     "Autosomal span: skipping the sex-karyotype ploidy adjustment."
                 )
@@ -3212,7 +2654,7 @@ def main(args):
                 sites_ht = hl.filter_intervals(
                     sites_ht,
                     [
-                        _interval_from_list(t, rg)
+                        interval_from_list(t, rg)
                         for i in eligible
                         for t in cm["chunks"][i]["intervals"]
                     ],
@@ -3412,7 +2854,7 @@ def main(args):
             qual_hists_path = qual_hists(
                 test=test, environment=results_environment
             ).path
-            qual_hists_path = _apply_path_suffix(
+            qual_hists_path = apply_path_suffix(
                 qual_hists_path, args.qual_hists_output_suffix
             )
             check_resource_existence(
