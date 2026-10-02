@@ -586,6 +586,16 @@ def process_aou_dataset(
     elif chrom:
         an_ht = hl.filter_intervals(an_ht, [hl.parse_locus_interval(chrom)])
     ht = ht.annotate(_an=an_ht[ht.locus].AN)
+    # A variant with no AN at its locus gets a missing freq array below, which
+    # nothing downstream would flag. The AN table should cover every AoU variant
+    # locus (checked 2026-10-02), so any count here means the two runs disagree.
+    n_missing_an = ht.aggregate(hl.agg.count_where(hl.is_missing(ht._an)))
+    if n_missing_an:
+        logger.warning(
+            "%d variant rows have no AN at their locus (outside the all-sites AN"
+            " table); their freq array will be missing.",
+            n_missing_an,
+        )
     ht = ht.select(
         freq=hl.map(
             lambda s, an: hl.struct(
