@@ -20,7 +20,7 @@ import os
 import re
 import subprocess
 from datetime import datetime, timezone
-from typing import Any, Callable, NamedTuple, Optional, Sequence
+from typing import Any, Callable, Dict, List, NamedTuple, Optional, Sequence, Set, Tuple
 
 import hail as hl
 import hailtop.batch as hb
@@ -83,8 +83,11 @@ def build_setup_command(
     :param commit: gnomad_qc commit to check out.
     :param gcp_billing_project: Requester-pays project.
     :param methods_branch: gnomad_methods branch or commit to check out.
-    :param hail_version: If set, reinstall this Hail version in the container
-        (coverage pins 0.2.137; freq takes the version from its image).
+    :param hail_version: If set, reinstall this Hail version in the container;
+        otherwise the image's Hail is used. The relay's Python Hail sets the QoB
+        JAR, so this pins everything. WARNING: the pin is also a floor for every
+        HT the pipeline reads. Hail's table format is not backward compatible,
+        so lowering the pin without rewriting the input HTs breaks the fan-out.
     :return: Shell command string ending in a newline.
     """
     qc_tarball = f"https://github.com/broadinstitute/gnomad_qc/archive/{commit}.tar.gz"
@@ -113,6 +116,8 @@ def build_setup_command(
         f"{config_body}"
         "HAILCFG\n"
         "cp ~/.config/hail/config.ini ~/.hail/config.ini\n"
+        # TODO: drop this GSA-key patch once Hail propagates
+        # gcs_requester_pays_configuration to the QoB driver pod.
         f"python3 -c \"import json, os; p='/gsa-key/key.json';"
         f" d=json.load(open(p)); d['quota_project_id']='{gcp_billing_project}';"
         f" json.dump(d, open(p+'.new','w')); os.replace(p+'.new', p)\"\n"
@@ -133,7 +138,7 @@ def relay_context(
     script_name: str,
     gcp_billing_project: str = "broad-mpg-gnomad",
     hail_version: Optional[str] = None,
-) -> tuple[str, dict, str]:
+) -> Tuple[str, Dict[str, str], str]:
     """
     Return what every relay submission needs: setup command, backend kwargs, script.
 
@@ -162,7 +167,7 @@ def relay_context(
 
 def submit_relay_batch(
     batch_image: str,
-    backend_kwargs: dict,
+    backend_kwargs: Dict[str, str],
     batch_name: str,
     job_specs: Sequence[RelayJobSpec],
     log_label: str,
@@ -220,7 +225,7 @@ def submit_relay_batch(
 # ---------------------------------------------------------------------------
 
 
-def chunk_intervals_hash(data: dict[str, Any]) -> str:
+def chunk_intervals_hash(data: Dict[str, Any]) -> str:
     """
     Return a 16-hex-char content hash of a chunk layout.
 
@@ -284,18 +289,18 @@ def interval_from_list(t: Sequence, reference_genome: str) -> hl.utils.Interval:
 
 
 def parse_region_interval(
-    s: str, reference_genome: str = "GRCh38"
+    interval_s: str, reference_genome: str = "GRCh38"
 ) -> hl.utils.Interval:
     """
     Parse ``contig:start-end`` into a half-open locus interval.
 
     Half-open so adjacent regions never share a locus.
 
-    :param s: Interval string; commas in positions are allowed.
+    :param interval_s: Interval string; commas in positions are allowed.
     :param reference_genome: Reference genome name.
     :return: ``[start, end)`` locus interval.
     """
-    contig, span = s.split(":")
+    contig, span = interval_s.split(":")
     start_pos, end_pos = (int(p.replace(",", "")) for p in span.split("-"))
     return hl.Interval(
         hl.Locus(contig, start_pos, reference_genome=reference_genome),
@@ -303,44 +308,6 @@ def parse_region_interval(
         includes_start=True,
         includes_end=False,
     )
-
-
-def split_intervals(
-    intervals: Sequence[hl.utils.Interval], n: int
-) -> list[hl.utils.Interval]:
-    """
-    Cut each half-open interval into ``n`` near-equal position slices.
-
-    ``read_vds`` makes one partition per interval it is given, so a region read as
-    one interval is aggregated on one core. The slices cover the input exactly, so
-    no locus is dropped or counted twice. An interval shorter than ``n`` bases is
-    kept whole.
-
-    :param intervals: Half-open locus intervals.
-    :param n: Slices per interval; ``<= 1`` returns the input unchanged.
-    :return: The slices, in order.
-    """
-    if n <= 1:
-        return list(intervals)
-    out = []
-    for iv in intervals:
-        contig, rg = iv.start.contig, iv.start.reference_genome
-        start, end = iv.start.position, iv.end.position
-        if end - start <= n:
-            out.append(iv)
-            continue
-        step = (end - start) // n
-        bounds = [start + i * step for i in range(n)] + [end]
-        out.extend(
-            hl.Interval(
-                hl.Locus(contig, bounds[i], reference_genome=rg),
-                hl.Locus(contig, bounds[i + 1], reference_genome=rg),
-                includes_start=True,
-                includes_end=False,
-            )
-            for i in range(n)
-        )
-    return out
 
 
 def spans_sex_chromosome(
@@ -360,7 +327,7 @@ def spans_sex_chromosome(
         rg = intervals[0].start.reference_genome
         sex = set(rg.x_contigs) | set(rg.y_contigs)
         order = {c: k for k, c in enumerate(rg.contigs)}
-        contigs: set[str] = set()
+        contigs: Set[str] = set()
         for iv in intervals:
             contigs.update(
                 rg.contigs[order[iv.start.contig] : order[iv.end.contig] + 1]
@@ -374,14 +341,13 @@ def spans_sex_chromosome(
 
 def select_chunks_for_contig(
     chunk_contigs: Sequence[Optional[str]], chrom: Optional[str]
-) -> list[int]:
+) -> List[int]:
     """
     Return the chunk indices on ``chrom``, or every index when ``chrom`` is None.
 
     :param chunk_contigs: Contig of each chunk, by index.
     :param chrom: Contig to keep, or None.
     :return: Eligible chunk indices.
-    :raises ValueError: if no chunk is on ``chrom``.
     """
     if not chrom:
         return list(range(len(chunk_contigs)))
@@ -472,7 +438,7 @@ def failed_chunks_path(ht_path: str, intervals_hash: str) -> str:
     return f"{_base(ht_path)}_chunks/{intervals_hash}/_failed_chunks.json"
 
 
-def list_present_chunk_indices(ht_path: str, intervals_hash: str) -> set[int]:
+def list_present_chunk_indices(ht_path: str, intervals_hash: str) -> Set[int]:
     """
     Return the chunk indices that have a ``_SUCCESS`` marker.
 
@@ -484,7 +450,7 @@ def list_present_chunk_indices(ht_path: str, intervals_hash: str) -> set[int]:
     :param intervals_hash: Layout hash.
     :return: Completed chunk indices.
     """
-    present: set[int] = set()
+    present: Set[int] = set()
     for entry in hfs.ls(f"{_base(ht_path)}_chunks/{intervals_hash}/*/_SUCCESS"):
         m = re.search(r"/(\d+)\.chunk\.ht/_SUCCESS$", entry.path)
         if m:
@@ -509,7 +475,7 @@ def write_failed_chunks_manifest(
     run_id: str,
     commit: str,
     app_name: Optional[str],
-    waves: Sequence[dict[str, Any]],
+    waves: Sequence[Dict[str, Any]],
 ) -> Optional[str]:
     """
     Record which dispatched chunks did not land, or clear the record when all did.
@@ -557,10 +523,13 @@ def write_failed_chunks_manifest(
 def dispatch_in_waves(
     pending: Sequence[int],
     wave_size: int,
-    submit_wave: Callable[[list[int], Optional[str]], Optional[int]],
-    present_indices: Callable[[], set[int]],
+    submit_wave: Callable[[List[int], Optional[str]], Optional[int]],
+    present_indices: Callable[[], Set[int]],
     dry_run: bool = False,
-) -> tuple[list[int], list[dict[str, Any]]]:
+    on_wave_complete: Optional[
+        Callable[[List[int], List[Dict[str, Any]]], None]
+    ] = None,
+) -> Tuple[List[int], List[Dict[str, Any]]]:
     """
     Submit pending chunks in sequential waves and report the ones that did not land.
 
@@ -573,8 +542,13 @@ def dispatch_in_waves(
     :param submit_wave: Submits one wave and returns its batch id.
     :param present_indices: Lists the chunk indices with ``_SUCCESS``.
     :param dry_run: Validate the first wave's batch without running it, then stop.
+    :param on_wave_complete: Called after each wave with the failed indices and
+        wave records so far, e.g. to rewrite the failed-chunk manifest so it
+        survives an orchestrator death. Not called on a dry run.
     :return: ``(failed indices, wave records)``.
     """
+    if not pending:
+        return [], []
     if wave_size <= 0 or wave_size >= len(pending):
         waves = [list(pending)]
     else:
@@ -585,8 +559,8 @@ def dispatch_in_waves(
     logger.info(
         "Dispatching %d pending chunks in %d sequential wave(s).", len(pending), n_waves
     )
-    failed: list[int] = []
-    records: list[dict[str, Any]] = []
+    failed: List[int] = []
+    records: List[Dict[str, Any]] = []
     for wi, wave in enumerate(waves, start=1):
         label = f"w{wi:03d}of{n_waves:03d}" if n_waves > 1 else None
         logger.info(
@@ -626,6 +600,8 @@ def dispatch_in_waves(
             logger.info(
                 "Wave %d/%d complete; all %d chunks present.", wi, n_waves, len(wave)
             )
+        if on_wave_complete is not None:
+            on_wave_complete(failed, records)
     return failed, records
 
 
@@ -645,7 +621,7 @@ def orchestrate_tree_merge(
     merge_memory: str,
     merge_storage: str,
     final_merge_storage: str,
-    submit: Callable[[str, list[RelayJobSpec], str], Optional[int]],
+    submit: Callable[[str, List[RelayJobSpec], str], Optional[int]],
     attempts: int = 1,
 ) -> None:
     """
@@ -758,8 +734,8 @@ def union_and_write_hts(
     Union HTs that share a schema and globals, and write the result.
 
     Needs a running Hail context. ``Table.union`` keeps the globals of the first
-    input, which loses nothing because every chunk was built from the same strata
-    tables and carries the same globals.
+    input, which loses nothing because every chunk was built from the same inputs
+    and carries the same globals.
 
     :param input_paths: HT paths to union.
     :param output_path: Destination path, overwritten.

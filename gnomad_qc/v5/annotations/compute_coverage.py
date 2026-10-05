@@ -112,12 +112,13 @@ from gnomad_qc.resource_utils import check_resource_existence
 from gnomad_qc.v3.resources.meta import meta as v3_meta
 from gnomad_qc.v4.resources.meta import meta as v4_meta
 from gnomad_qc.v5.annotations.batch_fanout import (
-    BATCH_REGIONS,
     RelayJobSpec,
     apply_path_suffix,
     build_setup_command,
     chunk_intervals_hash,
     chunk_path,
+    combine_suffix,
+    dispatch_in_waves,
     group_path,
     interval_from_list,
     interval_to_list,
@@ -127,6 +128,7 @@ from gnomad_qc.v5.annotations.batch_fanout import (
     parse_region_interval,
     relay_context,
     resolve_commit,
+    select_chunks_for_contig,
     spans_sex_chromosome,
     submit_relay_batch,
     test_region_hash,
@@ -147,6 +149,7 @@ from gnomad_qc.v5.resources.basics import (
     get_logging_path,
     qc_temp_prefix,
 )
+from gnomad_qc.v5.resources.constants import BATCH_REGIONS
 from gnomad_qc.v5.resources.meta import meta
 from gnomad_qc.v5.resources.release import (
     release_all_sites_an_tsv_path,
@@ -162,8 +165,11 @@ logging.basicConfig(
 logger = logging.getLogger("v5_coverage_and_an")
 logger.setLevel(logging.INFO)
 
-# All Batch jobs are pinned to the region the input data lives in (AoU VDS,
-# vep_context, and outputs are us-central1) to avoid inter-region GCS egress.
+# Hail version every relay (orchestrator, chunks, merge) installs. WARNING: also
+# a floor for every HT this pipeline reads. Hail's table format is not backward
+# compatible, so lowering the pin without rewriting the input HTs breaks the
+# fan-out (JSON artifacts are immune).
+HAIL_VERSION = "0.2.137"
 
 # Consent-drop samples are removed from each release table they were in. The
 # two gnomAD release tables have different sample sets:
@@ -368,8 +374,7 @@ def _resolve_cov_and_an_ht_path(
     path = coverage_and_an_path(
         test=test, data_set=project, environment=environment
     ).path
-    full_suffix = f"{suffix}_{chrom}" if suffix and chrom else (suffix or chrom)
-    return apply_path_suffix(path, full_suffix)
+    return apply_path_suffix(path, combine_suffix(suffix, chrom))
 
 
 def _group_membership_ht_path(project: str, environment: str, test: bool) -> str:
@@ -1810,7 +1815,7 @@ def _submit_orchestrator_batch(args: argparse.Namespace) -> None:
         commit,
         args.gcp_billing_project,
         args.methods_branch,
-        hail_version="0.2.137",
+        hail_version=HAIL_VERSION,
     )
     forwarded = [a for a in sys.argv[1:] if a != "--submit-orchestrator"]
     command = (
@@ -1959,16 +1964,7 @@ def _eligible_chunk_indices(
             data = json.load(f)
         chunk_contigs = [c["contig"] for c in data["chunks"]]
         intervals_hash = chunk_intervals_hash(data)
-    n_chunks = len(chunk_contigs)
-    if args.chrom:
-        eligible = [i for i in range(n_chunks) if chunk_contigs[i] == args.chrom]
-        if not eligible:
-            raise ValueError(
-                f"No chunks match --chrom {args.chrom}; contigs in the precompute:"
-                f" {sorted(c for c in set(chunk_contigs) if c is not None)}."
-            )
-    else:
-        eligible = list(range(n_chunks))
+    eligible = select_chunks_for_contig(chunk_contigs, args.chrom)
     return chunk_contigs, eligible, intervals_hash
 
 
@@ -2036,7 +2032,7 @@ def _orchestrate_coverage_batch(
         commit,
         args.gcp_billing_project,
         args.methods_branch,
-        hail_version="0.2.137",
+        hail_version=HAIL_VERSION,
     )
 
     backend_kwargs = {"billing_project": args.batch_billing_project}
@@ -2046,108 +2042,59 @@ def _orchestrate_coverage_batch(
     common_flags_str = _build_relay_common_flags(args, chunk=True)
     script = "python3 /tmp/gnomad_qc/gnomad_qc/v5/annotations/compute_coverage.py"
 
-    wave_size = args.wave_size
-    if wave_size <= 0 or wave_size >= len(pending_indices):
-        waves = [pending_indices]
-    else:
-        waves = [
-            pending_indices[i : i + wave_size]
-            for i in range(0, len(pending_indices), wave_size)
-        ]
-    n_waves = len(waves)
-    logger.info(
-        "Dispatching %d pending chunks in %d sequential wave(s) of up to"
-        " %d chunks each.",
-        len(pending_indices),
-        n_waves,
-        wave_size if wave_size > 0 else len(pending_indices),
-    )
-
     run_id = new_run_id()
     logger.info(
         "Orchestrator run id: %s (stamped into the failed-chunk manifest)", run_id
     )
 
-    all_failed: List[int] = []
-    wave_records: List[Dict[str, Any]] = []
-    n_dispatched = 0
-    for wi, wave_indices in enumerate(waves, start=1):
-        wave_label = f"w{wi:03d}of{n_waves:03d}" if n_waves > 1 else None
-        logger.info(
-            "Wave %d/%d: submitting %d chunks (indices %d..%d).",
-            wi,
-            n_waves,
-            len(wave_indices),
-            wave_indices[0],
-            wave_indices[-1],
+    def _write_manifest(failed: List[int], records: List[Dict[str, Any]]) -> None:
+        """Rewrite after every wave so the list survives an orchestrator death."""
+        n_sent = sum(r["n_dispatched"] for r in records)
+        manifest = write_failed_chunks_manifest(
+            ht_path=cov_and_an_ht_path,
+            intervals_hash=intervals_hash,
+            failed=failed,
+            n_dispatched=n_sent,
+            run_id=run_id,
+            commit=commit,
+            app_name=args.app_name,
+            waves=records,
         )
-        wave_batch_id = _submit_chunk_batch(
+        if failed:
+            logger.warning(
+                "%d of %d dispatched chunk(s) still missing; rerun list written to"
+                " %s (run_id=%s)",
+                len(failed),
+                n_sent,
+                manifest,
+                run_id,
+            )
+
+    all_failed, wave_records = dispatch_in_waves(
+        pending_indices,
+        args.wave_size,
+        submit_wave=lambda wave, label: _submit_chunk_batch(
             args=args,
             backend_kwargs=backend_kwargs,
-            chunk_indices=wave_indices,
+            chunk_indices=wave,
             cov_and_an_ht_path=cov_and_an_ht_path,
             intervals_hash=intervals_hash,
             setup_cmd=setup_cmd,
             common_flags_str=common_flags_str,
             script=script,
-            wave_label=wave_label,
-        )
-        if args.batch_dry_run:
-            # Nothing ran, so there are no outputs to check and no manifest to
-            # write (it would overwrite the last real run's failed-chunk list).
-            logger.info("--batch-dry-run: wave %d DAG validated; stopping.", wi)
-            return
-        # batch.run() does not raise on per-job failure; re-check the outputs.
-        present = list_present_chunk_indices(cov_and_an_ht_path, intervals_hash)
-        failed = [idx for idx in wave_indices if idx not in present]
-        n_dispatched += len(wave_indices)
-        all_failed.extend(failed)
-        wave_records.append(
-            {
-                "wave": wi,
-                "batch_id": wave_batch_id,
-                "n_dispatched": len(wave_indices),
-                "failed_chunk_indices": failed,
-            }
-        )
-        if failed:
-            logger.warning(
-                "Wave %d/%d complete but %d/%d chunk(s) MISSING after run"
-                " (rerun --use-batch-fanout to retry); missing indices: %s%s",
-                wi,
-                n_waves,
-                len(failed),
-                len(wave_indices),
-                failed[:25],
-                " ..." if len(failed) > 25 else "",
-            )
-        else:
-            logger.info(
-                "Wave %d/%d complete; all %d chunks present.",
-                wi,
-                n_waves,
-                len(wave_indices),
-            )
-        # Rewrite after every wave so the list survives an orchestrator death.
-        manifest = write_failed_chunks_manifest(
-            ht_path=cov_and_an_ht_path,
-            intervals_hash=intervals_hash,
-            failed=all_failed,
-            n_dispatched=n_dispatched,
-            run_id=run_id,
-            commit=commit,
-            app_name=args.app_name,
-            waves=wave_records,
-        )
-        if all_failed:
-            logger.warning(
-                "%d of %d dispatched chunk(s) still missing; rerun list written to"
-                " %s (run_id=%s)",
-                len(all_failed),
-                n_dispatched,
-                manifest,
-                run_id,
-            )
+            wave_label=label,
+        ),
+        present_indices=lambda: list_present_chunk_indices(
+            cov_and_an_ht_path, intervals_hash
+        ),
+        dry_run=args.batch_dry_run,
+        on_wave_complete=_write_manifest,
+    )
+    if args.batch_dry_run:
+        # Nothing ran, so there are no outputs to check and no manifest to
+        # write (it would overwrite the last real run's failed-chunk list).
+        return
+    n_dispatched = sum(r["n_dispatched"] for r in wave_records)
 
     # Automatic retry passes. Safe where Batch-level attempts are not: by the
     # time a pass runs, every relay from the previous dispatch has exited, so a
@@ -2258,7 +2205,7 @@ def _orchestrate_coverage_merge(
         args.batch_remote_tmpdir,
         "compute_coverage.py",
         gcp_billing_project=args.gcp_billing_project,
-        hail_version="0.2.137",
+        hail_version=HAIL_VERSION,
     )
     tree_tag = f"pp{args.partitions_per_chunk}_gs{args.merge_group_size}"
     batch_prefix = f"v5_cov_merge_{project}"
