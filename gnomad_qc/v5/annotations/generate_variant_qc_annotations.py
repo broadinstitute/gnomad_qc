@@ -937,7 +937,7 @@ def validate_trio_stats(
     logger.info("Trio stats validation PASSED.")
 
 
-def run_generate_sib_stats(
+def 1_stats(
     vds: hl.vds.VariantDataset,
     relatedness_ht: hl.Table,
     info_ht_path: str,
@@ -2216,7 +2216,8 @@ def main(args):
                 else range(test_n_partitions) if test_n_partitions else None
             ),
             read_intervals=sub_intervals,
-            annotate_meta=True,
+            # Only the AC-info aggregation reads mt.meta; sibling stats don't.
+            annotate_meta=args.generate_ac_info_ht,
             # Dead-allele recode on hard-filter removal is a full-width per-row LA
             # aggregation; sibling stats don't need it (bi-allelic doubletons only).
             remove_dead_alleles=not (
