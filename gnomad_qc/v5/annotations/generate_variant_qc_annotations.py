@@ -957,8 +957,9 @@ def run_generate_sib_stats(
           bi-allelic first means the split does no multi-allelic explosion -- it only
           puts alleles in minimal representation (so keys match the split `info_ht`) and
           downcodes entries, and that per-entry work stays lazy.
-        - Restricts to AC_high_quality_raw == 2 (doubleton) loci from `info_ht`, since
-          only sibling singletons are used downstream.
+        - Restricts to loci with AC_high_quality_raw == 2 or AC_high_quality == 2
+          (raw/adj doubletons) from `info_ht`, since only sibling singletons are used
+          downstream.
 
     :param vds: AoU VariantDataset. Load with `remove_dead_alleles=False`: the
         dead-allele recode is a full-width per-row LA aggregation that sibling stats
@@ -992,7 +993,7 @@ def run_generate_sib_stats(
     # for the rows that survive the AC==2 restriction below.
     mt = mt.filter_rows(hl.len(mt.alleles) == 2)
     mt = hl.experimental.sparse_split_multi(mt)
-    # Restrict to AC_high_quality_raw == 2 (doubleton) loci. Read the info HT with the
+    # Restrict to raw/adj doubleton loci. Read the info HT with the
     # same partition count as the MT: both derive from the same VDS, so matching the count
     # makes the bounds align closely. semi_join_rows lowers to
     # filter_rows(is_defined(index(...))), whose index-join would otherwise have to
@@ -1001,7 +1002,12 @@ def run_generate_sib_stats(
     # count; for --test-n-partitions the counts match but the MT is a contiguous slice
     # while the info HT spans the genome, so alignment only fully holds for prod.)
     info_ht = hl.read_table(info_ht_path, _n_partitions=mt.n_partitions())
-    ac2_loci = info_ht.filter(info_ht.AC_info.AC_high_quality_raw == 2).select()
+    # Keep adj doubletons too: sibling_singleton_adj downstream requires
+    # AC_high_quality == 2, which can hold at loci where AC_high_quality_raw > 2.
+    ac_info = info_ht.AC_info
+    ac2_loci = info_ht.filter(
+        (ac_info.AC_high_quality_raw == 2) | (ac_info.AC_high_quality == 2)
+    ).select()
     mt = mt.semi_join_rows(ac2_loci)
     # Add adj before generate_sib_stats so it skips its own (DP-requiring) annotate_adj.
     mt = annotate_adj_no_dp(mt)
