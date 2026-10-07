@@ -1,8 +1,9 @@
 """
-Hail Batch relay fan-out shared by ``compute_coverage.py`` and ``generate_frequency.py``.
+Hail Batch relay fan-out for the v5 annotation scripts.
 
-A Query-on-Batch run has one driver, and a driver crash loses everything it was
-computing. Both scripts therefore cut the genome into chunks and run each chunk from
+``compute_coverage.py`` uses it today; ``generate_frequency.py`` is written to adopt it
+next. A Query-on-Batch run has one driver, and a driver crash loses everything it was
+computing. The scripts therefore cut the genome into chunks and run each chunk from
 its own small, non-spot Batch job (a "relay") that starts a QoB driver inside its
 container. A crash then costs one chunk, and a rerun skips the chunks that already
 have a ``_SUCCESS`` marker. The orchestrator that submits the relays never starts
@@ -111,6 +112,9 @@ def build_setup_command(
     )
     return (
         "set -euxo pipefail\n"
+        # Hail reads its config from ~/.config/hail (XDG) in newer versions and
+        # from ~/.hail in older ones; write both so hl.init(backend="batch")
+        # finds it either way.
         "mkdir -p ~/.config/hail ~/.hail\n"
         "cat > ~/.config/hail/config.ini <<'HAILCFG'\n"
         f"{config_body}"
@@ -142,8 +146,9 @@ def relay_context(
     """
     Return what every relay submission needs: setup command, backend kwargs, script.
 
-    Built once per orchestrator so the fan-out and the merge check out the same
-    commits.
+    Bundles the three values from one caller-supplied commit so every relay an
+    orchestrator submits checks out the same code. The fan-out and the merge are
+    separate orchestrator runs and each resolves its own commit.
 
     :param commit: gnomad_qc commit the relays check out.
     :param methods_branch: gnomad_methods branch or commit the relays check out.
@@ -171,7 +176,8 @@ def submit_relay_batch(
     batch_name: str,
     job_specs: Sequence[RelayJobSpec],
     log_label: str,
-    dry_run: bool = False,
+    *,
+    dry_run: bool,
 ) -> Optional[int]:
     """
     Submit one Hail Batch of relay jobs and wait for it.
@@ -230,7 +236,9 @@ def chunk_intervals_hash(data: Dict[str, Any]) -> str:
     Return a 16-hex-char content hash of a chunk layout.
 
     Every regeneration of the layout moves the cut points, and keying outputs by
-    this hash keeps each layout's chunks apart.
+    this hash keeps each layout's chunks apart. An embedded ``intervals_hash`` key
+    is dropped before hashing, so a JSON that carries its own hash re-hashes to the
+    same value.
 
     :param data: Parsed chunk-intervals JSON.
     :return: First 16 hex chars of the SHA-256 of its canonical serialization.
@@ -245,7 +253,9 @@ def test_region_hash(test_region: Sequence[str]) -> str:
     Return the layout hash of a ``--test-region`` run, which has no layout JSON.
 
     Hashing the region strings keeps two region tests under the same output path
-    from seeing each other's chunk as already present.
+    from seeing each other's chunk as already present. The sub-interval count is
+    deliberately left out: the merge and validate steps do not pass it, and it does
+    not change the chunk's contents.
 
     :param test_region: Region strings as passed on the command line.
     :return: ``test_region_`` plus a 16-hex-char hash.
@@ -319,14 +329,18 @@ def spans_sex_chromosome(
     The sex-ploidy adjustment changes nothing on autosomes, so a scope that cannot
     touch chrX or chrY may skip it. A read with no scope counts as spanning.
 
-    :param intervals: Read intervals, or None.
-    :param chrom: Single contig, or None.
+    :param intervals: Read intervals, or None. When given, they decide the answer
+        and ``chrom`` is ignored.
+    :param chrom: Single contig, or None. Used only when ``intervals`` is empty;
+        this path assumes GRCh38 contig names.
     :return: True unless the scope is known to exclude both sex contigs.
     """
     if intervals:
         rg = intervals[0].start.reference_genome
         sex = set(rg.x_contigs) | set(rg.y_contigs)
         order = {c: k for k, c in enumerate(rg.contigs)}
+        # An interval may span several contigs (partition bounds are not
+        # contig-aligned), so take every contig from its start to its end.
         contigs: Set[str] = set()
         for iv in intervals:
             contigs.update(
@@ -417,7 +431,10 @@ def group_path(
     :param ht_path: Final HT path.
     :param level: Merge-tree level, 1-indexed.
     :param group_idx: Group index within the level.
-    :param tree_tag: Tree-shape tag, e.g. ``gs500``.
+    :param tree_tag: Tree-shape tag the caller builds from its own tree parameters,
+        e.g. coverage passes ``pp3_gs500`` (partitions per chunk, group size).
+        Two consumers may use different tags; each must keep its own tag stable
+        or its finished groups stop being found.
     :param intervals_hash: Layout hash.
     :return: ``<ht>_merge_groups_<tag>/<hash>/L<level>_<group>.ht``.
     """
@@ -476,12 +493,14 @@ def write_failed_chunks_manifest(
     commit: str,
     app_name: Optional[str],
     waves: Sequence[Dict[str, Any]],
-) -> Optional[str]:
+) -> str:
     """
-    Record which dispatched chunks did not land, or clear the record when all did.
+    Record which dispatched chunks did not land.
 
     A rerun of the fan-out resumes from the missing chunks on its own. The manifest
-    is a durable record of what failed and when, which the logs are not.
+    is a durable record of what ran and what failed, which the logs are not, so it
+    is written even when every chunk landed (``n_failed`` 0 with the run id and
+    batch ids). Successive runs on one layout overwrite the same file.
 
     :param ht_path: Final HT path.
     :param intervals_hash: Layout hash.
@@ -492,13 +511,9 @@ def write_failed_chunks_manifest(
     :param app_name: ``--app-name`` the relays used.
     :param waves: Per-wave records: wave number, batch id, chunks dispatched and
         chunks that failed.
-    :return: Manifest path when one was written, else None.
+    :return: Manifest path.
     """
     path = failed_chunks_path(ht_path, intervals_hash)
-    if not failed:
-        if file_exists(path):
-            hfs.remove(path)
-        return None
     payload = {
         "run_id": run_id,
         "written_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
@@ -525,10 +540,12 @@ def dispatch_in_waves(
     wave_size: int,
     submit_wave: Callable[[List[int], Optional[str]], Optional[int]],
     present_indices: Callable[[], Set[int]],
-    dry_run: bool = False,
+    *,
+    dry_run: bool,
     on_wave_complete: Optional[
         Callable[[List[int], List[Dict[str, Any]]], None]
     ] = None,
+    retry_passes: int = 0,
 ) -> Tuple[List[int], List[Dict[str, Any]]]:
     """
     Submit pending chunks in sequential waves and report the ones that did not land.
@@ -537,15 +554,29 @@ def dispatch_in_waves(
     batch run does not raise when a job fails, so the chunk directory is listed
     again after each wave to find the chunks that did not land.
 
+    After the last wave, the chunks still missing are re-dispatched up to
+    ``retry_passes`` times. This is safe where Batch-level attempts are not: by the
+    time a pass runs, every relay from the previous dispatch has exited, so a
+    re-dispatch cannot race a live relay's inner QoB batch.
+
     :param pending: Chunk indices to dispatch.
     :param wave_size: Chunks per wave; ``<= 0`` means one wave.
-    :param submit_wave: Submits one wave and returns its batch id.
+    :param submit_wave: Submits one wave and returns its batch id. It must honor
+        the dry run itself (pass ``dry_run`` on to :func:`submit_relay_batch`);
+        this function only stops after the first wave. Retry passes get the
+        labels ``retry1``, ``retry2``, ...
     :param present_indices: Lists the chunk indices with ``_SUCCESS``.
-    :param dry_run: Validate the first wave's batch without running it, then stop.
-    :param on_wave_complete: Called after each wave with the failed indices and
-        wave records so far, e.g. to rewrite the failed-chunk manifest so it
-        survives an orchestrator death. Not called on a dry run.
-    :return: ``(failed indices, wave records)``.
+    :param dry_run: Stop after the first wave without checking its outputs.
+    :param on_wave_complete: Called after each wave and each retry pass with the
+        failed indices and wave records so far, e.g. to rewrite the failed-chunk
+        manifest so it survives an orchestrator death. Not called on a dry run.
+        The lists are this function's live accumulators: read them, do not keep
+        or change them.
+    :param retry_passes: Re-dispatch passes for missing chunks after the waves.
+    :return: ``(failed indices, wave records)``; the failed list is what is still
+        missing after the last retry pass. Both are empty when nothing was pending
+        and on a dry run, so a caller must check ``dry_run`` before treating an
+        empty failed list as "every chunk landed".
     """
     if not pending:
         return [], []
@@ -573,7 +604,7 @@ def dispatch_in_waves(
         )
         batch_id = submit_wave(wave, label)
         if dry_run:
-            logger.info("Dry run: wave DAG validated; stopping.")
+            logger.info("Dry run: stopping after wave 1 of %d.", n_waves)
             return [], []
         present = present_indices()
         wave_failed = [i for i in wave if i not in present]
@@ -599,6 +630,46 @@ def dispatch_in_waves(
         else:
             logger.info(
                 "Wave %d/%d complete; all %d chunks present.", wi, n_waves, len(wave)
+            )
+        if on_wave_complete is not None:
+            on_wave_complete(failed, records)
+
+    for pass_no in range(1, max(retry_passes, 0) + 1):
+        if not failed:
+            break
+        retry = sorted(set(failed))
+        logger.info(
+            "Retry pass %d/%d: re-dispatching %d missing chunk(s): %s%s",
+            pass_no,
+            retry_passes,
+            len(retry),
+            retry[:25],
+            " ..." if len(retry) > 25 else "",
+        )
+        batch_id = submit_wave(retry, f"retry{pass_no}")
+        present = present_indices()
+        still_missing = [i for i in retry if i not in present]
+        failed[:] = still_missing
+        records.append(
+            {
+                "wave": f"retry{pass_no}",
+                "batch_id": batch_id,
+                "n_dispatched": len(retry),
+                "failed_chunk_indices": still_missing,
+            }
+        )
+        if still_missing:
+            logger.warning(
+                "Retry pass %d/%d complete; %d chunk(s) STILL missing: %s%s",
+                pass_no,
+                retry_passes,
+                len(still_missing),
+                still_missing[:25],
+                " ..." if len(still_missing) > 25 else "",
+            )
+        else:
+            logger.info(
+                "Retry pass %d/%d complete; all chunks present.", pass_no, retry_passes
             )
         if on_wave_complete is not None:
             on_wave_complete(failed, records)
@@ -654,6 +725,13 @@ def orchestrate_tree_merge(
     :param attempts: Batch attempts per merge job. Default 1.
     :return: None.
     """
+    if not inputs:
+        raise ValueError("orchestrate_tree_merge: no inputs to merge.")
+    if merge_group_size < 2:
+        raise ValueError(
+            f"merge_group_size must be at least 2, got {merge_group_size}; a smaller"
+            " tree never converges."
+        )
     gs = merge_group_size
     shape = [len(inputs)]
     while shape[-1] > gs:

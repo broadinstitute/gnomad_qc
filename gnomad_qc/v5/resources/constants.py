@@ -24,8 +24,9 @@ GNOMAD_TMP_BUCKET = "gnomad-tmp"
 BATCH_READ_ONLY_BUCKET = "fc-secure-b9c5d4df-d7ff-4f09-a252-e13633c84e95/2026-03-26"
 BATCH_BUCKET = "fc-11093c2b-590e-424a-91ac-0cc040d562fc"
 BATCH_TMP_BUCKET = f"{BATCH_BUCKET}/batch-tmp"
-# Batch jobs run here so the AoU VDS, readable only inside its perimeter,
-# stays reachable.
+# All Batch jobs are pinned to the region the data lives in (the AoU VDS,
+# vep_context and the fan-out outputs are all us-central1) to avoid
+# inter-region GCS egress.
 BATCH_REGIONS = ["us-central1"]
 AOU_BUCKET = "fc-aou-datasets-controlled/v8"
 AOU_WGS_BUCKET = f"{AOU_BUCKET}/wgs/short_read/snpindel"

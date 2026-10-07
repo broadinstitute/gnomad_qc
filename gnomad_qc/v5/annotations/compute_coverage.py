@@ -114,7 +114,6 @@ from gnomad_qc.v4.resources.meta import meta as v4_meta
 from gnomad_qc.v5.annotations.batch_fanout import (
     RelayJobSpec,
     apply_path_suffix,
-    build_setup_command,
     chunk_intervals_hash,
     chunk_path,
     combine_suffix,
@@ -1811,22 +1810,19 @@ def _submit_orchestrator_batch(args: argparse.Namespace) -> None:
     :return: None.
     """
     commit = resolve_commit()
-    setup_cmd = build_setup_command(
+    setup_cmd, backend_kwargs, script = relay_context(
         commit,
-        args.gcp_billing_project,
         args.methods_branch,
+        args.batch_billing_project,
+        args.batch_remote_tmpdir,
+        "compute_coverage.py",
+        gcp_billing_project=args.gcp_billing_project,
         hail_version=HAIL_VERSION,
     )
     forwarded = [a for a in sys.argv[1:] if a != "--submit-orchestrator"]
-    command = (
-        f"export GNOMAD_QC_COMMIT={commit}\n"
-        "python3 /tmp/gnomad_qc/gnomad_qc/v5/annotations/compute_coverage.py "
-        + " ".join(shlex.quote(a) for a in forwarded)
+    command = f"export GNOMAD_QC_COMMIT={commit}\n{script} " + " ".join(
+        shlex.quote(a) for a in forwarded
     )
-
-    backend_kwargs = {"billing_project": args.batch_billing_project}
-    if args.batch_remote_tmpdir:
-        backend_kwargs["remote_tmpdir"] = args.batch_remote_tmpdir
     backend = hb.ServiceBackend(**backend_kwargs)
     try:
         batch = hb.Batch(name=f"{args.app_name}_orchestrator", backend=backend)
@@ -1927,7 +1923,7 @@ def _submit_chunk_batch(
         batch_name,
         job_specs,
         "chunk",
-        args.batch_dry_run,
+        dry_run=args.batch_dry_run,
     )
 
 
@@ -2028,19 +2024,16 @@ def _orchestrate_coverage_batch(
         return
 
     commit = resolve_commit()
-    setup_cmd = build_setup_command(
+    setup_cmd, backend_kwargs, script = relay_context(
         commit,
-        args.gcp_billing_project,
         args.methods_branch,
+        args.batch_billing_project,
+        args.batch_remote_tmpdir,
+        "compute_coverage.py",
+        gcp_billing_project=args.gcp_billing_project,
         hail_version=HAIL_VERSION,
     )
-
-    backend_kwargs = {"billing_project": args.batch_billing_project}
-    if args.batch_remote_tmpdir:
-        backend_kwargs["remote_tmpdir"] = args.batch_remote_tmpdir
-
     common_flags_str = _build_relay_common_flags(args, chunk=True)
-    script = "python3 /tmp/gnomad_qc/gnomad_qc/v5/annotations/compute_coverage.py"
 
     run_id = new_run_id()
     logger.info(
@@ -2048,7 +2041,7 @@ def _orchestrate_coverage_batch(
     )
 
     def _write_manifest(failed: List[int], records: List[Dict[str, Any]]) -> None:
-        """Rewrite after every wave so the list survives an orchestrator death."""
+        """Rewrite after each wave and retry pass so the list survives a crash."""
         n_sent = sum(r["n_dispatched"] for r in records)
         manifest = write_failed_chunks_manifest(
             ht_path=cov_and_an_ht_path,
@@ -2070,7 +2063,7 @@ def _orchestrate_coverage_batch(
                 run_id,
             )
 
-    all_failed, wave_records = dispatch_in_waves(
+    dispatch_in_waves(
         pending_indices,
         args.wave_size,
         submit_wave=lambda wave, label: _submit_chunk_batch(
@@ -2089,75 +2082,12 @@ def _orchestrate_coverage_batch(
         ),
         dry_run=args.batch_dry_run,
         on_wave_complete=_write_manifest,
+        retry_passes=args.fanout_retry_passes,
     )
-    if args.batch_dry_run:
-        # Nothing ran, so there are no outputs to check and no manifest to
-        # write (it would overwrite the last real run's failed-chunk list).
-        return
-    n_dispatched = sum(r["n_dispatched"] for r in wave_records)
-
-    # Automatic retry passes. Safe where Batch-level attempts are not: by the
-    # time a pass runs, every relay from the previous dispatch has exited, so a
-    # re-dispatch cannot race a live relay's inner QoB batch. Chunks missing
-    # after the last pass stay in _failed_chunks.json.
-    for pass_no in range(1, max(args.fanout_retry_passes, 0) + 1):
-        if not all_failed:
-            break
-        retry_indices = sorted(set(all_failed))
-        logger.info(
-            "Retry pass %d/%d: re-dispatching %d missing chunk(s): %s%s",
-            pass_no,
-            args.fanout_retry_passes,
-            len(retry_indices),
-            retry_indices[:25],
-            " ..." if len(retry_indices) > 25 else "",
-        )
-        retry_batch_id = _submit_chunk_batch(
-            args=args,
-            backend_kwargs=backend_kwargs,
-            chunk_indices=retry_indices,
-            cov_and_an_ht_path=cov_and_an_ht_path,
-            intervals_hash=intervals_hash,
-            setup_cmd=setup_cmd,
-            common_flags_str=common_flags_str,
-            script=script,
-            wave_label=f"retry{pass_no}",
-        )
-        present = list_present_chunk_indices(cov_and_an_ht_path, intervals_hash)
-        all_failed = [idx for idx in retry_indices if idx not in present]
-        n_dispatched += len(retry_indices)
-        wave_records.append(
-            {
-                "wave": f"retry{pass_no}",
-                "batch_id": retry_batch_id,
-                "n_dispatched": len(retry_indices),
-                "failed_chunk_indices": all_failed,
-            }
-        )
-        manifest = write_failed_chunks_manifest(
-            ht_path=cov_and_an_ht_path,
-            intervals_hash=intervals_hash,
-            failed=all_failed,
-            n_dispatched=n_dispatched,
-            run_id=run_id,
-            commit=commit,
-            app_name=args.app_name,
-            waves=wave_records,
-        )
-        if all_failed:
-            logger.warning(
-                "Retry pass %d/%d complete; %d chunk(s) STILL missing (see %s).",
-                pass_no,
-                args.fanout_retry_passes,
-                len(all_failed),
-                manifest,
-            )
-        else:
-            logger.info(
-                "Retry pass %d/%d complete; all chunks present.",
-                pass_no,
-                args.fanout_retry_passes,
-            )
+    # Under --batch-dry-run nothing ran, so there are no outputs to check and
+    # no manifest was written (it would overwrite the last real run's record).
+    # Otherwise whatever is still missing after the retry passes is in
+    # _failed_chunks.json; rerun --use-batch-fanout to pick it up.
 
 
 def _orchestrate_coverage_merge(
@@ -2230,7 +2160,12 @@ def _orchestrate_coverage_merge(
         merge_storage=args.merge_storage,
         final_merge_storage=args.final_merge_storage,
         submit=lambda name, specs, label: submit_relay_batch(
-            args.batch_image, backend_kwargs, name, specs, label, args.batch_dry_run
+            args.batch_image,
+            backend_kwargs,
+            name,
+            specs,
+            label,
+            dry_run=args.batch_dry_run,
         ),
         attempts=args.chunk_attempts,
     )
