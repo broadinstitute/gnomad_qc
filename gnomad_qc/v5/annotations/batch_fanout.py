@@ -112,14 +112,10 @@ def build_setup_command(
     )
     return (
         "set -euxo pipefail\n"
-        # Hail reads its config from ~/.config/hail (XDG) in newer versions and
-        # from ~/.hail in older ones; write both so hl.init(backend="batch")
-        # finds it either way.
-        "mkdir -p ~/.config/hail ~/.hail\n"
+        "mkdir -p ~/.config/hail\n"
         "cat > ~/.config/hail/config.ini <<'HAILCFG'\n"
         f"{config_body}"
         "HAILCFG\n"
-        "cp ~/.config/hail/config.ini ~/.hail/config.ini\n"
         # TODO: drop this GSA-key patch once Hail propagates
         # gcs_requester_pays_configuration to the QoB driver pod.
         f"python3 -c \"import json, os; p='/gsa-key/key.json';"
