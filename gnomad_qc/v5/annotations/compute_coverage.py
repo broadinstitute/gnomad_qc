@@ -3182,9 +3182,12 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         "--batch-image",
         type=str,
         default=(
-            "us-central1-docker.pkg.dev/broad-mpg-gnomad/images/v5_freq_batch:latest"
+            "us-central1-docker.pkg.dev/broad-mpg-gnomad/images/v5_freq_batch:0.2.137"
         ),
-        help="Docker image for the chunk + merge BashJob containers.",
+        help=(
+            "Docker image for the relay containers. The tag's Hail should match"
+            " HAIL_VERSION, which the relay reinstalls regardless."
+        ),
     )
     fanout_group.add_argument(
         "--batch-billing-project",
