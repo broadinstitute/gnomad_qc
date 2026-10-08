@@ -937,7 +937,7 @@ def validate_trio_stats(
     logger.info("Trio stats validation PASSED.")
 
 
-def 1_stats(
+def run_generate_sib_stats(
     vds: hl.vds.VariantDataset,
     relatedness_ht: hl.Table,
     info_ht_path: str,
@@ -1884,11 +1884,14 @@ def _validate_args(args) -> None:
         )
 
     if args.generate_sibling_stats and (
-        args.chrom is not None or args.explode_partitions or args.scout_alleles
+        args.explode_partitions
+        or args.scout_alleles
+        or (args.chrom is not None and not args.sib_stats_ht_path_override)
     ):
         raise ValueError(
-            "--generate-sibling-stats cannot be combined with --chrom/"
-            "--explode-partitions/--scout-alleles: those flags restrict the "
+            "--generate-sibling-stats cannot be combined with "
+            "--explode-partitions/--scout-alleles, or with --chrom unless "
+            "--sib-stats-ht-path-override is set: those flags restrict the "
             "shared VDS read, so a partial-genome sib-stats table would be "
             "written to the canonical sib-stats path and downstream joins "
             "would silently mark out-of-region loci as non-sibling-singletons."
@@ -2151,7 +2154,10 @@ def main(args):
         or get_info_ht(test=test, environment=environment).path
     )
     trio_stats_ht_path = get_trio_stats(test=test, environment=environment).path
-    sib_stats_ht_path = get_sib_stats(test=test, environment=environment).path
+    sib_stats_ht_path = (
+        args.sib_stats_ht_path_override
+        or get_sib_stats(test=test, environment=environment).path
+    )
     variant_qc_annotation_ht_path = get_variant_qc_annotations(
         test=test, environment=environment
     ).path
@@ -2490,7 +2496,10 @@ def main(args):
             # args.test (not combined test): a --test-n-partitions run reads partitions
             # of the full VDS, so it needs the full (non-test) info HT for AC and for
             # matching split keys.
-            sib_info_ht_path = get_info_ht(test=args.test, environment=environment).path
+            sib_info_ht_path = (
+                args.info_ht_path_override
+                or get_info_ht(test=args.test, environment=environment).path
+            )
             _check_resource_existence(
                 environment=environment,
                 input_step_resources={"info_ht": [sib_info_ht_path]},
@@ -2702,6 +2711,16 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         help=(
             "Optional override path for the info HT output. "
             "If set, this path is used instead of the default resource path."
+        ),
+        type=str,
+        default=None,
+    )
+    parser.add_argument(
+        "--sib-stats-ht-path-override",
+        help=(
+            "Optional override path for the sibling stats HT output. Required "
+            "to combine --generate-sibling-stats with --chrom, so a "
+            "single-contig table never lands on the canonical path."
         ),
         type=str,
         default=None,
