@@ -663,7 +663,7 @@ def union_ac_info_hts(
     instead of silently duplicating rows.
 
     :param ac_info_ht_paths: Paths to the per-stratum AC info HTs to union. Must contain at least two paths.
-    :param n_partitions: Optional number of partitions for the unioned Table, applied by re-reading the inputs with a share of this total proportional to their row counts, so it governs the checkpoint and the distinct() check as well as the final write. Default is None (keep the inputs' partitioning).
+    :param n_partitions: Optional number of partitions for the unioned Table, applied via `naive_coalesce` on each input with a share of this total proportional to its row count, so it governs the checkpoint and the distinct() check as well as the final write. Default is None (keep the inputs' partitioning).
     :param expected_strata: Optional list (aligned with `ac_info_ht_paths`) of dicts of expected `ac_info_ht_parameters` global fields (e.g. contig, min_alleles, max_alleles, test). Each input's recorded parameters must match its expectation -- a path name is only a convention, but the globals are written by the run itself, so this catches a table sitting at the right path with the wrong contents. Inputs without the provenance global fail verification. Default is None (no verification).
     :return: Unioned AC info HT (checkpointed to a temp path).
     """
@@ -734,23 +734,14 @@ def union_ac_info_hts(
     for path, n in zip(ac_info_ht_paths, part_counts):
         logger.info("Input AC info HT %s: %d rows", path, n)
 
-    # Repartition on read before the checkpoint: inputs carry the
-    # generate step's scout partitioning, far too fine for a rows-only table
-    # and dominated by per-partition overhead. `read_table(_n_partitions=N)`
-    # triggers a Spark job (TableCalculateNewPartitions) that samples keys
-    # across every row to pick new, balanced partition boundaries -- not a
-    # free metadata operation, but it buys evenly-sized output partitions.
-    # `naive_coalesce` would be cheaper but only merges adjacent existing
-    # partitions, so it would carry the scout byte-weight skew through
-    # instead of evening it out.
+    # Repartition before the checkpoint: inputs carry the scout partitioning,
+    # far too fine for a rows-only table. naive_coalesce is a cheap merge of
+    # adjacent partitions and doesn't need a full-table scan.
     if n_partitions is not None:
         total_rows = sum(part_counts)
         hts = [
-            hl.read_table(
-                path,
-                _n_partitions=max(1, round(n_partitions * n / total_rows)),
-            )
-            for path, n in zip(ac_info_ht_paths, part_counts)
+            ht.naive_coalesce(max(1, round(n_partitions * n / total_rows)))
+            for ht, n in zip(hts, part_counts)
         ]
         first = hts[0]
 
@@ -2708,7 +2699,7 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         "--union-n-partitions",
         help=(
             "Optional number of partitions for the unioned AC info HT. Applied "
-            "when reading the inputs (each gets a share proportional to its row "
+            "via naive_coalesce on each input (a share proportional to its row "
             "count), so it also sets the partitioning of the union's checkpoint "
             "and duplicate-key check, not just the final write. The per-stratum "
             "inputs carry the generate step's scout partitioning, which is sized "
