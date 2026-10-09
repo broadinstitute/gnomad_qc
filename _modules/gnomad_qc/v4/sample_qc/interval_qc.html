@@ -1,0 +1,995 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>gnomad_qc.v4.sample_qc.interval_qc &mdash; gnomad_qc master documentation</title>
+      <link rel="stylesheet" href="../../../../_static/pygments.css" type="text/css" />
+      <link rel="stylesheet" href="../../../../_static/css/theme.css" type="text/css" />
+      <link rel="stylesheet" href="../../../../_static/theme_overrides.css" type="text/css" />
+  <!--[if lt IE 9]>
+    <script src="../../../../_static/js/html5shiv.min.js"></script>
+  <![endif]-->
+  
+        <script src="../../../../_static/jquery.js"></script>
+        <script src="../../../../_static/_sphinx_javascript_frameworks_compat.js"></script>
+        <script data-url_root="../../../../" id="documentation_options" src="../../../../_static/documentation_options.js"></script>
+        <script src="../../../../_static/doctools.js"></script>
+        <script src="../../../../_static/sphinx_highlight.js"></script>
+        <script src="https://unpkg.com/mermaid@10.2.0/dist/mermaid.min.js"></script>
+        <script>mermaid.initialize({startOnLoad:true});</script>
+    <script src="../../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../../index.html" class="icon icon-home">
+            gnomad_qc
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../../api_reference/index.html">API Reference</a></li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/broadinstitute/gnomad_qc/tags">Change Log</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../../index.html">gnomad_qc</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../../index.html">Module code</a></li>
+      <li class="breadcrumb-item active">gnomad_qc.v4.sample_qc.interval_qc</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for gnomad_qc.v4.sample_qc.interval_qc</h1><div class="highlight"><pre>
+<span></span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">Script to define high quality intervals based on per interval aggregate statistics over samples.</span>
+
+<span class="sd">Two methods are available for defining high quality intervals:</span>
+
+<span class="sd">    - mean fraction of bases over DP 0 to determine high quality intervals.</span>
+<span class="sd">    - fraction of samples with a mean interval coverage over a specified coverage that</span>
+<span class="sd">      is different for autosomes and sex chromosomes.</span>
+
+<span class="sd">Aggregate statistics over samples can also be stratified by platform to determine</span>
+<span class="sd">per-platform high quality intervals.</span>
+<span class="sd">&quot;&quot;&quot;</span>
+
+<span class="kn">import</span> <span class="nn">argparse</span>
+<span class="kn">import</span> <span class="nn">functools</span>
+<span class="kn">import</span> <span class="nn">logging</span>
+<span class="kn">import</span> <span class="nn">operator</span>
+<span class="kn">from</span> <span class="nn">typing</span> <span class="kn">import</span> <span class="n">Callable</span><span class="p">,</span> <span class="n">Dict</span><span class="p">,</span> <span class="n">List</span><span class="p">,</span> <span class="n">Optional</span><span class="p">,</span> <span class="n">Tuple</span><span class="p">,</span> <span class="n">Union</span>
+
+<span class="kn">import</span> <span class="nn">hail</span> <span class="k">as</span> <span class="nn">hl</span>
+<span class="kn">from</span> <span class="nn">gnomad.utils.slack</span> <span class="kn">import</span> <span class="n">slack_notifications</span>
+
+<span class="kn">from</span> <span class="nn">gnomad_qc.slack_creds</span> <span class="kn">import</span> <span class="n">slack_token</span>
+<span class="kn">from</span> <span class="nn">gnomad_qc.v4.resources.basics</span> <span class="kn">import</span> <span class="p">(</span>
+    <span class="n">calling_intervals</span><span class="p">,</span>
+    <span class="n">get_checkpoint_path</span><span class="p">,</span>
+    <span class="n">get_gnomad_v4_vds</span><span class="p">,</span>
+    <span class="n">get_logging_path</span><span class="p">,</span>
+<span class="p">)</span>
+<span class="kn">from</span> <span class="nn">gnomad_qc.v4.resources.sample_qc</span> <span class="kn">import</span> <span class="p">(</span>
+    <span class="n">hard_filtered_samples</span><span class="p">,</span>
+    <span class="n">interval_coverage</span><span class="p">,</span>
+    <span class="n">interval_qc</span><span class="p">,</span>
+    <span class="n">interval_qc_pass</span><span class="p">,</span>
+    <span class="n">platform</span><span class="p">,</span>
+    <span class="n">sex</span><span class="p">,</span>
+    <span class="n">sex_chr_coverage</span><span class="p">,</span>
+<span class="p">)</span>
+
+<span class="n">logging</span><span class="o">.</span><span class="n">basicConfig</span><span class="p">(</span><span class="nb">format</span><span class="o">=</span><span class="s2">&quot;</span><span class="si">%(levelname)s</span><span class="s2"> (</span><span class="si">%(name)s</span><span class="s2"> </span><span class="si">%(lineno)s</span><span class="s2">): </span><span class="si">%(message)s</span><span class="s2">&quot;</span><span class="p">)</span>
+<span class="n">logger</span> <span class="o">=</span> <span class="n">logging</span><span class="o">.</span><span class="n">getLogger</span><span class="p">(</span><span class="s2">&quot;interval_qc&quot;</span><span class="p">)</span>
+<span class="n">logger</span><span class="o">.</span><span class="n">setLevel</span><span class="p">(</span><span class="n">logging</span><span class="o">.</span><span class="n">INFO</span><span class="p">)</span>
+
+
+<div class="viewcode-block" id="generate_sex_chr_interval_coverage_mt"><a class="viewcode-back" href="../../../../api_reference/v4/sample_qc/interval_qc.html#gnomad_qc.v4.sample_qc.interval_qc.generate_sex_chr_interval_coverage_mt">[docs]</a><span class="k">def</span> <span class="nf">generate_sex_chr_interval_coverage_mt</span><span class="p">(</span>
+    <span class="n">vds</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">vds</span><span class="o">.</span><span class="n">VariantDataset</span><span class="p">,</span>
+    <span class="n">calling_intervals_ht</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">hl</span><span class="o">.</span><span class="n">MatrixTable</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Create a MatrixTable of interval-by-sample coverage on sex chromosomes with intervals split at PAR regions.</span>
+
+<span class="sd">    :param vds: Input VariantDataset.</span>
+<span class="sd">    :param calling_intervals_ht: Calling interval Table.</span>
+<span class="sd">    :return: MatrixTable with interval coverage per sample on sex chromosomes.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">contigs</span> <span class="o">=</span> <span class="p">[</span><span class="s2">&quot;chrX&quot;</span><span class="p">,</span> <span class="s2">&quot;chrY&quot;</span><span class="p">]</span>
+    <span class="n">calling_intervals_ht</span> <span class="o">=</span> <span class="n">calling_intervals_ht</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span>
+        <span class="n">hl</span><span class="o">.</span><span class="n">literal</span><span class="p">(</span><span class="n">contigs</span><span class="p">)</span><span class="o">.</span><span class="n">contains</span><span class="p">(</span><span class="n">calling_intervals_ht</span><span class="o">.</span><span class="n">interval</span><span class="o">.</span><span class="n">start</span><span class="o">.</span><span class="n">contig</span><span class="p">)</span>
+    <span class="p">)</span>
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span>
+        <span class="s2">&quot;Filtering VariantDataset to the following contigs: </span><span class="si">%s</span><span class="s2">...&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;, &quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">contigs</span><span class="p">),</span>
+    <span class="p">)</span>
+    <span class="n">vds</span> <span class="o">=</span> <span class="n">hl</span><span class="o">.</span><span class="n">vds</span><span class="o">.</span><span class="n">filter_chromosomes</span><span class="p">(</span><span class="n">vds</span><span class="p">,</span> <span class="n">keep</span><span class="o">=</span><span class="n">contigs</span><span class="p">)</span>
+    <span class="n">rg</span> <span class="o">=</span> <span class="n">vds</span><span class="o">.</span><span class="n">reference_data</span><span class="o">.</span><span class="n">locus</span><span class="o">.</span><span class="n">dtype</span><span class="o">.</span><span class="n">reference_genome</span>
+
+    <span class="n">par_boundaries</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">for</span> <span class="n">par_interval</span> <span class="ow">in</span> <span class="n">rg</span><span class="o">.</span><span class="n">par</span><span class="p">:</span>
+        <span class="n">par_boundaries</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">par_interval</span><span class="o">.</span><span class="n">start</span><span class="p">)</span>
+        <span class="n">par_boundaries</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">par_interval</span><span class="o">.</span><span class="n">end</span><span class="p">)</span>
+
+    <span class="c1"># Segment on PAR interval boundaries.</span>
+    <span class="n">calling_intervals</span> <span class="o">=</span> <span class="n">hl</span><span class="o">.</span><span class="n">segment_intervals</span><span class="p">(</span><span class="n">calling_intervals_ht</span><span class="p">,</span> <span class="n">par_boundaries</span><span class="p">)</span>
+
+    <span class="c1"># Annotate intervals overlapping PAR.</span>
+    <span class="n">calling_intervals</span> <span class="o">=</span> <span class="n">calling_intervals</span><span class="o">.</span><span class="n">annotate</span><span class="p">(</span>
+        <span class="n">overlap_par</span><span class="o">=</span><span class="n">hl</span><span class="o">.</span><span class="n">any</span><span class="p">(</span>
+            <span class="k">lambda</span> <span class="n">x</span><span class="p">:</span> <span class="n">x</span><span class="o">.</span><span class="n">overlaps</span><span class="p">(</span><span class="n">calling_intervals</span><span class="o">.</span><span class="n">interval</span><span class="p">),</span> <span class="n">hl</span><span class="o">.</span><span class="n">literal</span><span class="p">(</span><span class="n">rg</span><span class="o">.</span><span class="n">par</span><span class="p">)</span>
+        <span class="p">)</span>
+    <span class="p">)</span>
+
+    <span class="n">kept_contig_filter</span> <span class="o">=</span> <span class="n">hl</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">contigs</span><span class="p">)</span><span class="o">.</span><span class="n">map</span><span class="p">(</span>
+        <span class="k">lambda</span> <span class="n">x</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">parse_locus_interval</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">reference_genome</span><span class="o">=</span><span class="n">rg</span><span class="p">)</span>
+    <span class="p">)</span>
+    <span class="n">vds</span> <span class="o">=</span> <span class="n">hl</span><span class="o">.</span><span class="n">vds</span><span class="o">.</span><span class="n">VariantDataset</span><span class="p">(</span>
+        <span class="n">hl</span><span class="o">.</span><span class="n">filter_intervals</span><span class="p">(</span><span class="n">vds</span><span class="o">.</span><span class="n">reference_data</span><span class="p">,</span> <span class="n">kept_contig_filter</span><span class="p">),</span>
+        <span class="n">hl</span><span class="o">.</span><span class="n">filter_intervals</span><span class="p">(</span><span class="n">vds</span><span class="o">.</span><span class="n">variant_data</span><span class="p">,</span> <span class="n">kept_contig_filter</span><span class="p">),</span>
+    <span class="p">)</span>
+    <span class="n">mt</span> <span class="o">=</span> <span class="n">hl</span><span class="o">.</span><span class="n">vds</span><span class="o">.</span><span class="n">interval_coverage</span><span class="p">(</span><span class="n">vds</span><span class="p">,</span> <span class="n">calling_intervals</span><span class="p">)</span>
+    <span class="n">mt</span> <span class="o">=</span> <span class="n">mt</span><span class="o">.</span><span class="n">annotate_rows</span><span class="p">(</span><span class="n">overlap_par</span><span class="o">=</span><span class="n">calling_intervals</span><span class="p">[</span><span class="n">mt</span><span class="o">.</span><span class="n">row_key</span><span class="p">]</span><span class="o">.</span><span class="n">overlap_par</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">mt</span></div>
+
+
+<div class="viewcode-block" id="filter_to_test"><a class="viewcode-back" href="../../../../api_reference/v4/sample_qc/interval_qc.html#gnomad_qc.v4.sample_qc.interval_qc.filter_to_test">[docs]</a><span class="k">def</span> <span class="nf">filter_to_test</span><span class="p">(</span>
+    <span class="n">mt</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">MatrixTable</span><span class="p">,</span>
+    <span class="n">sex_mt</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">MatrixTable</span><span class="p">,</span>
+    <span class="n">num_partitions</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">10</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Tuple</span><span class="p">[</span><span class="n">hl</span><span class="o">.</span><span class="n">MatrixTable</span><span class="p">,</span> <span class="n">hl</span><span class="o">.</span><span class="n">MatrixTable</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Filter `mt` to `num_partitions` partitions on chr1 and `sex_mt` to `num_partitions` partitions on chrX and all of chrY.</span>
+
+<span class="sd">    .. note::</span>
+
+<span class="sd">        This returns the first `num_partitions` in `mt`, the first `num_partitions` in</span>
+<span class="sd">        `sex_mt`, and all of chrY. It makes the assumption that the first</span>
+<span class="sd">        `num_partitions` in `mt` are on chr1 and that the first `num_partitions` in</span>
+<span class="sd">        `sex_mt` are on chrY. If `num_partitions` is too high this may not hold true.</span>
+
+<span class="sd">    :param mt: Input MatrixTable to filter to specified number of partitions on chr1.</span>
+<span class="sd">    :param sex_mt: Input MatrixTable to filter to specified number of partitions on</span>
+<span class="sd">        chrX and all of chrY.</span>
+<span class="sd">    :param num_partitions: Number of partitions to grab from mt.</span>
+<span class="sd">    :return: Input MatrixTables filtered to `num_partitions` on chr1, chrX, and all</span>
+<span class="sd">        of chrY.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span>
+        <span class="s2">&quot;Filtering to columns in both the coverage MT and the sex coverage MT for&quot;</span>
+        <span class="s2">&quot; testing...&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">mt</span> <span class="o">=</span> <span class="n">mt</span><span class="o">.</span><span class="n">semi_join_cols</span><span class="p">(</span><span class="n">sex_mt</span><span class="o">.</span><span class="n">cols</span><span class="p">())</span>
+    <span class="n">sex_mt</span> <span class="o">=</span> <span class="n">sex_mt</span><span class="o">.</span><span class="n">semi_join_cols</span><span class="p">(</span><span class="n">mt</span><span class="o">.</span><span class="n">cols</span><span class="p">())</span>
+
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span>
+        <span class="s2">&quot;Filtering to </span><span class="si">%d</span><span class="s2"> partitions on chr1, chrX, and all of chrY for testing...&quot;</span><span class="p">,</span>
+        <span class="n">num_partitions</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">mt</span> <span class="o">=</span> <span class="n">mt</span><span class="o">.</span><span class="n">_filter_partitions</span><span class="p">(</span><span class="nb">range</span><span class="p">(</span><span class="n">num_partitions</span><span class="p">))</span>
+    <span class="n">sex_mt_chrx</span> <span class="o">=</span> <span class="n">sex_mt</span><span class="o">.</span><span class="n">_filter_partitions</span><span class="p">(</span><span class="nb">range</span><span class="p">(</span><span class="n">num_partitions</span><span class="p">))</span>
+    <span class="n">sex_mt_chry</span> <span class="o">=</span> <span class="n">sex_mt</span><span class="o">.</span><span class="n">filter_rows</span><span class="p">(</span><span class="n">sex_mt</span><span class="o">.</span><span class="n">interval</span><span class="o">.</span><span class="n">start</span><span class="o">.</span><span class="n">contig</span> <span class="o">==</span> <span class="s2">&quot;chrY&quot;</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">mt</span><span class="p">,</span> <span class="n">sex_mt_chrx</span><span class="o">.</span><span class="n">union_rows</span><span class="p">(</span><span class="n">sex_mt_chry</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="compute_interval_qc"><a class="viewcode-back" href="../../../../api_reference/v4/sample_qc/interval_qc.html#gnomad_qc.v4.sample_qc.interval_qc.compute_interval_qc">[docs]</a><span class="k">def</span> <span class="nf">compute_interval_qc</span><span class="p">(</span>
+    <span class="n">mt</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">MatrixTable</span><span class="p">,</span>
+    <span class="n">platform_ht</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">,</span>
+    <span class="n">mean_dp_thresholds</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="p">[</span><span class="mi">5</span><span class="p">,</span> <span class="mi">10</span><span class="p">,</span> <span class="mi">15</span><span class="p">,</span> <span class="mi">20</span><span class="p">,</span> <span class="mi">25</span><span class="p">],</span>
+    <span class="n">split_by_sex</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Compute interval QC aggregate statistics per interval, per platform, and optionally split by sex karyotype.</span>
+
+<span class="sd">    The following annotations must be on `mt` (interval-by-sample MT output from</span>
+<span class="sd">    `hl.vds.interval_coverage`):</span>
+
+<span class="sd">        - interval - Genomic interval of interest.</span>
+<span class="sd">        - mean_dp - Mean depth of bases across the interval.</span>
+<span class="sd">        - fraction_over_dp_threshold - Fraction of interval (in bases) above each DP</span>
+<span class="sd">          threshold. Second element must be dp &gt;= 1 (dp &gt; 0).</span>
+
+<span class="sd">        If `split_by_sex`:</span>
+
+<span class="sd">            - sex_karyotype - StringExpression annotation with sex karyotype</span>
+<span class="sd">              information including &#39;XX&#39; and &#39;XY&#39; values.</span>
+
+<span class="sd">    The `platform_ht` must have a &#39;qc_platform&#39; annotation indicating the platform each</span>
+<span class="sd">    sample was assigned.</span>
+
+<span class="sd">    Returns a Table with the following annotations:</span>
+
+<span class="sd">        - interval_mean_dp - Mean DP of the interval across &#39;all&#39; samples and</span>
+<span class="sd">          optionally split by &#39;XX&#39; and &#39;XY&#39;.</span>
+<span class="sd">        - fraction_over_{dp}x - for all &#39;dp&#39; in `mean_dp_thresholds`, which is the</span>
+<span class="sd">          fraction of samples with mean DP over &#39;dp&#39;. Computed across &#39;all&#39; samples and</span>
+<span class="sd">          optionally split by &#39;XX&#39; and &#39;XY&#39;.</span>
+<span class="sd">        - mean_fraction_over_dp_0 - Mean of the fraction of the interval (in bases)</span>
+<span class="sd">          that is dp &gt; 0. Computed across &#39;all&#39; samples and optionally split by &#39;XX&#39;</span>
+<span class="sd">          and &#39;XY&#39;.</span>
+<span class="sd">        - platform_interval_mean_dp - Same as &#39;interval_mean_dp&#39;, but instead of</span>
+<span class="sd">          containing a single value, &#39;all&#39; (and &#39;XX&#39; and &#39;XY&#39; if `split_by_sex` is</span>
+<span class="sd">          True) contains a dictionary of per platform values.</span>
+<span class="sd">        - platform_fraction_over_{dp}x  - Same as &#39;fraction_over_{dp}x&#39;, but instead of</span>
+<span class="sd">          containing a single value, &#39;all&#39; (and &#39;XX&#39; and &#39;XY&#39; if `split_by_sex` is</span>
+<span class="sd">          True) contains a dictionary of per platform values.</span>
+<span class="sd">        - platform_mean_fraction_over_dp_0 - Same as &#39;mean_fraction_over_dp_0&#39;, but</span>
+<span class="sd">          instead of containing a single value, &#39;all&#39; (and &#39;XX&#39; and &#39;XY&#39; if</span>
+<span class="sd">          `split_by_sex` is True) contains a dictionary of per platform values.</span>
+
+<span class="sd">    :param mt: Input interval coverage MatrixTable.</span>
+<span class="sd">    :param platform_ht: Input platform assignment Table.</span>
+<span class="sd">    :param mean_dp_thresholds: List of mean DP thresholds to use for computing the</span>
+<span class="sd">        fraction of samples with mean interval DP &gt;= the threshold.</span>
+<span class="sd">    :param split_by_sex: Whether the interval QC should be stratified by sex. If True,</span>
+<span class="sd">        `mt` must be annotated with &#39;sex_karyotype&#39;.</span>
+<span class="sd">    :return: Table with interval QC annotations.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="k">def</span> <span class="nf">_get_agg_expr</span><span class="p">(</span>
+        <span class="n">expr</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">expr</span><span class="o">.</span><span class="n">Expression</span><span class="p">,</span>
+        <span class="n">agg_func</span><span class="p">:</span> <span class="n">Callable</span> <span class="o">=</span> <span class="n">hl</span><span class="o">.</span><span class="n">agg</span><span class="o">.</span><span class="n">mean</span><span class="p">,</span>
+        <span class="n">group_by</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">hl</span><span class="o">.</span><span class="n">expr</span><span class="o">.</span><span class="n">StringExpression</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">hl</span><span class="o">.</span><span class="n">Expression</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Call `agg_func` on `expr` with optional stratification by sex karyotype and `group_by`.</span>
+
+<span class="sd">        :param expr: Expression to pass to `agg_func`.</span>
+<span class="sd">        :param agg_func: Function to use for aggregation of `expr`. Default is</span>
+<span class="sd">            `hl.agg.mean`.</span>
+<span class="sd">        :param group_by: Optional StringExpression to group by before applying</span>
+<span class="sd">            `agg_func` to `expr`.</span>
+<span class="sd">        :return: Aggregation expression.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="n">group_by</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">agg_func</span> <span class="o">=</span> <span class="n">hl</span><span class="o">.</span><span class="n">agg</span><span class="o">.</span><span class="n">group_by</span><span class="p">(</span><span class="n">group_by</span><span class="p">,</span> <span class="n">agg_func</span><span class="p">(</span><span class="n">expr</span><span class="p">))</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">agg_func</span> <span class="o">=</span> <span class="n">agg_func</span><span class="p">(</span><span class="n">expr</span><span class="p">)</span>
+        <span class="n">agg_expr</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;all&quot;</span><span class="p">:</span> <span class="n">agg_func</span><span class="p">}</span>
+        <span class="k">if</span> <span class="n">split_by_sex</span><span class="p">:</span>
+            <span class="n">agg_expr</span><span class="o">.</span><span class="n">update</span><span class="p">(</span>
+                <span class="p">{</span>
+                    <span class="s2">&quot;XX&quot;</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">agg</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">mt</span><span class="o">.</span><span class="n">sex_karyotype</span> <span class="o">==</span> <span class="s2">&quot;XX&quot;</span><span class="p">,</span> <span class="n">agg_func</span><span class="p">),</span>
+                    <span class="s2">&quot;XY&quot;</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">agg</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">mt</span><span class="o">.</span><span class="n">sex_karyotype</span> <span class="o">==</span> <span class="s2">&quot;XY&quot;</span><span class="p">,</span> <span class="n">agg_func</span><span class="p">),</span>
+                <span class="p">}</span>
+            <span class="p">)</span>
+
+        <span class="k">return</span> <span class="n">agg_expr</span>
+
+    <span class="n">num_samples</span> <span class="o">=</span> <span class="n">mt</span><span class="o">.</span><span class="n">count_cols</span><span class="p">()</span>
+    <span class="n">mt</span> <span class="o">=</span> <span class="n">mt</span><span class="o">.</span><span class="n">annotate_cols</span><span class="p">(</span><span class="n">platform</span><span class="o">=</span><span class="n">platform_ht</span><span class="p">[</span><span class="n">mt</span><span class="o">.</span><span class="n">col_key</span><span class="p">]</span><span class="o">.</span><span class="n">qc_platform</span><span class="p">)</span>
+    <span class="n">mt</span> <span class="o">=</span> <span class="n">mt</span><span class="o">.</span><span class="n">filter_cols</span><span class="p">(</span><span class="n">hl</span><span class="o">.</span><span class="n">is_defined</span><span class="p">(</span><span class="n">mt</span><span class="o">.</span><span class="n">platform</span><span class="p">))</span>
+    <span class="n">num_samples_no_platform</span> <span class="o">=</span> <span class="n">num_samples</span> <span class="o">-</span> <span class="n">mt</span><span class="o">.</span><span class="n">count_cols</span><span class="p">()</span>
+    <span class="k">if</span> <span class="n">num_samples_no_platform</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span>
+            <span class="s2">&quot;Number of samples in MT with no platform assignment: </span><span class="si">%d</span><span class="s2">&quot;</span><span class="p">,</span>
+            <span class="n">num_samples_no_platform</span><span class="p">,</span>
+        <span class="p">)</span>
+
+    <span class="c1"># NOTE: Default hl.vds.interval_coverage will return a list for &#39;fraction_over_dp_threshold&#39; where the second element is dp &gt;= 1 (dp &gt; 0). # noqa</span>
+    <span class="n">agg_groups</span> <span class="o">=</span> <span class="p">[(</span><span class="s2">&quot;&quot;</span><span class="p">,</span> <span class="kc">None</span><span class="p">),</span> <span class="p">(</span><span class="s2">&quot;platform_&quot;</span><span class="p">,</span> <span class="n">mt</span><span class="o">.</span><span class="n">platform</span><span class="p">)]</span>
+    <span class="n">mt</span> <span class="o">=</span> <span class="n">mt</span><span class="o">.</span><span class="n">annotate_rows</span><span class="p">(</span>
+        <span class="o">**</span><span class="p">{</span>
+            <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">prefix</span><span class="si">}</span><span class="s2">interval_mean_dp&quot;</span><span class="p">:</span> <span class="n">_get_agg_expr</span><span class="p">(</span><span class="n">mt</span><span class="o">.</span><span class="n">mean_dp</span><span class="p">,</span> <span class="n">group_by</span><span class="o">=</span><span class="n">group_by</span><span class="p">)</span>
+            <span class="k">for</span> <span class="n">prefix</span><span class="p">,</span> <span class="n">group_by</span> <span class="ow">in</span> <span class="n">agg_groups</span>
+        <span class="p">},</span>
+        <span class="o">**</span><span class="p">{</span>
+            <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">prefix</span><span class="si">}</span><span class="s2">fraction_over_</span><span class="si">{</span><span class="n">dp</span><span class="si">}</span><span class="s2">x&quot;</span><span class="p">:</span> <span class="n">_get_agg_expr</span><span class="p">(</span>
+                <span class="n">mt</span><span class="o">.</span><span class="n">mean_dp</span> <span class="o">&gt;=</span> <span class="n">dp</span><span class="p">,</span> <span class="n">agg_func</span><span class="o">=</span><span class="n">hl</span><span class="o">.</span><span class="n">agg</span><span class="o">.</span><span class="n">fraction</span><span class="p">,</span> <span class="n">group_by</span><span class="o">=</span><span class="n">group_by</span>
+            <span class="p">)</span>
+            <span class="k">for</span> <span class="n">dp</span> <span class="ow">in</span> <span class="n">mean_dp_thresholds</span>
+            <span class="k">for</span> <span class="n">prefix</span><span class="p">,</span> <span class="n">group_by</span> <span class="ow">in</span> <span class="n">agg_groups</span>
+        <span class="p">},</span>
+        <span class="o">**</span><span class="p">{</span>
+            <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">prefix</span><span class="si">}</span><span class="s2">mean_fraction_over_dp_0&quot;</span><span class="p">:</span> <span class="n">_get_agg_expr</span><span class="p">(</span>
+                <span class="n">mt</span><span class="o">.</span><span class="n">fraction_over_dp_threshold</span><span class="p">[</span><span class="mi">1</span><span class="p">],</span> <span class="n">group_by</span><span class="o">=</span><span class="n">group_by</span>
+            <span class="p">)</span>
+            <span class="k">for</span> <span class="n">prefix</span><span class="p">,</span> <span class="n">group_by</span> <span class="ow">in</span> <span class="n">agg_groups</span>
+        <span class="p">},</span>
+    <span class="p">)</span>
+
+    <span class="n">mt</span> <span class="o">=</span> <span class="n">mt</span><span class="o">.</span><span class="n">annotate_globals</span><span class="p">(</span>
+        <span class="n">mean_dp_thresholds</span><span class="o">=</span><span class="n">mean_dp_thresholds</span><span class="p">,</span>
+        <span class="n">platform_n_samples</span><span class="o">=</span><span class="n">mt</span><span class="o">.</span><span class="n">aggregate_cols</span><span class="p">(</span>
+            <span class="n">hl</span><span class="o">.</span><span class="n">agg</span><span class="o">.</span><span class="n">group_by</span><span class="p">(</span><span class="n">mt</span><span class="o">.</span><span class="n">platform</span><span class="p">,</span> <span class="n">hl</span><span class="o">.</span><span class="n">agg</span><span class="o">.</span><span class="n">count</span><span class="p">())</span>
+        <span class="p">),</span>
+    <span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">mt</span><span class="o">.</span><span class="n">rows</span><span class="p">()</span></div>
+
+
+<div class="viewcode-block" id="get_high_qual_cutoff_dict"><a class="viewcode-back" href="../../../../api_reference/v4/sample_qc/interval_qc.html#gnomad_qc.v4.sample_qc.interval_qc.get_high_qual_cutoff_dict">[docs]</a><span class="k">def</span> <span class="nf">get_high_qual_cutoff_dict</span><span class="p">(</span>
+    <span class="n">autosome_par_cutoff</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span>
+    <span class="n">x_nonpar_cutoff</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span>
+    <span class="n">y_nonpar_cutoff</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span>
+    <span class="n">autosome_par_qc_ann</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="n">x_nonpar_qc_ann</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="n">y_nonpar_qc_ann</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="n">split_by_sex</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">List</span><span class="p">[</span><span class="n">Tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">str</span><span class="p">,</span> <span class="nb">float</span><span class="p">]]]:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Create a dictionary specifying annotations and cutoffs to use for determining high quality intervals.</span>
+
+<span class="sd">    This Dictionary is meant to be used as input to `get_interval_qc_pass`.</span>
+
+<span class="sd">    If `split_by_sex` is True, the &#39;x_non_par&#39; dictionary value will contain a cutoff</span>
+<span class="sd">    for both &#39;XX&#39; and &#39;XY&#39;, and &#39;y_non_par&#39; will contain a cutoff for only &#39;XY&#39;.</span>
+
+<span class="sd">    The returned dictionary will be in this form if `split_by_sex` is False:</span>
+
+<span class="sd">        .. code-block::</span>
+
+<span class="sd">            {</span>
+<span class="sd">                &#39;autosome_par&#39;: [(autosome_par_qc_ann, &#39;all&#39;, autosome_par_cutoff)],</span>
+<span class="sd">                &#39;x_non_par&#39;: [(x_nonpar_qc_ann, &#39;all&#39;, x_nonpar_cutoff)],</span>
+<span class="sd">                &#39;y_non_par&#39;: [(y_nonpar_qc_ann, &#39;all&#39;, y_nonpar_cutoff)]</span>
+<span class="sd">            }</span>
+
+<span class="sd">    The returned dictionary will be in this form if `split_by_sex` is True:</span>
+
+<span class="sd">        .. code-block::</span>
+
+<span class="sd">            {</span>
+<span class="sd">                &#39;autosome_par&#39;: [(autosome_par_qc_ann, &#39;all&#39;, autosome_par_cutoff)],</span>
+<span class="sd">                &#39;x_non_par&#39;: [</span>
+<span class="sd">                    (x_nonpar_qc_ann, &#39;XX&#39;, x_nonpar_cutoff),</span>
+<span class="sd">                    (y_nonpar_qc_ann, &#39;XY&#39;, y_nonpar_cutoff)</span>
+<span class="sd">                ],</span>
+<span class="sd">                &#39;y_non_par&#39;: [(y_nonpar_qc_ann, &#39;XY&#39;, y_nonpar_cutoff)]</span>
+<span class="sd">            }</span>
+
+<span class="sd">    :param autosome_par_cutoff: Cutoff to define high coverage intervals for autosome</span>
+<span class="sd">        and PAR intervals. Intervals with `autosome_par_qc_ann` &gt; `autosome_par_cutoff`</span>
+<span class="sd">        are considered high coverage.</span>
+<span class="sd">    :param x_nonpar_cutoff: Cutoff to define high coverage intervals for chromosome X</span>
+<span class="sd">        non-PAR intervals (for XX individuals if `split_by_sex` is True). Intervals</span>
+<span class="sd">        with `x_nonpar_qc_ann` &gt; `x_nonpar_cutoff` are considered high coverage.</span>
+<span class="sd">    :param y_nonpar_cutoff: Cutoff to define high coverage intervals for chromosome Y</span>
+<span class="sd">        non-PAR intervals (for XY individuals if `split_by_sex` is True). Intervals</span>
+<span class="sd">        with `y_nonpar_qc_ann` &gt; `y_nonpar_cutoff` are considered high coverage. Also</span>
+<span class="sd">        used to define high coverage X non-PAR intervals if `split_by_sex` is True.</span>
+<span class="sd">    :param autosome_par_qc_ann: Annotation in an interval QC HT that will be used to</span>
+<span class="sd">        filter high coverage intervals for autosomes and PAR regions.</span>
+<span class="sd">    :param x_nonpar_qc_ann: Annotation in an interval QC HT that will be used to filter</span>
+<span class="sd">        high coverage intervals for chromosome X non-PAR regions.</span>
+<span class="sd">    :param y_nonpar_qc_ann: Annotation in an interval QC HT that will be used to filter</span>
+<span class="sd">        high coverage intervals for chromosome Y non-PAR regions. Also used for</span>
+<span class="sd">        chromosome X non-PAR regions if `split_by_sex` is True.</span>
+<span class="sd">    :param split_by_sex: Whether to split &#39;x_non_par&#39; and &#39;y_non_par&#39; cutoffs based on</span>
+<span class="sd">        sex karyotype. Default is False.</span>
+<span class="sd">    :return: Dictionary of annotations and cutoffs to use to define high quality</span>
+<span class="sd">        intervals.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="n">split_by_sex</span><span class="p">:</span>
+        <span class="n">xx</span> <span class="o">=</span> <span class="s2">&quot;XX&quot;</span>
+        <span class="n">xy</span> <span class="o">=</span> <span class="s2">&quot;XY&quot;</span>
+        <span class="n">autosome_par</span> <span class="o">=</span> <span class="s2">&quot;all&quot;</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">xx</span> <span class="o">=</span> <span class="n">xy</span> <span class="o">=</span> <span class="n">autosome_par</span> <span class="o">=</span> <span class="s2">&quot;all&quot;</span>
+
+    <span class="n">autosome_par_cutoff</span> <span class="o">=</span> <span class="p">(</span><span class="n">autosome_par_qc_ann</span><span class="p">,</span> <span class="n">autosome_par</span><span class="p">,</span> <span class="n">autosome_par_cutoff</span><span class="p">)</span>
+    <span class="n">x_nonpar_cutoff</span> <span class="o">=</span> <span class="p">(</span><span class="n">x_nonpar_qc_ann</span><span class="p">,</span> <span class="n">xx</span><span class="p">,</span> <span class="n">x_nonpar_cutoff</span><span class="p">)</span>
+    <span class="n">y_nonpar_cutoff</span> <span class="o">=</span> <span class="p">(</span><span class="n">y_nonpar_qc_ann</span><span class="p">,</span> <span class="n">xy</span><span class="p">,</span> <span class="n">y_nonpar_cutoff</span><span class="p">)</span>
+    <span class="n">high_qual_cutoffs</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="s2">&quot;autosome_par&quot;</span><span class="p">:</span> <span class="p">[</span><span class="n">autosome_par_cutoff</span><span class="p">],</span>
+        <span class="s2">&quot;x_non_par&quot;</span><span class="p">:</span> <span class="p">[</span><span class="n">x_nonpar_cutoff</span><span class="p">],</span>
+        <span class="s2">&quot;y_non_par&quot;</span><span class="p">:</span> <span class="p">[</span><span class="n">y_nonpar_cutoff</span><span class="p">],</span>
+    <span class="p">}</span>
+
+    <span class="k">if</span> <span class="n">split_by_sex</span><span class="p">:</span>
+        <span class="n">high_qual_cutoffs</span><span class="p">[</span><span class="s2">&quot;x_non_par&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">y_nonpar_cutoff</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">high_qual_cutoffs</span></div>
+
+
+<div class="viewcode-block" id="get_interval_qc_pass"><a class="viewcode-back" href="../../../../api_reference/v4/sample_qc/interval_qc.html#gnomad_qc.v4.sample_qc.interval_qc.get_interval_qc_pass">[docs]</a><span class="k">def</span> <span class="nf">get_interval_qc_pass</span><span class="p">(</span>
+    <span class="n">interval_qc_ht</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">,</span>
+    <span class="n">high_qual_cutoffs</span><span class="p">:</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">List</span><span class="p">[</span><span class="n">Tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">str</span><span class="p">,</span> <span class="nb">float</span><span class="p">]]],</span>
+    <span class="n">per_platform</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+    <span class="n">all_platforms</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+    <span class="n">min_platform_size</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">100</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">:</span>
+<span class="w">    </span><span class="sa">r</span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Add `interval_qc_pass` annotation to indicate whether the interval is high quality.</span>
+
+<span class="sd">    `interval_qc_ht` is the output of `compute_interval_qc` and contains annotations</span>
+<span class="sd">    that can be used in the `high_qual_cutoffs` dictionary to indicate intervals that</span>
+<span class="sd">    are considered high quality.</span>
+
+<span class="sd">    The `high_qual_cutoffs` dictionary can be created using</span>
+<span class="sd">    `get_high_qual_cutoff_dict`. It specifies annotations and cutoffs  to use for</span>
+<span class="sd">    determining high quality intervals. Annotations in the `high_qual_cutoffs`</span>
+<span class="sd">    dictionary must exist in  the `interval_qc_ht` Table. The `high_qual_cutoffs`</span>
+<span class="sd">    dictionary must have the following keys: &#39;autosome_par&#39;, &#39;x_non_par&#39; and</span>
+<span class="sd">    &#39;y_non_par&#39;. Each Key specifies a list of annotations and cutoffs to use for</span>
+<span class="sd">    filtering.</span>
+
+<span class="sd">    Example of `high_qual_cutoffs` dictionary using annotations for the proportion of</span>
+<span class="sd">    samples over a specified coverage:</span>
+
+<span class="sd">        .. code-block::</span>
+
+<span class="sd">            {</span>
+<span class="sd">                &#39;autosome_par&#39;: [(&#39;fraction_over_20x&#39;, &#39;all&#39;, 0.85)],</span>
+<span class="sd">                &#39;x_non_par&#39;: [</span>
+<span class="sd">                    (&#39;fraction_over_20x&#39;, &#39;XX&#39;, 0.85), (&#39;fraction_over_10x&#39;, &#39;XY&#39;, 0.85)</span>
+<span class="sd">                ],</span>
+<span class="sd">                &#39;y_non_par&#39;: [(&#39;fraction_over_10x&#39;, &#39;XY&#39;, 0.85)]</span>
+<span class="sd">            }</span>
+
+<span class="sd">    Example of `high_qual_cutoffs` dictionary using annotations for the proportion of</span>
+<span class="sd">    samples over a specified coverage and specifying differences by sex karyotype:</span>
+
+<span class="sd">        .. code-block::</span>
+
+<span class="sd">            {</span>
+<span class="sd">                &#39;autosome_par&#39;: [(&#39;fraction_over_20x&#39;, &#39;all&#39;, 0.85)],</span>
+<span class="sd">                &#39;x_non_par&#39;: [(&#39;fraction_over_10x&#39;, &#39;all&#39;, 0.80)],</span>
+<span class="sd">                &#39;y_non_par&#39;: [(&#39;fraction_over_5x&#39;, &#39;all&#39;, 0.35)]</span>
+<span class="sd">            }</span>
+
+<span class="sd">    Only one of &#39;per_platform&#39; and &#39;all_platforms&#39; can be True, and if `per_platform`</span>
+<span class="sd">    or `all_platforms` is True, a prefix of &quot;platform\_&quot; is added before the annotation</span>
+<span class="sd">    in the `high_qual_cutoffs` dictionary.</span>
+
+<span class="sd">    :param interval_qc_ht: Input interval QC Table.</span>
+<span class="sd">    :param high_qual_cutoffs: Dictionary containing annotations and cutoffs to use for</span>
+<span class="sd">        filtering to high coverage intervals.</span>
+<span class="sd">    :param per_platform: Whether to make the interval QC pass annotation a</span>
+<span class="sd">        DictionaryExpression with interval QC pass per platform.</span>
+<span class="sd">    :param all_platforms: Whether to consider an interval as passing QC only if it</span>
+<span class="sd">        passes interval QC per platform across all platforms (with a sample size above</span>
+<span class="sd">        `min_platform_size`).</span>
+<span class="sd">    :param min_platform_size: Required size of a platform to be considered in</span>
+<span class="sd">        `all_platforms`. Only platforms that have # of samples &gt; &#39;min_platform_size&#39;</span>
+<span class="sd">        are used to determine intervals that have a high coverage across all platforms.</span>
+<span class="sd">    :return: MatrixTable or Table with samples removed.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="n">per_platform</span> <span class="ow">and</span> <span class="n">all_platforms</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;Only one of &#39;per_platform&#39; and &#39;all_platforms&#39; can be True!&quot;</span><span class="p">)</span>
+
+    <span class="n">interval_start</span> <span class="o">=</span> <span class="n">interval_qc_ht</span><span class="o">.</span><span class="n">interval</span><span class="o">.</span><span class="n">start</span>
+    <span class="n">region_exprs</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="s2">&quot;autosome_par&quot;</span><span class="p">:</span> <span class="n">interval_start</span><span class="o">.</span><span class="n">in_autosome_or_par</span><span class="p">(),</span>
+        <span class="s2">&quot;x_non_par&quot;</span><span class="p">:</span> <span class="n">interval_start</span><span class="o">.</span><span class="n">in_x_nonpar</span><span class="p">(),</span>
+        <span class="s2">&quot;y_non_par&quot;</span><span class="p">:</span> <span class="n">interval_start</span><span class="o">.</span><span class="n">in_y_nonpar</span><span class="p">(),</span>
+    <span class="p">}</span>
+
+    <span class="k">if</span> <span class="n">per_platform</span> <span class="ow">or</span> <span class="n">all_platforms</span><span class="p">:</span>
+        <span class="n">platform_n_samples</span> <span class="o">=</span> <span class="p">(</span>
+            <span class="n">interval_qc_ht</span><span class="o">.</span><span class="n">index_globals</span><span class="p">()</span><span class="o">.</span><span class="n">platform_n_samples</span><span class="o">.</span><span class="n">collect</span><span class="p">()[</span><span class="mi">0</span><span class="p">]</span>
+        <span class="p">)</span>
+        <span class="n">ann_prefix</span> <span class="o">=</span> <span class="s2">&quot;platform_&quot;</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">ann_prefix</span> <span class="o">=</span> <span class="s2">&quot;&quot;</span>
+
+    <span class="n">interval_qc_globals</span> <span class="o">=</span> <span class="n">hl</span><span class="o">.</span><span class="n">struct</span><span class="p">(</span>
+        <span class="n">per_platform</span><span class="o">=</span><span class="n">per_platform</span><span class="p">,</span>
+        <span class="n">all_platforms</span><span class="o">=</span><span class="n">all_platforms</span><span class="p">,</span>
+        <span class="n">high_qual_cutoffs</span><span class="o">=</span><span class="n">high_qual_cutoffs</span><span class="p">,</span>
+    <span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">_get_qc_ann_expr</span><span class="p">(</span>
+        <span class="n">expr</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="n">hl</span><span class="o">.</span><span class="n">Float64Expression</span><span class="p">,</span> <span class="n">hl</span><span class="o">.</span><span class="n">DictExpression</span><span class="p">],</span> <span class="n">platform</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">hl</span><span class="o">.</span><span class="n">Float64Expression</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Return the value of `expr` keyed by `platform` if supplied, otherwise return `expr`.</span>
+
+<span class="sd">        :param expr: Input FloatExpression or DictExpression.</span>
+<span class="sd">        :param platform: Optional key of `expr`.</span>
+<span class="sd">        :return: FloatExpression.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="n">platform</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">expr</span>
+        <span class="k">return</span> <span class="n">expr</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">platform</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">_get_pass_expr</span><span class="p">(</span><span class="n">platform</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">hl</span><span class="o">.</span><span class="n">BooleanExpression</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Define high quality intervals using `high_qual_cutoffs`.</span>
+
+<span class="sd">        :param platform: Optional platform to filter to.</span>
+<span class="sd">        :return: BooleanExpression indicating high quality.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="c1"># Apply the &#39;iand&#39; operator cumulatively from left to right of each value in</span>
+        <span class="c1"># high_qual_cutoffs (list of cutoffs that must all apply) to get a single bool</span>
+        <span class="c1"># for each key in high_qual_cutoffs. Then apply the &#39;ior&#39; operator cumulatively</span>
+        <span class="c1"># from left to right to get a single bool indicating high quality. Each</span>
+        <span class="c1"># interval type in high_qual_cutoffs has a different set of annotations and</span>
+        <span class="c1"># cutoffs, this will apply those cutoffs to each interval type then merge these</span>
+        <span class="c1"># expressions with the &#39;or&#39; operator to keep all intervals that pass the</span>
+        <span class="c1"># relevant cutoffs.</span>
+        <span class="k">return</span> <span class="n">functools</span><span class="o">.</span><span class="n">reduce</span><span class="p">(</span>
+            <span class="n">operator</span><span class="o">.</span><span class="n">ior</span><span class="p">,</span>
+            <span class="p">[</span>
+                <span class="n">region_exprs</span><span class="p">[</span><span class="n">region</span><span class="p">]</span>
+                <span class="o">&amp;</span> <span class="n">functools</span><span class="o">.</span><span class="n">reduce</span><span class="p">(</span>
+                    <span class="n">operator</span><span class="o">.</span><span class="n">iand</span><span class="p">,</span>
+                    <span class="p">[</span>
+                        <span class="n">_get_qc_ann_expr</span><span class="p">(</span>
+                            <span class="n">interval_qc_ht</span><span class="p">[</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">ann_prefix</span><span class="si">}{</span><span class="n">ann</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">sex</span><span class="p">,</span> <span class="kc">None</span><span class="p">),</span>
+                            <span class="n">platform</span><span class="p">,</span>
+                        <span class="p">)</span>
+                        <span class="o">&gt;</span> <span class="n">cutoff</span>
+                        <span class="k">for</span> <span class="n">ann</span><span class="p">,</span> <span class="n">sex</span><span class="p">,</span> <span class="n">cutoff</span> <span class="ow">in</span> <span class="n">ann_cutoffs</span>
+                    <span class="p">],</span>
+                <span class="p">)</span>
+                <span class="k">for</span> <span class="n">region</span><span class="p">,</span> <span class="n">ann_cutoffs</span> <span class="ow">in</span> <span class="n">high_qual_cutoffs</span><span class="o">.</span><span class="n">items</span><span class="p">()</span>
+            <span class="p">],</span>
+        <span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">per_platform</span> <span class="ow">or</span> <span class="n">all_platforms</span><span class="p">:</span>
+        <span class="n">pass_interval_qc</span> <span class="o">=</span> <span class="n">hl</span><span class="o">.</span><span class="n">struct</span><span class="p">(</span>
+            <span class="o">**</span><span class="p">{</span><span class="n">platform</span><span class="p">:</span> <span class="n">_get_pass_expr</span><span class="p">(</span><span class="n">platform</span><span class="p">)</span> <span class="k">for</span> <span class="n">platform</span> <span class="ow">in</span> <span class="n">platform_n_samples</span><span class="p">}</span>
+        <span class="p">)</span>
+        <span class="k">if</span> <span class="n">all_platforms</span><span class="p">:</span>
+            <span class="n">interval_qc_globals</span> <span class="o">=</span> <span class="n">interval_qc_globals</span><span class="o">.</span><span class="n">annotate</span><span class="p">(</span>
+                <span class="n">min_platform_size</span><span class="o">=</span><span class="n">min_platform_size</span>
+            <span class="p">)</span>
+            <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span>
+                <span class="s2">&quot;Defining high quality intervals across all platforms. Limited to&quot;</span>
+                <span class="s2">&quot; platforms with at least </span><span class="si">%s</span><span class="s2"> samples...&quot;</span><span class="p">,</span>
+                <span class="n">min_platform_size</span><span class="p">,</span>
+            <span class="p">)</span>
+            <span class="c1"># Excluding small platforms and platform_-1 (platform containing all</span>
+            <span class="c1"># samples with unassigned platform).</span>
+            <span class="n">platforms</span> <span class="o">=</span> <span class="p">[</span>
+                <span class="n">platform</span>
+                <span class="k">for</span> <span class="n">platform</span><span class="p">,</span> <span class="n">n_samples</span> <span class="ow">in</span> <span class="n">platform_n_samples</span><span class="o">.</span><span class="n">items</span><span class="p">()</span>
+                <span class="k">if</span> <span class="p">(</span><span class="n">n_samples</span> <span class="o">&gt;=</span> <span class="n">min_platform_size</span><span class="p">)</span> <span class="o">&amp;</span> <span class="p">(</span><span class="n">platform</span> <span class="o">!=</span> <span class="s2">&quot;platform_-1&quot;</span><span class="p">)</span>
+            <span class="p">]</span>
+            <span class="n">pass_interval_qc</span> <span class="o">=</span> <span class="n">hl</span><span class="o">.</span><span class="n">all</span><span class="p">(</span>
+                <span class="p">[</span><span class="n">pass_interval_qc</span><span class="p">[</span><span class="n">platform</span><span class="p">]</span> <span class="k">for</span> <span class="n">platform</span> <span class="ow">in</span> <span class="n">platforms</span><span class="p">]</span>
+            <span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Defining high quality intervals per platform...&quot;</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Defining high coverage intervals across the full sample set...&quot;</span><span class="p">)</span>
+        <span class="n">pass_interval_qc</span> <span class="o">=</span> <span class="n">_get_pass_expr</span><span class="p">()</span>
+
+    <span class="n">interval_qc_ht</span> <span class="o">=</span> <span class="n">interval_qc_ht</span><span class="o">.</span><span class="n">select</span><span class="p">(</span><span class="n">pass_interval_qc</span><span class="o">=</span><span class="n">pass_interval_qc</span><span class="p">)</span>
+    <span class="n">interval_qc_ht</span> <span class="o">=</span> <span class="n">interval_qc_ht</span><span class="o">.</span><span class="n">select_globals</span><span class="p">(</span>
+        <span class="n">high_qual_interval_parameters</span><span class="o">=</span><span class="n">interval_qc_globals</span>
+    <span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">interval_qc_ht</span></div>
+
+
+<div class="viewcode-block" id="annotate_interval_qc_filter"><a class="viewcode-back" href="../../../../api_reference/v4/sample_qc/interval_qc.html#gnomad_qc.v4.sample_qc.interval_qc.annotate_interval_qc_filter">[docs]</a><span class="k">def</span> <span class="nf">annotate_interval_qc_filter</span><span class="p">(</span>
+    <span class="n">t</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="n">hl</span><span class="o">.</span><span class="n">MatrixTable</span><span class="p">,</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">],</span>
+    <span class="o">**</span><span class="n">kwargs</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Union</span><span class="p">[</span><span class="n">hl</span><span class="o">.</span><span class="n">MatrixTable</span><span class="p">,</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Annotate a Table/MatrixTable with &#39;pass_interval_qc&#39; using `get_interval_qc_pass`.</span>
+
+<span class="sd">    Passes the interval QC Table resource and kwargs to `get_interval_qc_pass`.</span>
+
+<span class="sd">    :param t: Input Table or MatrixTable.</span>
+<span class="sd">    :param kwargs: Optional keyword arguments to pass to `get_interval_qc_pass`.</span>
+<span class="sd">    :return: Input Table or MatrixTable annotated with &#39;pass_interval_qc&#39;.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">interval_qc_ht</span> <span class="o">=</span> <span class="n">interval_qc</span><span class="o">.</span><span class="n">ht</span><span class="p">()</span>
+    <span class="n">interval_qc_ht</span> <span class="o">=</span> <span class="n">get_interval_qc_pass</span><span class="p">(</span><span class="n">interval_qc_ht</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">t</span><span class="p">,</span> <span class="n">hl</span><span class="o">.</span><span class="n">MatrixTable</span><span class="p">):</span>
+        <span class="n">t</span> <span class="o">=</span> <span class="n">t</span><span class="o">.</span><span class="n">annotate_rows</span><span class="p">(</span><span class="n">interval_qc_pass</span><span class="o">=</span><span class="n">interval_qc_ht</span><span class="p">[</span><span class="n">t</span><span class="o">.</span><span class="n">locus</span><span class="p">]</span><span class="o">.</span><span class="n">pass_interval_qc</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">t</span> <span class="o">=</span> <span class="n">t</span><span class="o">.</span><span class="n">annotate</span><span class="p">(</span><span class="n">interval_qc_pass</span><span class="o">=</span><span class="n">interval_qc_ht</span><span class="p">[</span><span class="n">t</span><span class="o">.</span><span class="n">locus</span><span class="p">]</span><span class="o">.</span><span class="n">pass_interval_qc</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">t</span></div>
+
+
+<div class="viewcode-block" id="main"><a class="viewcode-back" href="../../../../api_reference/v4/sample_qc/interval_qc.html#gnomad_qc.v4.sample_qc.interval_qc.main">[docs]</a><span class="k">def</span> <span class="nf">main</span><span class="p">(</span><span class="n">args</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Define high quality intervals based on aggregate statistics over samples.&quot;&quot;&quot;</span>
+    <span class="n">hl</span><span class="o">.</span><span class="n">init</span><span class="p">(</span>
+        <span class="n">log</span><span class="o">=</span><span class="s2">&quot;/interval_qc.log&quot;</span><span class="p">,</span>
+        <span class="n">default_reference</span><span class="o">=</span><span class="s2">&quot;GRCh38&quot;</span><span class="p">,</span>
+        <span class="n">tmp_dir</span><span class="o">=</span><span class="s2">&quot;gs://gnomad-tmp-4day&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">hl</span><span class="o">.</span><span class="n">_set_flags</span><span class="p">(</span><span class="n">use_new_shuffle</span><span class="o">=</span><span class="s2">&quot;1&quot;</span><span class="p">)</span>
+
+    <span class="n">test</span> <span class="o">=</span> <span class="n">args</span><span class="o">.</span><span class="n">test</span>
+    <span class="n">calling_interval_name</span> <span class="o">=</span> <span class="n">args</span><span class="o">.</span><span class="n">calling_interval_name</span>
+    <span class="n">calling_interval_padding</span> <span class="o">=</span> <span class="n">args</span><span class="o">.</span><span class="n">calling_interval_padding</span>
+    <span class="n">overwrite</span> <span class="o">=</span> <span class="n">args</span><span class="o">.</span><span class="n">overwrite</span>
+    <span class="n">mean_dp_thresholds</span> <span class="o">=</span> <span class="n">args</span><span class="o">.</span><span class="n">mean_dp_thresholds</span>
+
+    <span class="k">try</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">sex_chr_interval_coverage</span><span class="p">:</span>
+            <span class="n">vds</span> <span class="o">=</span> <span class="n">get_gnomad_v4_vds</span><span class="p">(</span>
+                <span class="n">remove_hard_filtered_samples</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+                <span class="n">remove_hard_filtered_samples_no_sex</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+                <span class="n">test</span><span class="o">=</span><span class="n">test</span><span class="p">,</span>
+            <span class="p">)</span>
+            <span class="n">calling_intervals_ht</span> <span class="o">=</span> <span class="n">calling_intervals</span><span class="p">(</span>
+                <span class="n">calling_interval_name</span><span class="p">,</span> <span class="n">calling_interval_padding</span>
+            <span class="p">)</span><span class="o">.</span><span class="n">ht</span><span class="p">()</span>
+            <span class="n">sex_coverage_mt</span> <span class="o">=</span> <span class="n">generate_sex_chr_interval_coverage_mt</span><span class="p">(</span>
+                <span class="n">vds</span><span class="p">,</span>
+                <span class="n">calling_intervals_ht</span><span class="p">,</span>
+            <span class="p">)</span>
+            <span class="n">sex_coverage_mt</span> <span class="o">=</span> <span class="n">sex_coverage_mt</span><span class="o">.</span><span class="n">annotate_globals</span><span class="p">(</span>
+                <span class="n">calling_interval_name</span><span class="o">=</span><span class="n">calling_interval_name</span><span class="p">,</span>
+                <span class="n">calling_interval_padding</span><span class="o">=</span><span class="n">calling_interval_padding</span><span class="p">,</span>
+            <span class="p">)</span>
+            <span class="n">sex_coverage_mt</span><span class="o">.</span><span class="n">write</span><span class="p">(</span>
+                <span class="p">(</span>
+                    <span class="n">get_checkpoint_path</span><span class="p">(</span><span class="s2">&quot;test_sex_imputation_cov&quot;</span><span class="p">,</span> <span class="n">mt</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+                    <span class="k">if</span> <span class="n">test</span>
+                    <span class="k">else</span> <span class="n">sex_chr_coverage</span><span class="o">.</span><span class="n">path</span>
+                <span class="p">),</span>
+                <span class="n">overwrite</span><span class="o">=</span><span class="n">overwrite</span><span class="p">,</span>
+            <span class="p">)</span>
+
+        <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">generate_interval_qc_ht</span><span class="p">:</span>
+            <span class="n">platform_ht</span> <span class="o">=</span> <span class="n">platform</span><span class="o">.</span><span class="n">ht</span><span class="p">()</span>
+            <span class="n">coverage_mt</span> <span class="o">=</span> <span class="n">interval_coverage</span><span class="o">.</span><span class="n">mt</span><span class="p">()</span>
+
+            <span class="k">if</span> <span class="n">test</span><span class="p">:</span>
+                <span class="n">coverage_mt</span><span class="p">,</span> <span class="n">sex_coverage_mt</span> <span class="o">=</span> <span class="n">filter_to_test</span><span class="p">(</span>
+                    <span class="n">coverage_mt</span><span class="p">,</span>
+                    <span class="n">hl</span><span class="o">.</span><span class="n">read_matrix_table</span><span class="p">(</span>
+                        <span class="n">get_checkpoint_path</span><span class="p">(</span><span class="s2">&quot;test_sex_imputation_cov&quot;</span><span class="p">,</span> <span class="n">mt</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+                    <span class="p">),</span>
+                <span class="p">)</span>
+                <span class="n">coverage_mt</span> <span class="o">=</span> <span class="n">coverage_mt</span><span class="o">.</span><span class="n">checkpoint</span><span class="p">(</span>
+                    <span class="n">get_checkpoint_path</span><span class="p">(</span><span class="s2">&quot;interval_qc_coverage&quot;</span><span class="p">,</span> <span class="n">mt</span><span class="o">=</span><span class="kc">True</span><span class="p">),</span>
+                    <span class="n">_read_if_exists</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+                <span class="p">)</span>
+                <span class="n">sex_coverage_mt</span> <span class="o">=</span> <span class="n">sex_coverage_mt</span><span class="o">.</span><span class="n">checkpoint</span><span class="p">(</span>
+                    <span class="n">get_checkpoint_path</span><span class="p">(</span><span class="s2">&quot;interval_qc_sex_coverage&quot;</span><span class="p">,</span> <span class="n">mt</span><span class="o">=</span><span class="kc">True</span><span class="p">),</span>
+                    <span class="n">_read_if_exists</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+                <span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">sex_coverage_mt</span> <span class="o">=</span> <span class="n">sex_chr_coverage</span><span class="o">.</span><span class="n">mt</span><span class="p">()</span>
+
+            <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Removing hard-filtered samples from the coverage MTs...&quot;</span><span class="p">)</span>
+            <span class="n">coverage_mt</span> <span class="o">=</span> <span class="n">coverage_mt</span><span class="o">.</span><span class="n">filter_cols</span><span class="p">(</span>
+                <span class="n">hl</span><span class="o">.</span><span class="n">is_missing</span><span class="p">(</span><span class="n">hard_filtered_samples</span><span class="o">.</span><span class="n">ht</span><span class="p">()[</span><span class="n">coverage_mt</span><span class="o">.</span><span class="n">col_key</span><span class="p">])</span>
+            <span class="p">)</span>
+            <span class="n">sex_coverage_mt</span> <span class="o">=</span> <span class="n">sex_coverage_mt</span><span class="o">.</span><span class="n">filter_cols</span><span class="p">(</span>
+                <span class="n">hl</span><span class="o">.</span><span class="n">is_missing</span><span class="p">(</span><span class="n">hard_filtered_samples</span><span class="o">.</span><span class="n">ht</span><span class="p">()[</span><span class="n">sex_coverage_mt</span><span class="o">.</span><span class="n">col_key</span><span class="p">])</span>
+            <span class="p">)</span>
+
+            <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Computing interval QC on autosomes...&quot;</span><span class="p">)</span>
+            <span class="n">coverage_mt</span> <span class="o">=</span> <span class="n">coverage_mt</span><span class="o">.</span><span class="n">filter_rows</span><span class="p">(</span>
+                <span class="n">coverage_mt</span><span class="o">.</span><span class="n">interval</span><span class="o">.</span><span class="n">start</span><span class="o">.</span><span class="n">in_autosome</span><span class="p">()</span>
+            <span class="p">)</span>
+            <span class="n">coverage_mt</span> <span class="o">=</span> <span class="n">coverage_mt</span><span class="o">.</span><span class="n">annotate_rows</span><span class="p">(</span><span class="n">overlap_par</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+            <span class="n">ht</span> <span class="o">=</span> <span class="n">compute_interval_qc</span><span class="p">(</span>
+                <span class="n">coverage_mt</span><span class="p">,</span>
+                <span class="n">platform_ht</span><span class="o">=</span><span class="n">platform_ht</span><span class="p">,</span>
+                <span class="n">mean_dp_thresholds</span><span class="o">=</span><span class="n">mean_dp_thresholds</span><span class="p">,</span>
+            <span class="p">)</span>
+
+            <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Filtering to XX and XY samples...&quot;</span><span class="p">)</span>
+            <span class="n">sex_ht</span> <span class="o">=</span> <span class="n">sex</span><span class="o">.</span><span class="n">ht</span><span class="p">()</span><span class="o">.</span><span class="n">select</span><span class="p">(</span><span class="s2">&quot;sex_karyotype&quot;</span><span class="p">)</span>
+            <span class="n">sex_coverage_mt</span> <span class="o">=</span> <span class="n">sex_coverage_mt</span><span class="o">.</span><span class="n">annotate_cols</span><span class="p">(</span>
+                <span class="o">**</span><span class="n">sex_ht</span><span class="p">[</span><span class="n">sex_coverage_mt</span><span class="o">.</span><span class="n">col_key</span><span class="p">]</span>
+            <span class="p">)</span>
+            <span class="n">sex_coverage_mt</span> <span class="o">=</span> <span class="n">sex_coverage_mt</span><span class="o">.</span><span class="n">filter_cols</span><span class="p">(</span>
+                <span class="p">(</span><span class="n">sex_coverage_mt</span><span class="o">.</span><span class="n">sex_karyotype</span> <span class="o">==</span> <span class="s2">&quot;XX&quot;</span><span class="p">)</span>
+                <span class="o">|</span> <span class="p">(</span><span class="n">sex_coverage_mt</span><span class="o">.</span><span class="n">sex_karyotype</span> <span class="o">==</span> <span class="s2">&quot;XY&quot;</span><span class="p">)</span>
+            <span class="p">)</span>
+
+            <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span>
+                <span class="s2">&quot;Computing interval QC on sex chromosomes and joining with autosome&quot;</span>
+                <span class="s2">&quot; interval QC HT...&quot;</span>
+            <span class="p">)</span>
+            <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">union</span><span class="p">(</span>
+                <span class="n">compute_interval_qc</span><span class="p">(</span>
+                    <span class="n">sex_coverage_mt</span><span class="p">,</span>
+                    <span class="n">platform_ht</span><span class="o">=</span><span class="n">platform_ht</span><span class="p">,</span>
+                    <span class="n">mean_dp_thresholds</span><span class="o">=</span><span class="n">mean_dp_thresholds</span><span class="p">,</span>
+                    <span class="n">split_by_sex</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+                <span class="p">)</span>
+            <span class="p">)</span>
+            <span class="n">ht</span><span class="o">.</span><span class="n">write</span><span class="p">(</span>
+                <span class="n">get_checkpoint_path</span><span class="p">(</span><span class="s2">&quot;interval_qc&quot;</span><span class="p">)</span> <span class="k">if</span> <span class="n">test</span> <span class="k">else</span> <span class="n">interval_qc</span><span class="o">.</span><span class="n">path</span><span class="p">,</span>
+                <span class="n">overwrite</span><span class="o">=</span><span class="n">overwrite</span><span class="p">,</span>
+            <span class="p">)</span>
+        <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">generate_interval_qc_pass_ht</span><span class="p">:</span>
+            <span class="n">ht</span> <span class="o">=</span> <span class="p">(</span>
+                <span class="n">hl</span><span class="o">.</span><span class="n">read_table</span><span class="p">(</span><span class="n">get_checkpoint_path</span><span class="p">(</span><span class="s2">&quot;interval_qc&quot;</span><span class="p">))</span>
+                <span class="k">if</span> <span class="n">test</span>
+                <span class="k">else</span> <span class="n">interval_qc</span><span class="o">.</span><span class="n">ht</span><span class="p">()</span>
+            <span class="p">)</span>
+            <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">by_mean_fraction_over_dp_0</span><span class="p">:</span>
+                <span class="c1"># The same cutoffs and annotations are used for autosome_par,</span>
+                <span class="c1"># x_non_par, and y_non_par within their respective dictionaries.</span>
+                <span class="n">high_qual_cutoffs</span> <span class="o">=</span> <span class="n">get_high_qual_cutoff_dict</span><span class="p">(</span>
+                    <span class="o">*</span><span class="p">[</span><span class="n">args</span><span class="o">.</span><span class="n">mean_fraction_over_dp_0</span><span class="p">]</span> <span class="o">*</span> <span class="mi">3</span><span class="p">,</span>
+                    <span class="o">*</span><span class="p">[</span><span class="s2">&quot;mean_fraction_over_dp_0&quot;</span><span class="p">]</span> <span class="o">*</span> <span class="mi">3</span><span class="p">,</span>
+                    <span class="n">split_by_sex</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+                <span class="p">)</span>
+            <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">by_fraction_samples_over_cov</span><span class="p">:</span>
+                <span class="c1"># The same cutoffs are used for autosome_par, x_non_par, and y_non_par</span>
+                <span class="c1"># and annotations for autosome_par and x_non_par within their respective</span>
+                <span class="c1"># dictionaries.</span>
+                <span class="n">high_qual_cutoffs</span> <span class="o">=</span> <span class="n">get_high_qual_cutoff_dict</span><span class="p">(</span>
+                    <span class="o">*</span><span class="p">[</span><span class="n">args</span><span class="o">.</span><span class="n">fraction_samples</span><span class="p">]</span> <span class="o">*</span> <span class="mi">3</span><span class="p">,</span>
+                    <span class="o">*</span><span class="p">[</span><span class="sa">f</span><span class="s2">&quot;fraction_over_</span><span class="si">{</span><span class="n">args</span><span class="o">.</span><span class="n">autosome_par_xx_cov</span><span class="si">}</span><span class="s2">x&quot;</span><span class="p">]</span> <span class="o">*</span> <span class="mi">2</span><span class="p">,</span>
+                    <span class="sa">f</span><span class="s2">&quot;fraction_over_</span><span class="si">{</span><span class="n">args</span><span class="o">.</span><span class="n">xy_nonpar_cov</span><span class="si">}</span><span class="s2">x&quot;</span><span class="p">,</span>
+                    <span class="n">split_by_sex</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+                <span class="p">)</span>
+
+            <span class="n">ht</span> <span class="o">=</span> <span class="n">get_interval_qc_pass</span><span class="p">(</span>
+                <span class="n">ht</span><span class="p">,</span>
+                <span class="n">high_qual_cutoffs</span><span class="p">,</span>
+                <span class="n">per_platform</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">per_platform</span><span class="p">,</span>
+                <span class="n">all_platforms</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">all_platforms</span><span class="p">,</span>
+                <span class="n">min_platform_size</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">min_platform_size</span><span class="p">,</span>
+            <span class="p">)</span>
+
+            <span class="n">ht</span><span class="o">.</span><span class="n">write</span><span class="p">(</span>
+                <span class="p">(</span>
+                    <span class="n">get_checkpoint_path</span><span class="p">(</span><span class="s2">&quot;interval_qc_pass&quot;</span><span class="p">)</span>
+                    <span class="k">if</span> <span class="n">test</span>
+                    <span class="k">else</span> <span class="n">interval_qc_pass</span><span class="p">(</span>
+                        <span class="n">per_platform</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">per_platform</span><span class="p">,</span> <span class="n">all_platforms</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">all_platforms</span>
+                    <span class="p">)</span><span class="o">.</span><span class="n">path</span>
+                <span class="p">),</span>
+                <span class="n">overwrite</span><span class="o">=</span><span class="n">overwrite</span><span class="p">,</span>
+            <span class="p">)</span>
+    <span class="k">finally</span><span class="p">:</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Copying log to logging bucket...&quot;</span><span class="p">)</span>
+        <span class="n">hl</span><span class="o">.</span><span class="n">copy_log</span><span class="p">(</span><span class="n">get_logging_path</span><span class="p">(</span><span class="s2">&quot;interval_qc&quot;</span><span class="p">))</span></div>
+
+
+<span class="k">def</span> <span class="nf">get_script_argument_parser</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="n">argparse</span><span class="o">.</span><span class="n">ArgumentParser</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Get script argument parser.&quot;&quot;&quot;</span>
+    <span class="n">parser</span> <span class="o">=</span> <span class="n">argparse</span><span class="o">.</span><span class="n">ArgumentParser</span><span class="p">()</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--overwrite&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Overwrite output files.&quot;</span><span class="p">,</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--test&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Test using only 10 partitions on chr1 and chrX, and all of chrY.&quot;</span><span class="p">,</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--slack-channel&quot;</span><span class="p">,</span> <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Slack channel to post results and notifications to.&quot;</span>
+    <span class="p">)</span>
+
+    <span class="n">sex_coverage_args</span> <span class="o">=</span> <span class="n">parser</span><span class="o">.</span><span class="n">add_argument_group</span><span class="p">(</span>
+        <span class="s2">&quot;Sex chromosome interval coverage&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;Arguments used for computing interval coverage on sex chromosomes.&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">sex_coverage_args</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--sex-chr-interval-coverage&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="p">(</span>
+            <span class="s2">&quot;Create a MatrixTable of interval-by-sample coverage on sex chromosomes&quot;</span>
+            <span class="s2">&quot; with intervals split at PAR regions.&quot;</span>
+        <span class="p">),</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">sex_coverage_args</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--calling-interval-name&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="p">(</span>
+            <span class="s2">&quot;Name of calling intervals to use for interval coverage. One of: &#39;ukb&#39;,&quot;</span>
+            <span class="s2">&quot; &#39;broad&#39;, or &#39;intersection&#39;.&quot;</span>
+        <span class="p">),</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">str</span><span class="p">,</span>
+        <span class="n">choices</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;ukb&quot;</span><span class="p">,</span> <span class="s2">&quot;broad&quot;</span><span class="p">,</span> <span class="s2">&quot;intersection&quot;</span><span class="p">],</span>
+        <span class="n">default</span><span class="o">=</span><span class="s2">&quot;intersection&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">sex_coverage_args</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--calling-interval-padding&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="p">(</span>
+            <span class="s2">&quot;Number of base pair padding to use on the calling intervals. One of 0 or&quot;</span>
+            <span class="s2">&quot; 50 bp.&quot;</span>
+        <span class="p">),</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">int</span><span class="p">,</span>
+        <span class="n">choices</span><span class="o">=</span><span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">50</span><span class="p">],</span>
+        <span class="n">default</span><span class="o">=</span><span class="mi">50</span><span class="p">,</span>
+    <span class="p">)</span>
+
+    <span class="n">interval_qc_args</span> <span class="o">=</span> <span class="n">parser</span><span class="o">.</span><span class="n">add_argument_group</span><span class="p">(</span>
+        <span class="s2">&quot;Compute aggregate interval stats for interval QC&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;Arguments used for computing interval QC stats.&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">interval_qc_args</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--generate-interval-qc-ht&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="p">(</span>
+            <span class="s2">&quot;Compute aggregate interval stats for interval QC from coverage&quot;</span>
+            <span class="s2">&quot; MatrixTables.&quot;</span>
+        <span class="p">),</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">interval_qc_args</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--mean-dp-thresholds&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="p">(</span>
+            <span class="s2">&quot;List of mean DP cutoffs to determine the fraction of samples with mean&quot;</span>
+            <span class="s2">&quot; coverage &gt;= the cutoff for each interval.&quot;</span>
+        <span class="p">),</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">int</span><span class="p">,</span>
+        <span class="n">nargs</span><span class="o">=</span><span class="s2">&quot;+&quot;</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="p">[</span><span class="mi">5</span><span class="p">,</span> <span class="mi">10</span><span class="p">,</span> <span class="mi">15</span><span class="p">,</span> <span class="mi">20</span><span class="p">,</span> <span class="mi">25</span><span class="p">],</span>
+    <span class="p">)</span>
+
+    <span class="n">interval_qc_pass_args</span> <span class="o">=</span> <span class="n">parser</span><span class="o">.</span><span class="n">add_argument_group</span><span class="p">(</span>
+        <span class="s2">&quot;Generate interval QC pass annotation&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;Arguments used for determining intervals that pass QC.&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">interval_qc_pass_args</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--generate-interval-qc-pass-ht&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="p">(</span>
+            <span class="s2">&quot;Create Table that contains an &#39;interval_qc_pass&#39; annotation indicating&quot;</span>
+            <span class="s2">&quot; whether the interval passes high-quality criteria.&quot;</span>
+        <span class="p">),</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+
+    <span class="n">interval_qc_pass_platform_opt_parser</span> <span class="o">=</span> <span class="p">(</span>
+        <span class="n">interval_qc_pass_args</span><span class="o">.</span><span class="n">add_mutually_exclusive_group</span><span class="p">(</span><span class="n">required</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+    <span class="p">)</span>
+    <span class="n">interval_qc_pass_platform_opt_parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--per-platform&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="p">(</span>
+            <span class="s2">&quot;Whether to make the interval QC pass annotation a DictionaryExpression&quot;</span>
+            <span class="s2">&quot; with interval QC pass per platform.&quot;</span>
+        <span class="p">),</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">interval_qc_pass_platform_opt_parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--all-platforms&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="p">(</span>
+            <span class="s2">&quot;Whether to consider an interval as passing QC only if it passes interval&quot;</span>
+            <span class="s2">&quot; QC per platform across all platforms (with a sample size above&quot;</span>
+            <span class="s2">&quot; &#39;--min-platform-size&#39;).&quot;</span>
+        <span class="p">),</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">interval_qc_pass_args</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--min-platform-size&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="p">(</span>
+            <span class="s2">&quot;Required size of a platform to be considered in &#39;--all-platforms&#39;. Only&quot;</span>
+            <span class="s2">&quot; platforms that have # of samples &gt; &#39;min_platform_size&#39; are used to&quot;</span>
+            <span class="s2">&quot; determine intervals that are high quality across all platforms.&quot;</span>
+        <span class="p">),</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">int</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="mi">100</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">interval_qc_pass_method_parser</span> <span class="o">=</span> <span class="n">interval_qc_pass_args</span><span class="o">.</span><span class="n">add_mutually_exclusive_group</span><span class="p">(</span>
+        <span class="n">required</span><span class="o">=</span><span class="kc">False</span>
+    <span class="p">)</span>
+    <span class="n">interval_qc_pass_method_parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--by-mean-fraction-over-dp-0&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="p">(</span>
+            <span class="s2">&quot;Whether to use the mean fraction of bases over DP 0 to determine high&quot;</span>
+            <span class="s2">&quot; quality intervals. Can&#39;t be set at the same time as&quot;</span>
+            <span class="s2">&quot; &#39;--by-prop-samples-over-cov&#39;.&quot;</span>
+        <span class="p">),</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">interval_qc_pass_method_parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--by-fraction-samples-over-cov&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="p">(</span>
+            <span class="s2">&quot;Whether to determine high quality intervals using the fraction of samples&quot;</span>
+            <span class="s2">&quot; (--fraction-samples) with a mean interval coverage over a specified&quot;</span>
+            <span class="s2">&quot; coverage for intervals on the the autosomes/sex chromosome PAR/chrX in XX&quot;</span>
+            <span class="s2">&quot; individuals (--autosome-par-xx-cov) and intervals on non-PAR chrX and&quot;</span>
+            <span class="s2">&quot; non-PAR chrY in XY individuals (--xy-nonpar-cov). Can&#39;t be set at the&quot;</span>
+            <span class="s2">&quot; same time as &#39;--by-mean-fraction-over-dp-0&#39;&quot;</span>
+        <span class="p">),</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">interval_qc_pass_args</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--mean-fraction-over-dp-0&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Mean fraction of bases over DP 0 used to define high quality intervals.&quot;</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">float</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="mf">0.99</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">interval_qc_pass_args</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--autosome-par-xx-cov&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="p">(</span>
+            <span class="s2">&quot;Mean coverage level used to define high coverage intervals on the the&quot;</span>
+            <span class="s2">&quot; autosomes, sex chromosome PAR, and chrX in XX individuals. This field&quot;</span>
+            <span class="s2">&quot; must be in the interval coverage MatrixTables!&quot;</span>
+        <span class="p">),</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">int</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="mi">20</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">interval_qc_pass_args</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--xy-nonpar-cov&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="p">(</span>
+            <span class="s2">&quot;Mean coverage level used to define high coverage intervals on non-PAR chrX&quot;</span>
+            <span class="s2">&quot; and non-PAR chrY in XY individuals. This field must be in the interval&quot;</span>
+            <span class="s2">&quot; coverage MatrixTables!&quot;</span>
+        <span class="p">),</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">int</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="mi">10</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">interval_qc_pass_args</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--fraction-samples&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="p">(</span>
+            <span class="s2">&quot;Fraction of samples with mean coverage greater than&quot;</span>
+            <span class="s2">&quot; &#39;--autosome-par-xx-cov&#39;/&#39;--xy-nonpar-cov&#39; over the interval to determine&quot;</span>
+            <span class="s2">&quot; high coverage intervals.&quot;</span>
+        <span class="p">),</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">float</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="mf">0.85</span><span class="p">,</span>
+    <span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">parser</span>
+
+
+<span class="k">if</span> <span class="vm">__name__</span> <span class="o">==</span> <span class="s2">&quot;__main__&quot;</span><span class="p">:</span>
+    <span class="n">parser</span> <span class="o">=</span> <span class="n">get_script_argument_parser</span><span class="p">()</span>
+    <span class="n">args</span> <span class="o">=</span> <span class="n">parser</span><span class="o">.</span><span class="n">parse_args</span><span class="p">()</span>
+
+    <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">generate_interval_qc_pass_ht</span> <span class="ow">and</span> <span class="ow">not</span> <span class="p">(</span>
+        <span class="n">args</span><span class="o">.</span><span class="n">by_mean_fraction_over_dp_0</span> <span class="ow">or</span> <span class="n">args</span><span class="o">.</span><span class="n">by_fraction_samples_over_cov</span>
+    <span class="p">):</span>
+        <span class="n">parser</span><span class="o">.</span><span class="n">error</span><span class="p">(</span>
+            <span class="s2">&quot;One of --by-mean-fraction-over-dp-0 or --by-fraction-samples-over-cov is&quot;</span>
+            <span class="s2">&quot; required when --generate-interval-qc-pass-ht is specified.&quot;</span>
+        <span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">slack_channel</span><span class="p">:</span>
+        <span class="k">with</span> <span class="n">slack_notifications</span><span class="p">(</span><span class="n">slack_token</span><span class="p">,</span> <span class="n">args</span><span class="o">.</span><span class="n">slack_channel</span><span class="p">):</span>
+            <span class="n">main</span><span class="p">(</span><span class="n">args</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">main</span><span class="p">(</span><span class="n">args</span><span class="p">)</span>
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p></p>
+  </div>
+
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

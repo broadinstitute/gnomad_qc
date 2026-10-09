@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>gnomad_qc.v5.annotations.annotation_utils &mdash; gnomad_qc master documentation</title>
+      <link rel="stylesheet" href="../../../../_static/pygments.css" type="text/css" />
+      <link rel="stylesheet" href="../../../../_static/css/theme.css" type="text/css" />
+      <link rel="stylesheet" href="../../../../_static/theme_overrides.css" type="text/css" />
+  <!--[if lt IE 9]>
+    <script src="../../../../_static/js/html5shiv.min.js"></script>
+  <![endif]-->
+  
+        <script src="../../../../_static/jquery.js"></script>
+        <script src="../../../../_static/_sphinx_javascript_frameworks_compat.js"></script>
+        <script data-url_root="../../../../" id="documentation_options" src="../../../../_static/documentation_options.js"></script>
+        <script src="../../../../_static/doctools.js"></script>
+        <script src="../../../../_static/sphinx_highlight.js"></script>
+        <script src="https://unpkg.com/mermaid@10.2.0/dist/mermaid.min.js"></script>
+        <script>mermaid.initialize({startOnLoad:true});</script>
+    <script src="../../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../../index.html" class="icon icon-home">
+            gnomad_qc
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../../api_reference/index.html">API Reference</a></li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/broadinstitute/gnomad_qc/tags">Change Log</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../../index.html">gnomad_qc</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../../index.html">Module code</a></li>
+      <li class="breadcrumb-item active">gnomad_qc.v5.annotations.annotation_utils</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for gnomad_qc.v5.annotations.annotation_utils</h1><div class="highlight"><pre>
+<span></span><span class="sd">&quot;&quot;&quot;AoU-specific annotation utilities.&quot;&quot;&quot;</span>
+
+<span class="kn">import</span> <span class="nn">logging</span>
+<span class="kn">from</span> <span class="nn">typing</span> <span class="kn">import</span> <span class="n">Union</span>
+
+<span class="kn">import</span> <span class="nn">hail</span> <span class="k">as</span> <span class="nn">hl</span>
+<span class="kn">from</span> <span class="nn">gnomad.utils.annotations</span> <span class="kn">import</span> <span class="n">get_adj_expr</span> <span class="k">as</span> <span class="n">get_gnomad_adj_expr</span>
+
+<span class="n">logging</span><span class="o">.</span><span class="n">basicConfig</span><span class="p">(</span><span class="nb">format</span><span class="o">=</span><span class="s2">&quot;</span><span class="si">%(levelname)s</span><span class="s2"> (</span><span class="si">%(name)s</span><span class="s2"> </span><span class="si">%(lineno)s</span><span class="s2">): </span><span class="si">%(message)s</span><span class="s2">&quot;</span><span class="p">)</span>
+<span class="n">logger</span> <span class="o">=</span> <span class="n">logging</span><span class="o">.</span><span class="n">getLogger</span><span class="p">(</span><span class="s2">&quot;annotation_utils&quot;</span><span class="p">)</span>
+<span class="n">logger</span><span class="o">.</span><span class="n">setLevel</span><span class="p">(</span><span class="n">logging</span><span class="o">.</span><span class="n">INFO</span><span class="p">)</span>
+
+
+<span class="c1"># AoU-specific adj annotation utilities.</span>
+<span class="c1"># Adapted from https://github.com/broadinstitute/gatk/pull/8772/files.</span>
+<span class="c1">#</span>
+<span class="c1"># The AoU VDS has no DP entry field, so DP is approximated as sum(LAD). Hom-ref calls</span>
+<span class="c1"># with no allele depths (reference blocks, which carry GQ but no LAD) are filtered on</span>
+<span class="c1"># GQ only. All other calls, including hom-ref calls that do carry allele depths (e.g.</span>
+<span class="c1"># calls downcoded to hom-ref by split_multi), use the usual gnomAD cutoffs: GQ, DP (as</span>
+<span class="c1"># sum(LAD)), and AB for het calls.</span>
+<span class="c1"># After discussion, we decided to use a GQ 20 threshold for both haploid and diploid</span>
+<span class="c1"># genotypes. See thread: https://atgu.slack.com/archives/CRA2TKTV0/p1787333884174549</span>
+<div class="viewcode-block" id="annotate_adj_no_dp"><a class="viewcode-back" href="../../../../api_reference/v5/annotations/annotation_utils.html#gnomad_qc.v5.annotations.annotation_utils.annotate_adj_no_dp">[docs]</a><span class="k">def</span> <span class="nf">annotate_adj_no_dp</span><span class="p">(</span>
+    <span class="n">mt</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">MatrixTable</span><span class="p">,</span>
+    <span class="n">adj_gq</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">20</span><span class="p">,</span>
+    <span class="n">adj_dp</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">10</span><span class="p">,</span>
+    <span class="n">adj_ab</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">0.2</span><span class="p">,</span>
+    <span class="n">haploid_adj_dp</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">5</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">hl</span><span class="o">.</span><span class="n">MatrixTable</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Annotate genotypes with adj criteria.</span>
+
+<span class="sd">    Defaults correspond to gnomAD values. DP is approximated as the sum of the allele</span>
+<span class="sd">    depths. Hom-ref calls with no allele depths (reference blocks) are filtered on GQ</span>
+<span class="sd">    only; every other call uses the gnomAD cutoffs. See the module comment for details.</span>
+
+<span class="sd">    Accepts three entry layouts:</span>
+
+<span class="sd">        - ``LGT`` and ``LAD`` (VDS variant data): full adj criteria.</span>
+<span class="sd">        - ``GT`` and ``AD`` (split or dense data): full adj criteria.</span>
+<span class="sd">        - ``GT`` without allele depths (VDS reference data, e.g. the AoU reference</span>
+<span class="sd">          blocks with only ``GT``, ``GQ``, ``END`` and ``LEN``): every call must be</span>
+<span class="sd">          hom-ref and adj is ``GQ &gt;= adj_gq``. A non-hom-ref call raises at runtime</span>
+<span class="sd">          rather than being silently marked non-adj.</span>
+
+<span class="sd">    ``GQ`` is required in all three cases.</span>
+
+<span class="sd">    :param mt: Input MatrixTable.</span>
+<span class="sd">    :param adj_gq: Minimum GQ. Default is 20.</span>
+<span class="sd">    :param adj_dp: Minimum DP (sum of allele depths) for calls with allele depths.</span>
+<span class="sd">        Default is 10.</span>
+<span class="sd">    :param adj_ab: Minimum allele balance for het calls. Default is 0.2.</span>
+<span class="sd">    :param haploid_adj_dp: Minimum DP (sum of allele depths) for haploid calls with</span>
+<span class="sd">        allele depths. Default is 5.</span>
+<span class="sd">    :return: MatrixTable with adj annotation.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">entry_fields</span> <span class="o">=</span> <span class="nb">set</span><span class="p">(</span><span class="n">mt</span><span class="o">.</span><span class="n">entry</span><span class="p">)</span>
+    <span class="k">if</span> <span class="s2">&quot;GQ&quot;</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">entry_fields</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;annotate_adj_no_dp requires a &#39;GQ&#39; entry field.&quot;</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="s2">&quot;LGT&quot;</span> <span class="ow">in</span> <span class="n">entry_fields</span> <span class="ow">and</span> <span class="s2">&quot;LAD&quot;</span> <span class="ow">in</span> <span class="n">entry_fields</span><span class="p">:</span>
+        <span class="n">adj_expr</span> <span class="o">=</span> <span class="n">get_adj_expr</span><span class="p">(</span>
+            <span class="n">mt</span><span class="o">.</span><span class="n">LGT</span><span class="p">,</span> <span class="n">mt</span><span class="o">.</span><span class="n">GQ</span><span class="p">,</span> <span class="n">mt</span><span class="o">.</span><span class="n">LAD</span><span class="p">,</span> <span class="n">adj_gq</span><span class="p">,</span> <span class="n">adj_dp</span><span class="p">,</span> <span class="n">adj_ab</span><span class="p">,</span> <span class="n">haploid_adj_dp</span>
+        <span class="p">)</span>
+    <span class="k">elif</span> <span class="s2">&quot;GT&quot;</span> <span class="ow">in</span> <span class="n">entry_fields</span> <span class="ow">and</span> <span class="s2">&quot;AD&quot;</span> <span class="ow">in</span> <span class="n">entry_fields</span><span class="p">:</span>
+        <span class="n">adj_expr</span> <span class="o">=</span> <span class="n">get_adj_expr</span><span class="p">(</span>
+            <span class="n">mt</span><span class="o">.</span><span class="n">GT</span><span class="p">,</span> <span class="n">mt</span><span class="o">.</span><span class="n">GQ</span><span class="p">,</span> <span class="n">mt</span><span class="o">.</span><span class="n">AD</span><span class="p">,</span> <span class="n">adj_gq</span><span class="p">,</span> <span class="n">adj_dp</span><span class="p">,</span> <span class="n">adj_ab</span><span class="p">,</span> <span class="n">haploid_adj_dp</span>
+        <span class="p">)</span>
+    <span class="k">elif</span> <span class="s2">&quot;GT&quot;</span> <span class="ow">in</span> <span class="n">entry_fields</span><span class="p">:</span>
+        <span class="c1"># Reference data: hom-ref blocks that carry GQ but no allele depths, so</span>
+        <span class="c1"># adj is GQ only. A missing genotype (e.g. after a sex-ploidy adjustment)</span>
+        <span class="c1"># gets a missing adj, matching get_adj_expr. Error on a non-hom-ref call</span>
+        <span class="c1"># rather than silently marking it non-adj.</span>
+        <span class="n">adj_expr</span> <span class="o">=</span> <span class="p">(</span>
+            <span class="n">hl</span><span class="o">.</span><span class="n">case</span><span class="p">()</span>
+            <span class="o">.</span><span class="n">when</span><span class="p">(</span><span class="n">hl</span><span class="o">.</span><span class="n">is_missing</span><span class="p">(</span><span class="n">mt</span><span class="o">.</span><span class="n">GT</span><span class="p">),</span> <span class="n">hl</span><span class="o">.</span><span class="n">missing</span><span class="p">(</span><span class="n">hl</span><span class="o">.</span><span class="n">tbool</span><span class="p">))</span>
+            <span class="o">.</span><span class="n">when</span><span class="p">(</span><span class="n">mt</span><span class="o">.</span><span class="n">GT</span><span class="o">.</span><span class="n">is_hom_ref</span><span class="p">(),</span> <span class="n">mt</span><span class="o">.</span><span class="n">GQ</span> <span class="o">&gt;=</span> <span class="n">adj_gq</span><span class="p">)</span>
+            <span class="o">.</span><span class="n">or_error</span><span class="p">(</span>
+                <span class="s2">&quot;Found a non-hom-ref genotype in a MatrixTable with no AD or LAD &quot;</span>
+                <span class="s2">&quot;entry field. Allele depths are required to compute adj for &quot;</span>
+                <span class="s2">&quot;non-hom-ref calls.&quot;</span>
+            <span class="p">)</span>
+        <span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+            <span class="s2">&quot;annotate_adj_no_dp requires &#39;LGT&#39; and &#39;LAD&#39;, &#39;GT&#39; and &#39;AD&#39;, or &#39;GT&#39; &quot;</span>
+            <span class="s2">&quot;alone (hom-ref reference data) in the entry fields.&quot;</span>
+        <span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">mt</span><span class="o">.</span><span class="n">annotate_entries</span><span class="p">(</span><span class="n">adj</span><span class="o">=</span><span class="n">adj_expr</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="get_adj_expr"><a class="viewcode-back" href="../../../../api_reference/v5/annotations/annotation_utils.html#gnomad_qc.v5.annotations.annotation_utils.get_adj_expr">[docs]</a><span class="k">def</span> <span class="nf">get_adj_expr</span><span class="p">(</span>
+    <span class="n">gt_expr</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">expr</span><span class="o">.</span><span class="n">CallExpression</span><span class="p">,</span>
+    <span class="n">gq_expr</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="n">hl</span><span class="o">.</span><span class="n">expr</span><span class="o">.</span><span class="n">Int32Expression</span><span class="p">,</span> <span class="n">hl</span><span class="o">.</span><span class="n">expr</span><span class="o">.</span><span class="n">Int64Expression</span><span class="p">],</span>
+    <span class="n">ad_expr</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">expr</span><span class="o">.</span><span class="n">ArrayNumericExpression</span><span class="p">,</span>
+    <span class="n">adj_gq</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">20</span><span class="p">,</span>
+    <span class="n">adj_dp</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">10</span><span class="p">,</span>
+    <span class="n">adj_ab</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">0.2</span><span class="p">,</span>
+    <span class="n">haploid_adj_dp</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">5</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">hl</span><span class="o">.</span><span class="n">expr</span><span class="o">.</span><span class="n">BooleanExpression</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Get adj genotype annotation.</span>
+
+<span class="sd">    Defaults correspond to gnomAD values. Hom-ref calls with a missing `ad_expr`</span>
+<span class="sd">    (reference blocks) are filtered on GQ only. All other calls, including hom-ref</span>
+<span class="sd">    calls with defined allele depths, use the standard gnomAD adj criteria (GQ, DP,</span>
+<span class="sd">    and AB for het calls) with DP approximated as the sum of `ad_expr`.</span>
+
+<span class="sd">    .. note::</span>
+
+<span class="sd">        Assumes that the genotype expression is already adjusted for sex ploidy.</span>
+
+<span class="sd">    :param gt_expr: Genotype expression.</span>
+<span class="sd">    :param gq_expr: GQ expression.</span>
+<span class="sd">    :param ad_expr: Allele depth expression.</span>
+<span class="sd">    :param adj_gq: Minimum GQ. Default is 20.</span>
+<span class="sd">    :param adj_dp: Minimum DP (sum of allele depths) for calls with allele depths.</span>
+<span class="sd">        Default is 10.</span>
+<span class="sd">    :param adj_ab: Minimum allele balance for het calls. Default is 0.2.</span>
+<span class="sd">    :param haploid_adj_dp: Minimum DP (sum of allele depths) for haploid calls with</span>
+<span class="sd">        allele depths. Default is 5.</span>
+<span class="sd">    :return: Expression for adj genotype annotation.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">return</span> <span class="n">hl</span><span class="o">.</span><span class="n">if_else</span><span class="p">(</span>
+        <span class="n">gt_expr</span><span class="o">.</span><span class="n">is_hom_ref</span><span class="p">()</span> <span class="o">&amp;</span> <span class="n">hl</span><span class="o">.</span><span class="n">is_missing</span><span class="p">(</span><span class="n">ad_expr</span><span class="p">),</span>
+        <span class="n">gq_expr</span> <span class="o">&gt;=</span> <span class="n">adj_gq</span><span class="p">,</span>
+        <span class="n">get_gnomad_adj_expr</span><span class="p">(</span>
+            <span class="n">gt_expr</span><span class="p">,</span>
+            <span class="n">gq_expr</span><span class="p">,</span>
+            <span class="n">hl</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">ad_expr</span><span class="p">),</span>
+            <span class="n">ad_expr</span><span class="p">,</span>
+            <span class="n">adj_gq</span><span class="o">=</span><span class="n">adj_gq</span><span class="p">,</span>
+            <span class="n">adj_dp</span><span class="o">=</span><span class="n">adj_dp</span><span class="p">,</span>
+            <span class="n">adj_ab</span><span class="o">=</span><span class="n">adj_ab</span><span class="p">,</span>
+            <span class="n">haploid_adj_dp</span><span class="o">=</span><span class="n">haploid_adj_dp</span><span class="p">,</span>
+        <span class="p">),</span>
+    <span class="p">)</span></div>
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p></p>
+  </div>
+
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

@@ -1,0 +1,1311 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>gnomad_qc.v4.annotations.generate_variant_qc_annotations &mdash; gnomad_qc master documentation</title>
+      <link rel="stylesheet" href="../../../../_static/pygments.css" type="text/css" />
+      <link rel="stylesheet" href="../../../../_static/css/theme.css" type="text/css" />
+      <link rel="stylesheet" href="../../../../_static/theme_overrides.css" type="text/css" />
+  <!--[if lt IE 9]>
+    <script src="../../../../_static/js/html5shiv.min.js"></script>
+  <![endif]-->
+  
+        <script src="../../../../_static/jquery.js"></script>
+        <script src="../../../../_static/_sphinx_javascript_frameworks_compat.js"></script>
+        <script data-url_root="../../../../" id="documentation_options" src="../../../../_static/documentation_options.js"></script>
+        <script src="../../../../_static/doctools.js"></script>
+        <script src="../../../../_static/sphinx_highlight.js"></script>
+        <script src="https://unpkg.com/mermaid@10.2.0/dist/mermaid.min.js"></script>
+        <script>mermaid.initialize({startOnLoad:true});</script>
+    <script src="../../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../../index.html" class="icon icon-home">
+            gnomad_qc
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../../api_reference/index.html">API Reference</a></li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/broadinstitute/gnomad_qc/tags">Change Log</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../../index.html">gnomad_qc</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../../index.html">Module code</a></li>
+      <li class="breadcrumb-item active">gnomad_qc.v4.annotations.generate_variant_qc_annotations</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for gnomad_qc.v4.annotations.generate_variant_qc_annotations</h1><div class="highlight"><pre>
+<span></span><span class="sd">&quot;&quot;&quot;Script to generate annotations for variant QC on gnomAD v4.&quot;&quot;&quot;</span>
+
+<span class="kn">import</span> <span class="nn">argparse</span>
+<span class="kn">import</span> <span class="nn">logging</span>
+<span class="kn">from</span> <span class="nn">typing</span> <span class="kn">import</span> <span class="n">Dict</span><span class="p">,</span> <span class="n">Optional</span>
+
+<span class="kn">import</span> <span class="nn">hail</span> <span class="k">as</span> <span class="nn">hl</span>
+<span class="kn">from</span> <span class="nn">gnomad.assessment.validity_checks</span> <span class="kn">import</span> <span class="n">count_vep_annotated_variants_per_interval</span>
+<span class="kn">from</span> <span class="nn">gnomad.resources.grch38.gnomad</span> <span class="kn">import</span> <span class="n">GROUPS</span>
+<span class="kn">from</span> <span class="nn">gnomad.resources.grch38.reference_data</span> <span class="kn">import</span> <span class="n">ensembl_interval</span><span class="p">,</span> <span class="n">get_truth_ht</span>
+<span class="kn">from</span> <span class="nn">gnomad.resources.resource_utils</span> <span class="kn">import</span> <span class="n">TableResource</span>
+<span class="kn">from</span> <span class="nn">gnomad.sample_qc.relatedness</span> <span class="kn">import</span> <span class="n">filter_to_trios</span>
+<span class="kn">from</span> <span class="nn">gnomad.utils.annotations</span> <span class="kn">import</span> <span class="n">annotate_adj</span><span class="p">,</span> <span class="n">annotate_allele_info</span>
+<span class="kn">from</span> <span class="nn">gnomad.utils.slack</span> <span class="kn">import</span> <span class="n">slack_notifications</span>
+<span class="kn">from</span> <span class="nn">gnomad.utils.sparse_mt</span> <span class="kn">import</span> <span class="p">(</span>
+    <span class="n">AS_INFO_AGG_FIELDS</span><span class="p">,</span>
+    <span class="n">default_compute_info</span><span class="p">,</span>
+    <span class="n">get_as_info_expr</span><span class="p">,</span>
+    <span class="n">split_info_annotation</span><span class="p">,</span>
+    <span class="n">split_lowqual_annotation</span><span class="p">,</span>
+<span class="p">)</span>
+<span class="kn">from</span> <span class="nn">gnomad.utils.vcf</span> <span class="kn">import</span> <span class="n">adjust_vcf_incompatible_types</span>
+<span class="kn">from</span> <span class="nn">gnomad.utils.vep</span> <span class="kn">import</span> <span class="n">vep_or_lookup_vep</span>
+<span class="kn">from</span> <span class="nn">gnomad.variant_qc.pipeline</span> <span class="kn">import</span> <span class="n">generate_sib_stats</span><span class="p">,</span> <span class="n">generate_trio_stats</span>
+<span class="kn">from</span> <span class="nn">gnomad.variant_qc.random_forest</span> <span class="kn">import</span> <span class="n">median_impute_features</span>
+
+<span class="kn">from</span> <span class="nn">gnomad_qc.resource_utils</span> <span class="kn">import</span> <span class="p">(</span>
+    <span class="n">PipelineResourceCollection</span><span class="p">,</span>
+    <span class="n">PipelineStepResourceCollection</span><span class="p">,</span>
+<span class="p">)</span>
+<span class="kn">from</span> <span class="nn">gnomad_qc.slack_creds</span> <span class="kn">import</span> <span class="n">slack_token</span>
+<span class="kn">from</span> <span class="nn">gnomad_qc.v4.resources.annotations</span> <span class="kn">import</span> <span class="p">(</span>
+    <span class="n">get_info</span><span class="p">,</span>
+    <span class="n">get_sib_stats</span><span class="p">,</span>
+    <span class="n">get_trio_stats</span><span class="p">,</span>
+    <span class="n">get_true_positive_vcf_path</span><span class="p">,</span>
+    <span class="n">get_variant_qc_annotations</span><span class="p">,</span>
+    <span class="n">get_vep</span><span class="p">,</span>
+    <span class="n">info_vcf_path</span><span class="p">,</span>
+    <span class="n">validate_vep_path</span><span class="p">,</span>
+<span class="p">)</span>
+<span class="kn">from</span> <span class="nn">gnomad_qc.v4.resources.basics</span> <span class="kn">import</span> <span class="p">(</span>
+    <span class="n">get_checkpoint_path</span><span class="p">,</span>
+    <span class="n">get_gnomad_v4_genomes_vds</span><span class="p">,</span>
+    <span class="n">get_gnomad_v4_vds</span><span class="p">,</span>
+    <span class="n">get_logging_path</span><span class="p">,</span>
+<span class="p">)</span>
+<span class="kn">from</span> <span class="nn">gnomad_qc.v4.resources.constants</span> <span class="kn">import</span> <span class="n">DEFAULT_VEP_VERSION</span>
+<span class="kn">from</span> <span class="nn">gnomad_qc.v4.resources.sample_qc</span> <span class="kn">import</span> <span class="n">pedigree</span><span class="p">,</span> <span class="n">relatedness</span>
+
+<span class="n">logging</span><span class="o">.</span><span class="n">basicConfig</span><span class="p">(</span>
+    <span class="nb">format</span><span class="o">=</span><span class="s2">&quot;</span><span class="si">%(asctime)s</span><span class="s2"> (</span><span class="si">%(name)s</span><span class="s2"> </span><span class="si">%(lineno)s</span><span class="s2">): </span><span class="si">%(message)s</span><span class="s2">&quot;</span><span class="p">,</span>
+    <span class="n">datefmt</span><span class="o">=</span><span class="s2">&quot;%m/</span><span class="si">%d</span><span class="s2">/%Y %I:%M:%S %p&quot;</span><span class="p">,</span>
+<span class="p">)</span>
+<span class="n">logger</span> <span class="o">=</span> <span class="n">logging</span><span class="o">.</span><span class="n">getLogger</span><span class="p">(</span><span class="vm">__name__</span><span class="p">)</span>
+<span class="n">logger</span><span class="o">.</span><span class="n">setLevel</span><span class="p">(</span><span class="n">logging</span><span class="o">.</span><span class="n">INFO</span><span class="p">)</span>
+
+<span class="n">INFO_METHODS</span> <span class="o">=</span> <span class="p">[</span>
+    <span class="s2">&quot;AS&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;quasi&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;set_long_AS_missing&quot;</span><span class="p">,</span>
+<span class="p">]</span>
+<span class="sd">&quot;&quot;&quot;List of info methods computed for variant QC.&quot;&quot;&quot;</span>
+<span class="n">INFO_FEATURES</span> <span class="o">=</span> <span class="p">[</span>
+    <span class="s2">&quot;AS_MQRankSum&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;AS_pab_max&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;AS_MQ&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;AS_QD&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;AS_ReadPosRankSum&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;AS_SOR&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;AS_FS&quot;</span><span class="p">,</span>
+<span class="p">]</span>
+<span class="sd">&quot;&quot;&quot;List of features info to be used for variant QC.&quot;&quot;&quot;</span>
+<span class="n">NON_INFO_FEATURES</span> <span class="o">=</span> <span class="p">[</span>
+    <span class="s2">&quot;variant_type&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;allele_type&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;n_alt_alleles&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;was_mixed&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;has_star&quot;</span><span class="p">,</span>
+<span class="p">]</span>
+<span class="sd">&quot;&quot;&quot;List of features to be used for variant QC that are not in the info field.&quot;&quot;&quot;</span>
+<span class="n">TRUTH_DATA</span> <span class="o">=</span> <span class="p">[</span><span class="s2">&quot;hapmap&quot;</span><span class="p">,</span> <span class="s2">&quot;omni&quot;</span><span class="p">,</span> <span class="s2">&quot;mills&quot;</span><span class="p">,</span> <span class="s2">&quot;kgp_phase1_hc&quot;</span><span class="p">]</span>
+<span class="sd">&quot;&quot;&quot;List of truth datasets to be used for variant QC.&quot;&quot;&quot;</span>
+
+
+<div class="viewcode-block" id="extract_as_pls"><a class="viewcode-back" href="../../../../api_reference/v4/annotations/generate_variant_qc_annotations.html#gnomad_qc.v4.annotations.generate_variant_qc_annotations.extract_as_pls">[docs]</a><span class="k">def</span> <span class="nf">extract_as_pls</span><span class="p">(</span>
+    <span class="n">lpl_expr</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">expr</span><span class="o">.</span><span class="n">ArrayExpression</span><span class="p">,</span>
+    <span class="n">allele_idx</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">expr</span><span class="o">.</span><span class="n">Int32Expression</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">hl</span><span class="o">.</span><span class="n">expr</span><span class="o">.</span><span class="n">ArrayExpression</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Extract PLs for a specific allele from an LPL array expression.</span>
+
+<span class="sd">    PL/LPL represents the normalized Phred-scaled likelihoods of the possible</span>
+<span class="sd">    genotypes from all considered alleles (or local alleles).</span>
+
+<span class="sd">    If three alleles are considered, LPL genotype indexes are:</span>
+<span class="sd">    [0/0, 0/1, 1/1, 0/2, 1/2, 2/2].</span>
+
+<span class="sd">    If we want to extract the PLs for each alternate allele, we need to extract:</span>
+<span class="sd">        - allele 1: [0/0, 0/1, 1/1]</span>
+<span class="sd">        - allele 2: [0/0, 0/2, 2/2]</span>
+
+<span class="sd">    Example:</span>
+<span class="sd">        - LPL: [138, 98, 154, 26, 0, 14]</span>
+<span class="sd">        - Extract allele 1 PLs: [0/0, 0/1, 1/1] -&gt; [138, 98, 154]</span>
+<span class="sd">        - Extract allele 2 PLs: [0/0, 0/2, 2/2] -&gt; [138, 26, 14]</span>
+
+<span class="sd">    :param lpl_expr: LPL ArrayExpression.</span>
+<span class="sd">    :param allele_idx: The index of the alternate allele to extract PLs for.</span>
+<span class="sd">    :return: ArrayExpression of PLs for the specified allele.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">calls_to_keep</span> <span class="o">=</span> <span class="n">hl</span><span class="o">.</span><span class="n">array</span><span class="p">(</span>
+        <span class="p">[</span><span class="n">hl</span><span class="o">.</span><span class="n">call</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">),</span> <span class="n">hl</span><span class="o">.</span><span class="n">call</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">allele_idx</span><span class="p">),</span> <span class="n">hl</span><span class="o">.</span><span class="n">call</span><span class="p">(</span><span class="n">allele_idx</span><span class="p">,</span> <span class="n">allele_idx</span><span class="p">)]</span>
+    <span class="p">)</span>
+    <span class="k">return</span> <span class="n">calls_to_keep</span><span class="o">.</span><span class="n">map</span><span class="p">(</span><span class="k">lambda</span> <span class="n">c</span><span class="p">:</span> <span class="n">lpl_expr</span><span class="p">[</span><span class="n">c</span><span class="o">.</span><span class="n">unphased_diploid_gt_index</span><span class="p">()])</span></div>
+
+
+<div class="viewcode-block" id="recompute_as_qualapprox_from_lpl"><a class="viewcode-back" href="../../../../api_reference/v4/annotations/generate_variant_qc_annotations.html#gnomad_qc.v4.annotations.generate_variant_qc_annotations.recompute_as_qualapprox_from_lpl">[docs]</a><span class="k">def</span> <span class="nf">recompute_as_qualapprox_from_lpl</span><span class="p">(</span><span class="n">mt</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">MatrixTable</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">hl</span><span class="o">.</span><span class="n">expr</span><span class="o">.</span><span class="n">ArrayExpression</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Recompute AS_QUALapprox from LPL.</span>
+
+<span class="sd">    QUALapprox is the (Phred-scaled) probability that all reads at the site are hom-ref,</span>
+<span class="sd">    so QUALapprox is PL[0]. To get the QUALapprox for just one allele, pull out the</span>
+<span class="sd">    PLs for just that allele, then normalize by subtracting the smallest element from</span>
+<span class="sd">    all the entries (so the best genotype is 0) and then use the normalized PL[0]</span>
+<span class="sd">    value for that allele&#39;s QUALapprox.</span>
+
+<span class="sd">    .. note::</span>
+
+<span class="sd">        - The first element of AS_QUALapprox is always None.</span>
+<span class="sd">        - If the allele is a star allele, we set QUALapprox for that allele to 0.</span>
+<span class="sd">        - If GQ == 0 and PL[0] for the allele == 1, we set QUALapprox for the allele</span>
+<span class="sd">          to 0.</span>
+
+<span class="sd">    Example:</span>
+<span class="sd">        Starting Values:</span>
+<span class="sd">            - alleles: [‘G’, ‘*’, ‘A’, ‘C’, ‘GCTT’, ‘GT’, ‘T’]</span>
+<span class="sd">            - LGT: 1/2</span>
+<span class="sd">            - LA: [0, 1, 6]</span>
+<span class="sd">            - LPL: [138, 98, 154, 26, 0, 14]</span>
+<span class="sd">            - QUALapprox: 138</span>
+
+<span class="sd">        Use `extract_as_pls` to get PLs for each allele:</span>
+<span class="sd">            - allele 1: [138, 98, 154]</span>
+<span class="sd">            - allele 2: [138, 26, 14]</span>
+
+<span class="sd">        Normalize PLs by subtracting the smallest element from all the PLs:</span>
+<span class="sd">            - allele 1: [138-98, 98-98, 154-98] -&gt; [40, 0, 56]</span>
+<span class="sd">            - allele 2: [138-14, 26-14, 14-14] -&gt; [124, 12, 0]</span>
+
+<span class="sd">        Use the first element of the allele specific PLs to generate AS_QUALapprox:</span>
+<span class="sd">        [None, 40, 124]</span>
+
+<span class="sd">        Set QUALapprox to 0 for the star allele: [None, 0, 124]</span>
+
+<span class="sd">    :param mt: Input MatrixTable.</span>
+<span class="sd">    :return: AS_QUALapprox ArrayExpression recomputed from LPL.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">return</span> <span class="n">hl</span><span class="o">.</span><span class="n">enumerate</span><span class="p">(</span><span class="n">mt</span><span class="o">.</span><span class="n">LA</span><span class="p">)</span><span class="o">.</span><span class="n">map</span><span class="p">(</span>
+        <span class="k">lambda</span> <span class="n">i</span><span class="p">:</span> <span class="p">(</span>
+            <span class="n">hl</span><span class="o">.</span><span class="n">case</span><span class="p">()</span>
+            <span class="o">.</span><span class="n">when</span><span class="p">(</span><span class="n">mt</span><span class="o">.</span><span class="n">alleles</span><span class="p">[</span><span class="n">i</span><span class="p">[</span><span class="mi">1</span><span class="p">]]</span> <span class="o">==</span> <span class="s2">&quot;*&quot;</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span>
+            <span class="o">.</span><span class="n">when</span><span class="p">(</span>
+                <span class="n">i</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">,</span>
+                <span class="n">hl</span><span class="o">.</span><span class="n">bind</span><span class="p">(</span>
+                    <span class="k">lambda</span> <span class="n">pl_0</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">if_else</span><span class="p">((</span><span class="n">mt</span><span class="o">.</span><span class="n">GQ</span> <span class="o">==</span> <span class="mi">0</span><span class="p">)</span> <span class="o">&amp;</span> <span class="p">(</span><span class="n">pl_0</span> <span class="o">==</span> <span class="mi">1</span><span class="p">),</span> <span class="mi">0</span><span class="p">,</span> <span class="n">pl_0</span><span class="p">),</span>
+                    <span class="n">hl</span><span class="o">.</span><span class="n">bind</span><span class="p">(</span><span class="k">lambda</span> <span class="n">x</span><span class="p">:</span> <span class="n">x</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">-</span> <span class="n">hl</span><span class="o">.</span><span class="n">min</span><span class="p">(</span><span class="n">x</span><span class="p">),</span> <span class="n">extract_as_pls</span><span class="p">(</span><span class="n">mt</span><span class="o">.</span><span class="n">LPL</span><span class="p">,</span> <span class="n">i</span><span class="p">[</span><span class="mi">0</span><span class="p">])),</span>
+                <span class="p">),</span>
+            <span class="p">)</span>
+            <span class="o">.</span><span class="n">or_missing</span><span class="p">()</span>
+        <span class="p">)</span>
+    <span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="correct_as_annotations"><a class="viewcode-back" href="../../../../api_reference/v4/annotations/generate_variant_qc_annotations.html#gnomad_qc.v4.annotations.generate_variant_qc_annotations.correct_as_annotations">[docs]</a><span class="k">def</span> <span class="nf">correct_as_annotations</span><span class="p">(</span>
+    <span class="n">mt</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">MatrixTable</span><span class="p">,</span>
+    <span class="n">set_to_missing</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">hl</span><span class="o">.</span><span class="n">expr</span><span class="o">.</span><span class="n">StructExpression</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Correct allele specific annotations that are longer than the length of LA.</span>
+
+<span class="sd">    For some entries in the MatrixTable, the following annotations are longer than LA,</span>
+<span class="sd">    when they should be the same length as LA:</span>
+
+<span class="sd">        - AS_SB_TABLE</span>
+<span class="sd">        - AS_RAW_MQ</span>
+<span class="sd">        - AS_RAW_ReadPosRankSum</span>
+<span class="sd">        - AS_RAW_MQRankSum</span>
+
+<span class="sd">    This function corrects these annotations by either dropping the alternate allele</span>
+<span class="sd">    with the index corresponding to the min value of AS_RAW_MQ, or setting them to</span>
+<span class="sd">    missing if `set_to_missing` is True.</span>
+
+<span class="sd">    :param mt: Input MatrixTable.</span>
+<span class="sd">    :param set_to_missing: Whether to set the annotations to missing instead of</span>
+<span class="sd">        correcting them.</span>
+<span class="sd">    :return: StructExpression with corrected allele specific annotations.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">annotations_to_correct</span> <span class="o">=</span> <span class="p">[</span>
+        <span class="s2">&quot;AS_SB_TABLE&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;AS_RAW_MQ&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;AS_RAW_ReadPosRankSum&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;AS_RAW_MQRankSum&quot;</span><span class="p">,</span>
+    <span class="p">]</span>
+    <span class="n">annotations_to_correct</span> <span class="o">=</span> <span class="p">{</span><span class="n">a</span><span class="p">:</span> <span class="n">mt</span><span class="o">.</span><span class="n">gvcf_info</span><span class="p">[</span><span class="n">a</span><span class="p">]</span> <span class="k">for</span> <span class="n">a</span> <span class="ow">in</span> <span class="n">annotations_to_correct</span><span class="p">}</span>
+
+    <span class="c1"># Identify index corresponding to min of AS_RAW_MQ, skipping the reference allele.</span>
+    <span class="n">as_raw_mq_no_ref</span> <span class="o">=</span> <span class="n">mt</span><span class="o">.</span><span class="n">gvcf_info</span><span class="o">.</span><span class="n">AS_RAW_MQ</span><span class="p">[</span><span class="mi">1</span><span class="p">:]</span>
+    <span class="n">idx_remove</span> <span class="o">=</span> <span class="n">as_raw_mq_no_ref</span><span class="o">.</span><span class="n">index</span><span class="p">(</span><span class="n">hl</span><span class="o">.</span><span class="n">min</span><span class="p">(</span><span class="n">as_raw_mq_no_ref</span><span class="p">))</span> <span class="o">+</span> <span class="mi">1</span>
+
+    <span class="n">corrected_annotations</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="n">a</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">if_else</span><span class="p">(</span>
+            <span class="n">hl</span><span class="o">.</span><span class="n">len</span><span class="p">(</span><span class="n">expr</span><span class="p">)</span> <span class="o">&gt;</span> <span class="n">hl</span><span class="o">.</span><span class="n">len</span><span class="p">(</span><span class="n">mt</span><span class="o">.</span><span class="n">LA</span><span class="p">),</span>
+            <span class="n">hl</span><span class="o">.</span><span class="n">or_missing</span><span class="p">(</span>
+                <span class="ow">not</span> <span class="n">set_to_missing</span><span class="p">,</span> <span class="n">expr</span><span class="p">[:</span><span class="n">idx_remove</span><span class="p">]</span><span class="o">.</span><span class="n">extend</span><span class="p">(</span><span class="n">expr</span><span class="p">[</span><span class="n">idx_remove</span> <span class="o">+</span> <span class="mi">1</span> <span class="p">:])</span>
+            <span class="p">),</span>
+            <span class="n">expr</span><span class="p">,</span>
+        <span class="p">)</span>
+        <span class="k">for</span> <span class="n">a</span><span class="p">,</span> <span class="n">expr</span> <span class="ow">in</span> <span class="n">annotations_to_correct</span><span class="o">.</span><span class="n">items</span><span class="p">()</span>
+    <span class="p">}</span>
+
+    <span class="k">return</span> <span class="n">hl</span><span class="o">.</span><span class="n">struct</span><span class="p">(</span><span class="o">**</span><span class="n">corrected_annotations</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="run_compute_info"><a class="viewcode-back" href="../../../../api_reference/v4/annotations/generate_variant_qc_annotations.html#gnomad_qc.v4.annotations.generate_variant_qc_annotations.run_compute_info">[docs]</a><span class="k">def</span> <span class="nf">run_compute_info</span><span class="p">(</span>
+    <span class="n">mt</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">MatrixTable</span><span class="p">,</span>
+    <span class="n">max_n_alleles</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">min_n_alleles</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">retain_cdfs</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+    <span class="n">cdf_k</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">200</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Run compute info on a MatrixTable.</span>
+
+<span class="sd">    ..note::</span>
+
+<span class="sd">        Adds a fix for AS_QUALapprox by recomputing from LPL because some were found to</span>
+<span class="sd">        have different lengths than LA.</span>
+
+<span class="sd">    Creates a Table with three different methods of computing info annotations:</span>
+<span class="sd">        - quasi_info: Compute info annotations using the quasi-allele specific method</span>
+<span class="sd">          defined in `default_compute_info`.</span>
+<span class="sd">        - AS_info: Compute info annotations using aggregation of the allele specific</span>
+<span class="sd">          annotations in &#39;gvcf_info&#39; after recomputing AS_QUALapprox from LPL, and</span>
+<span class="sd">          fixing the length of AS_SB_TABLE, AS_RAW_MQ, AS_RAW_ReadPosRankSum and</span>
+<span class="sd">          AS_RAW_MQRankSum.</span>
+<span class="sd">        - set_long_AS_missing_info: Compute info annotations using aggregation of the</span>
+<span class="sd">          allele specific  annotations in &#39;gvcf_info&#39; after setting AS_SB_TABLE,</span>
+<span class="sd">          AS_RAW_MQ, AS_RAW_ReadPosRankSum and AS_RAW_MQRankSum to missing if they have</span>
+<span class="sd">          the incorrect length.</span>
+
+<span class="sd">    :param mt: Input MatrixTable.</span>
+<span class="sd">    :param max_n_alleles: Maximum number of alleles for the site to be included in</span>
+<span class="sd">        computations.</span>
+<span class="sd">    :param min_n_alleles: Minimum number of alleles for the site to be included in</span>
+<span class="sd">        computations.</span>
+<span class="sd">    :param retain_cdfs: If True, retains the cumulative distribution functions (CDFs)</span>
+<span class="sd">        for all info annotations that are computed as a median aggregation. Keeping the</span>
+<span class="sd">        CDFs is useful for annotations that require calculating the median across</span>
+<span class="sd">        combined datasets at a later stage. Default is False.</span>
+<span class="sd">    :param cdf_k: Parameter controlling the accuracy vs. memory usage tradeoff when</span>
+<span class="sd">        retaining CDFs. A higher value of `cdf_k` results in a more accurate CDF</span>
+<span class="sd">        approximation but increases memory usage and computation time. Default is 200.</span>
+<span class="sd">    :return: Table with info annotations.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="n">max_n_alleles</span><span class="p">:</span>
+        <span class="n">mt</span> <span class="o">=</span> <span class="n">mt</span><span class="o">.</span><span class="n">filter_rows</span><span class="p">(</span><span class="n">hl</span><span class="o">.</span><span class="n">len</span><span class="p">(</span><span class="n">mt</span><span class="o">.</span><span class="n">alleles</span><span class="p">)</span> <span class="o">&lt;=</span> <span class="n">max_n_alleles</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">min_n_alleles</span><span class="p">:</span>
+        <span class="n">mt</span> <span class="o">=</span> <span class="n">mt</span><span class="o">.</span><span class="n">filter_rows</span><span class="p">(</span><span class="n">hl</span><span class="o">.</span><span class="n">len</span><span class="p">(</span><span class="n">mt</span><span class="o">.</span><span class="n">alleles</span><span class="p">)</span> <span class="o">&gt;=</span> <span class="n">min_n_alleles</span><span class="p">)</span>
+
+    <span class="c1"># Compute and checkpoint the site annotations, quasi allele specific info</span>
+    <span class="c1"># annotations, allele count annotations, and lowQUAL annotations.</span>
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">default_compute_info</span><span class="p">(</span>
+        <span class="n">mt</span><span class="p">,</span>
+        <span class="n">site_annotations</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+        <span class="n">ac_filter_groups</span><span class="o">=</span><span class="p">{</span>
+            <span class="s2">&quot;high_quality&quot;</span><span class="p">:</span> <span class="n">mt</span><span class="o">.</span><span class="n">meta</span><span class="o">.</span><span class="n">high_quality</span><span class="p">,</span>
+            <span class="s2">&quot;release&quot;</span><span class="p">:</span> <span class="n">mt</span><span class="o">.</span><span class="n">meta</span><span class="o">.</span><span class="n">release</span><span class="p">,</span>
+            <span class="s2">&quot;unrelated&quot;</span><span class="p">:</span> <span class="o">~</span><span class="n">mt</span><span class="o">.</span><span class="n">meta</span><span class="o">.</span><span class="n">sample_filters</span><span class="o">.</span><span class="n">relatedness_filters</span><span class="o">.</span><span class="n">related</span><span class="p">,</span>
+        <span class="p">},</span>
+        <span class="n">n_partitions</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+        <span class="n">retain_cdfs</span><span class="o">=</span><span class="n">retain_cdfs</span><span class="p">,</span>
+        <span class="n">cdf_k</span><span class="o">=</span><span class="n">cdf_k</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">quasi_info_ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">checkpoint</span><span class="p">(</span>
+        <span class="n">hl</span><span class="o">.</span><span class="n">utils</span><span class="o">.</span><span class="n">new_temp_file</span><span class="p">(</span><span class="s2">&quot;quasi_compute_info&quot;</span><span class="p">,</span> <span class="n">extension</span><span class="o">=</span><span class="s2">&quot;ht&quot;</span><span class="p">)</span>
+    <span class="p">)</span>
+
+    <span class="c1"># Compute and checkpoint the allele specific info annotations after recomputing</span>
+    <span class="c1"># AS_QUALapprox from LPL, and fixing the length of AS_SB_TABLE, AS_RAW_MQ,</span>
+    <span class="c1"># AS_RAW_ReadPosRankSum and AS_RAW_MQRankSum.</span>
+    <span class="n">mt</span> <span class="o">=</span> <span class="n">mt</span><span class="o">.</span><span class="n">annotate_rows</span><span class="p">(</span><span class="n">alt_alleles_range_array</span><span class="o">=</span><span class="n">hl</span><span class="o">.</span><span class="n">range</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="n">hl</span><span class="o">.</span><span class="n">len</span><span class="p">(</span><span class="n">mt</span><span class="o">.</span><span class="n">alleles</span><span class="p">)))</span>
+    <span class="n">correct_mt</span> <span class="o">=</span> <span class="n">mt</span><span class="o">.</span><span class="n">annotate_entries</span><span class="p">(</span>
+        <span class="n">gvcf_info</span><span class="o">=</span><span class="n">mt</span><span class="o">.</span><span class="n">gvcf_info</span><span class="o">.</span><span class="n">annotate</span><span class="p">(</span>
+            <span class="n">AS_QUALapprox</span><span class="o">=</span><span class="n">recompute_as_qualapprox_from_lpl</span><span class="p">(</span><span class="n">mt</span><span class="p">),</span>
+            <span class="o">**</span><span class="n">correct_as_annotations</span><span class="p">(</span><span class="n">mt</span><span class="p">),</span>
+        <span class="p">)</span>
+    <span class="p">)</span>
+
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">correct_mt</span><span class="o">.</span><span class="n">select_rows</span><span class="p">(</span>
+        <span class="o">**</span><span class="n">get_as_info_expr</span><span class="p">(</span>
+            <span class="n">correct_mt</span><span class="p">,</span>
+            <span class="c1"># Use global AS_INFO_AGG_FIELDS for sum_agg_fields, int32_sum_agg_fields,</span>
+            <span class="c1"># median_agg_fields, and array_sum_agg_fields parameters.</span>
+            <span class="o">**</span><span class="n">AS_INFO_AGG_FIELDS</span><span class="p">,</span>
+            <span class="n">treat_fields_as_allele_specific</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+            <span class="n">retain_cdfs</span><span class="o">=</span><span class="n">retain_cdfs</span><span class="p">,</span>
+            <span class="n">cdf_k</span><span class="o">=</span><span class="n">cdf_k</span><span class="p">,</span>
+        <span class="p">)</span>
+    <span class="p">)</span><span class="o">.</span><span class="n">rows</span><span class="p">()</span>
+    <span class="n">info_ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">checkpoint</span><span class="p">(</span><span class="n">hl</span><span class="o">.</span><span class="n">utils</span><span class="o">.</span><span class="n">new_temp_file</span><span class="p">(</span><span class="s2">&quot;compute_info&quot;</span><span class="p">,</span> <span class="n">extension</span><span class="o">=</span><span class="s2">&quot;ht&quot;</span><span class="p">))</span>
+
+    <span class="c1"># Compute and checkpoint the allele specific info annotations after setting</span>
+    <span class="c1"># AS_SB_TABLE, AS_RAW_MQ, AS_RAW_ReadPosRankSum and AS_RAW_MQRankSum to missing if</span>
+    <span class="c1"># they have the incorrect length.</span>
+    <span class="n">correct_mt</span> <span class="o">=</span> <span class="n">mt</span><span class="o">.</span><span class="n">annotate_entries</span><span class="p">(</span>
+        <span class="n">gvcf_info</span><span class="o">=</span><span class="n">correct_as_annotations</span><span class="p">(</span><span class="n">mt</span><span class="p">,</span> <span class="n">set_to_missing</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="p">)</span>
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">correct_mt</span><span class="o">.</span><span class="n">select_rows</span><span class="p">(</span>
+        <span class="o">**</span><span class="n">get_as_info_expr</span><span class="p">(</span>
+            <span class="n">correct_mt</span><span class="p">,</span>
+            <span class="n">sum_agg_fields</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;AS_RAW_MQ&quot;</span><span class="p">],</span>
+            <span class="n">int32_sum_agg_fields</span><span class="o">=</span><span class="p">[],</span>
+            <span class="n">median_agg_fields</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;AS_RAW_ReadPosRankSum&quot;</span><span class="p">,</span> <span class="s2">&quot;AS_RAW_MQRankSum&quot;</span><span class="p">],</span>
+            <span class="n">array_sum_agg_fields</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;AS_SB_TABLE&quot;</span><span class="p">],</span>
+            <span class="n">treat_fields_as_allele_specific</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+            <span class="n">retain_cdfs</span><span class="o">=</span><span class="n">retain_cdfs</span><span class="p">,</span>
+            <span class="n">cdf_k</span><span class="o">=</span><span class="n">cdf_k</span><span class="p">,</span>
+        <span class="p">)</span>
+    <span class="p">)</span><span class="o">.</span><span class="n">rows</span><span class="p">()</span>
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">checkpoint</span><span class="p">(</span>
+        <span class="n">hl</span><span class="o">.</span><span class="n">utils</span><span class="o">.</span><span class="n">new_temp_file</span><span class="p">(</span><span class="s2">&quot;AS_missing_info_compute_info&quot;</span><span class="p">,</span> <span class="n">extension</span><span class="o">=</span><span class="s2">&quot;ht&quot;</span><span class="p">)</span>
+    <span class="p">)</span>
+
+    <span class="n">quasi_info</span> <span class="o">=</span> <span class="n">quasi_info_ht</span><span class="o">.</span><span class="n">info</span>
+    <span class="n">quasi_keys</span> <span class="o">=</span> <span class="n">hl</span><span class="o">.</span><span class="n">eval</span><span class="p">(</span>
+        <span class="n">hl</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="nb">list</span><span class="p">(</span><span class="n">quasi_info</span><span class="o">.</span><span class="n">keys</span><span class="p">()))</span><span class="o">.</span><span class="n">group_by</span><span class="p">(</span>
+            <span class="k">lambda</span> <span class="n">x</span><span class="p">:</span> <span class="p">(</span>
+                <span class="n">hl</span><span class="o">.</span><span class="n">switch</span><span class="p">(</span><span class="n">x</span><span class="p">[:</span><span class="mi">2</span><span class="p">])</span>
+                <span class="o">.</span><span class="n">when</span><span class="p">(</span><span class="s2">&quot;AS&quot;</span><span class="p">,</span> <span class="s2">&quot;quasi_info&quot;</span><span class="p">)</span>
+                <span class="o">.</span><span class="n">when</span><span class="p">(</span><span class="s2">&quot;AC&quot;</span><span class="p">,</span> <span class="s2">&quot;AC_info&quot;</span><span class="p">)</span>
+                <span class="o">.</span><span class="n">default</span><span class="p">(</span><span class="s2">&quot;site_info&quot;</span><span class="p">)</span>
+            <span class="p">)</span>
+        <span class="p">)</span>
+    <span class="p">)</span>
+    <span class="n">quasi_info</span> <span class="o">=</span> <span class="p">{</span><span class="n">k</span><span class="p">:</span> <span class="n">quasi_info</span><span class="o">.</span><span class="n">select</span><span class="p">(</span><span class="o">*</span><span class="n">v</span><span class="p">)</span> <span class="k">for</span> <span class="n">k</span><span class="p">,</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">quasi_keys</span><span class="o">.</span><span class="n">items</span><span class="p">()}</span>
+    <span class="n">info_ht</span> <span class="o">=</span> <span class="n">quasi_info_ht</span><span class="o">.</span><span class="n">select</span><span class="p">(</span>
+        <span class="n">AC_info</span><span class="o">=</span><span class="n">quasi_info</span><span class="p">[</span><span class="s2">&quot;AC_info&quot;</span><span class="p">],</span>
+        <span class="n">site_info</span><span class="o">=</span><span class="n">quasi_info</span><span class="p">[</span><span class="s2">&quot;site_info&quot;</span><span class="p">],</span>
+        <span class="n">AS_info</span><span class="o">=</span><span class="n">info_ht</span><span class="p">[</span><span class="n">quasi_info_ht</span><span class="o">.</span><span class="n">key</span><span class="p">],</span>
+        <span class="n">set_long_AS_missing_info</span><span class="o">=</span><span class="n">ht</span><span class="p">[</span><span class="n">quasi_info_ht</span><span class="o">.</span><span class="n">key</span><span class="p">],</span>
+        <span class="n">quasi_info</span><span class="o">=</span><span class="n">quasi_info</span><span class="p">[</span><span class="s2">&quot;quasi_info&quot;</span><span class="p">],</span>
+        <span class="n">lowqual</span><span class="o">=</span><span class="n">quasi_info_ht</span><span class="o">.</span><span class="n">lowqual</span><span class="p">,</span>
+        <span class="n">AS_lowqual</span><span class="o">=</span><span class="n">quasi_info_ht</span><span class="o">.</span><span class="n">AS_lowqual</span><span class="p">,</span>
+    <span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">info_ht</span></div>
+
+
+<div class="viewcode-block" id="get_reformatted_info_fields"><a class="viewcode-back" href="../../../../api_reference/v4/annotations/generate_variant_qc_annotations.html#gnomad_qc.v4.annotations.generate_variant_qc_annotations.get_reformatted_info_fields">[docs]</a><span class="k">def</span> <span class="nf">get_reformatted_info_fields</span><span class="p">(</span>
+    <span class="n">ht</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">,</span> <span class="n">info_method</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Reformat `ht` info annotations to contain all expected info fields.</span>
+
+<span class="sd">    :param ht: Input Table.</span>
+<span class="sd">    :param info_method: Shorthand name of method used to compute the info annotation</span>
+<span class="sd">        that should be reformatted. Choices are &#39;AS&#39;, &#39;quasi&#39;, or &#39;set_long_AS_missing&#39;.</span>
+<span class="sd">        If None, all info annotations will be reformatted.</span>
+<span class="sd">    :return: Table with reformatted info annotations.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="n">info_method</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">info_method</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">INFO_METHODS</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+            <span class="sa">f</span><span class="s2">&quot;Invalid info_method: </span><span class="si">{</span><span class="n">info_method</span><span class="si">}</span><span class="s2">. Must be one of &#39;AS&#39;, &#39;quasi&#39;, or &quot;</span>
+            <span class="s2">&quot;&#39;set_long_AS_missing&#39;.&quot;</span>
+        <span class="p">)</span>
+
+    <span class="c1"># AS_pab_max is computed in the quasi_info annotation, but it doesn&#39;t change for</span>
+    <span class="c1"># the other info methods, so we can just copy it into each of the info annotation</span>
+    <span class="c1"># structs to make downstream code easier.</span>
+    <span class="k">if</span> <span class="n">info_method</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">or</span> <span class="n">info_method</span> <span class="o">==</span> <span class="s2">&quot;AS&quot;</span><span class="p">:</span>
+        <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">annotate</span><span class="p">(</span>
+            <span class="n">AS_info</span><span class="o">=</span><span class="n">ht</span><span class="o">.</span><span class="n">AS_info</span><span class="o">.</span><span class="n">annotate</span><span class="p">(</span><span class="n">AS_pab_max</span><span class="o">=</span><span class="n">ht</span><span class="o">.</span><span class="n">quasi_info</span><span class="o">.</span><span class="n">AS_pab_max</span><span class="p">)</span>
+        <span class="p">)</span>
+    <span class="k">if</span> <span class="n">info_method</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">or</span> <span class="n">info_method</span> <span class="o">==</span> <span class="s2">&quot;quasi&quot;</span><span class="p">:</span>
+        <span class="c1"># TODO: AS_SB should be removed from the quasi_info annotation in</span>
+        <span class="c1">#  `get_as_info_expr` since it is identical to AD_SB_TABLE.</span>
+        <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">annotate</span><span class="p">(</span><span class="n">quasi_info</span><span class="o">=</span><span class="n">ht</span><span class="o">.</span><span class="n">quasi_info</span><span class="o">.</span><span class="n">drop</span><span class="p">(</span><span class="s2">&quot;AS_SB&quot;</span><span class="p">))</span>
+    <span class="k">if</span> <span class="n">info_method</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">or</span> <span class="n">info_method</span> <span class="o">==</span> <span class="s2">&quot;set_long_AS_missing&quot;</span><span class="p">:</span>
+        <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">annotate</span><span class="p">(</span>
+            <span class="n">set_long_AS_missing_info</span><span class="o">=</span><span class="n">ht</span><span class="o">.</span><span class="n">AS_info</span><span class="o">.</span><span class="n">annotate</span><span class="p">(</span>
+                <span class="o">**</span><span class="n">ht</span><span class="o">.</span><span class="n">set_long_AS_missing_info</span><span class="p">,</span>
+                <span class="n">AS_pab_max</span><span class="o">=</span><span class="n">ht</span><span class="o">.</span><span class="n">quasi_info</span><span class="o">.</span><span class="n">AS_pab_max</span><span class="p">,</span>
+            <span class="p">)</span>
+        <span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">ht</span></div>
+
+
+<div class="viewcode-block" id="get_info_ht_for_vcf_export"><a class="viewcode-back" href="../../../../api_reference/v4/annotations/generate_variant_qc_annotations.html#gnomad_qc.v4.annotations.generate_variant_qc_annotations.get_info_ht_for_vcf_export">[docs]</a><span class="k">def</span> <span class="nf">get_info_ht_for_vcf_export</span><span class="p">(</span><span class="n">ht</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">,</span> <span class="n">info_method</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Get info HT for VCF export.</span>
+
+<span class="sd">    :param ht: Input info HT.</span>
+<span class="sd">    :param info_method: Info method to use. One of &#39;AS&#39;, &#39;quasi&#39;, or</span>
+<span class="sd">        &#39;set_long_AS_missing&#39;.</span>
+<span class="sd">    :return: Info HT for VCF export.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">get_reformatted_info_fields</span><span class="p">(</span><span class="n">ht</span><span class="p">,</span> <span class="n">info_method</span><span class="o">=</span><span class="n">info_method</span><span class="p">)</span>
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">select</span><span class="p">(</span><span class="n">info</span><span class="o">=</span><span class="n">ht</span><span class="o">.</span><span class="n">site_info</span><span class="o">.</span><span class="n">annotate</span><span class="p">(</span><span class="o">**</span><span class="n">ht</span><span class="p">[</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">info_method</span><span class="si">}</span><span class="s2">_info&quot;</span><span class="p">]))</span>
+    <span class="c1"># Added to be consistent with compute info and remove sites with over 10,000</span>
+    <span class="c1"># alleles. It excludes a single problematic site that we decided to drop.</span>
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">hl</span><span class="o">.</span><span class="n">len</span><span class="p">(</span><span class="n">ht</span><span class="o">.</span><span class="n">alleles</span><span class="p">)</span> <span class="o">&lt;</span> <span class="mi">10000</span><span class="p">)</span>
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">adjust_vcf_incompatible_types</span><span class="p">(</span><span class="n">ht</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">ht</span></div>
+
+
+<div class="viewcode-block" id="split_info"><a class="viewcode-back" href="../../../../api_reference/v4/annotations/generate_variant_qc_annotations.html#gnomad_qc.v4.annotations.generate_variant_qc_annotations.split_info">[docs]</a><span class="k">def</span> <span class="nf">split_info</span><span class="p">(</span><span class="n">info_ht</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Generate an info Table with split multi-allelic sites from the multi-allelic info Table.</span>
+
+<span class="sd">    .. note::</span>
+
+<span class="sd">        gnomad_methods&#39; `annotate_allele_info` splits multi-allelic sites before the</span>
+<span class="sd">        `info` annotation is split to ensure that all sites in the returned Table are</span>
+<span class="sd">        annotated with allele info.</span>
+
+<span class="sd">    :param info_ht: Info Table with unsplit multi-allelics.</span>
+<span class="sd">    :return: Info Table with split multi-allelics.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">info_ht</span> <span class="o">=</span> <span class="n">annotate_allele_info</span><span class="p">(</span><span class="n">info_ht</span><span class="p">)</span>
+    <span class="n">info_annotations_to_split</span> <span class="o">=</span> <span class="p">[</span><span class="s2">&quot;AC_info&quot;</span><span class="p">]</span> <span class="o">+</span> <span class="p">[</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">m</span><span class="si">}</span><span class="s2">_info&quot;</span> <span class="k">for</span> <span class="n">m</span> <span class="ow">in</span> <span class="n">INFO_METHODS</span><span class="p">]</span>
+    <span class="n">info_ht</span> <span class="o">=</span> <span class="n">info_ht</span><span class="o">.</span><span class="n">annotate</span><span class="p">(</span>
+        <span class="o">**</span><span class="p">{</span>
+            <span class="n">a</span><span class="p">:</span> <span class="n">info_ht</span><span class="p">[</span><span class="n">a</span><span class="p">]</span><span class="o">.</span><span class="n">annotate</span><span class="p">(</span>
+                <span class="o">**</span><span class="n">split_info_annotation</span><span class="p">(</span><span class="n">info_ht</span><span class="p">[</span><span class="n">a</span><span class="p">],</span> <span class="n">info_ht</span><span class="o">.</span><span class="n">a_index</span><span class="p">),</span>
+            <span class="p">)</span>
+            <span class="k">for</span> <span class="n">a</span> <span class="ow">in</span> <span class="n">info_annotations_to_split</span>
+        <span class="p">},</span>
+        <span class="n">AS_lowqual</span><span class="o">=</span><span class="n">split_lowqual_annotation</span><span class="p">(</span><span class="n">info_ht</span><span class="o">.</span><span class="n">AS_lowqual</span><span class="p">,</span> <span class="n">info_ht</span><span class="o">.</span><span class="n">a_index</span><span class="p">),</span>
+    <span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">info_ht</span></div>
+
+
+<div class="viewcode-block" id="run_generate_trio_stats"><a class="viewcode-back" href="../../../../api_reference/v4/annotations/generate_variant_qc_annotations.html#gnomad_qc.v4.annotations.generate_variant_qc_annotations.run_generate_trio_stats">[docs]</a><span class="k">def</span> <span class="nf">run_generate_trio_stats</span><span class="p">(</span>
+    <span class="n">vds</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">vds</span><span class="o">.</span><span class="n">VariantDataset</span><span class="p">,</span>
+    <span class="n">fam_ped</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">Pedigree</span><span class="p">,</span>
+    <span class="n">fam_ht</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">,</span>
+    <span class="n">releasable_only</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Generate trio transmission stats from a VariantDataset and pedigree info.</span>
+
+<span class="sd">    :param vds: VariantDataset to generate trio stats from.</span>
+<span class="sd">    :param fam_ped: Pedigree containing trio info.</span>
+<span class="sd">    :param fam_ht: Table containing trio info.</span>
+<span class="sd">    :param releasable_only: Whether to only include releasable trios. Releasable trios are those where all three samples (proband, maternal, and paternal) are marked as &#39;releasable&#39;.</span>
+<span class="sd">    :return: Table containing trio stats.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="c1"># Filter the VDS to autosomes.</span>
+    <span class="n">vds</span> <span class="o">=</span> <span class="n">hl</span><span class="o">.</span><span class="n">vds</span><span class="o">.</span><span class="n">filter_chromosomes</span><span class="p">(</span><span class="n">vds</span><span class="p">,</span> <span class="n">keep_autosomes</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">releasable_only</span><span class="p">:</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Filtering to only releasable trios...&quot;</span><span class="p">)</span>
+        <span class="n">meta</span> <span class="o">=</span> <span class="n">vds</span><span class="o">.</span><span class="n">variant_data</span><span class="o">.</span><span class="n">cols</span><span class="p">()</span>
+        <span class="n">fam_ht</span> <span class="o">=</span> <span class="n">fam_ht</span><span class="o">.</span><span class="n">annotate</span><span class="p">(</span>
+            <span class="n">id_releasable</span><span class="o">=</span><span class="n">meta</span><span class="p">[</span><span class="n">fam_ht</span><span class="o">.</span><span class="n">key</span><span class="p">]</span><span class="o">.</span><span class="n">meta</span><span class="o">.</span><span class="n">project_meta</span><span class="o">.</span><span class="n">releasable</span><span class="p">,</span>
+            <span class="n">pat_releasable</span><span class="o">=</span><span class="n">meta</span><span class="p">[</span><span class="n">fam_ht</span><span class="o">.</span><span class="n">pat_id</span><span class="p">]</span><span class="o">.</span><span class="n">meta</span><span class="o">.</span><span class="n">project_meta</span><span class="o">.</span><span class="n">releasable</span><span class="p">,</span>
+            <span class="n">mat_releasable</span><span class="o">=</span><span class="n">meta</span><span class="p">[</span><span class="n">fam_ht</span><span class="o">.</span><span class="n">mat_id</span><span class="p">]</span><span class="o">.</span><span class="n">meta</span><span class="o">.</span><span class="n">project_meta</span><span class="o">.</span><span class="n">releasable</span><span class="p">,</span>
+        <span class="p">)</span>
+        <span class="n">fam_ht</span> <span class="o">=</span> <span class="n">fam_ht</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span>
+            <span class="n">fam_ht</span><span class="o">.</span><span class="n">id_releasable</span> <span class="o">&amp;</span> <span class="n">fam_ht</span><span class="o">.</span><span class="n">pat_releasable</span> <span class="o">&amp;</span> <span class="n">fam_ht</span><span class="o">.</span><span class="n">mat_releasable</span>
+        <span class="p">)</span>
+
+    <span class="c1"># Filter the variant data and reference data to only the trios.</span>
+    <span class="n">vds</span> <span class="o">=</span> <span class="n">filter_to_trios</span><span class="p">(</span><span class="n">vds</span><span class="p">,</span> <span class="n">fam_ht</span><span class="p">)</span>
+
+    <span class="n">vmt</span> <span class="o">=</span> <span class="n">vds</span><span class="o">.</span><span class="n">variant_data</span>
+    <span class="n">rmt</span> <span class="o">=</span> <span class="n">vds</span><span class="o">.</span><span class="n">reference_data</span>
+
+    <span class="c1"># Filter the variant data to bi-allelic sites.</span>
+    <span class="n">vmt</span> <span class="o">=</span> <span class="n">vmt</span><span class="o">.</span><span class="n">filter_rows</span><span class="p">(</span><span class="n">hl</span><span class="o">.</span><span class="n">len</span><span class="p">(</span><span class="n">vmt</span><span class="o">.</span><span class="n">alleles</span><span class="p">)</span> <span class="o">==</span> <span class="mi">2</span><span class="p">)</span>
+
+    <span class="n">vds</span> <span class="o">=</span> <span class="n">hl</span><span class="o">.</span><span class="n">vds</span><span class="o">.</span><span class="n">VariantDataset</span><span class="p">(</span><span class="n">reference_data</span><span class="o">=</span><span class="n">rmt</span><span class="p">,</span> <span class="n">variant_data</span><span class="o">=</span><span class="n">vmt</span><span class="p">)</span>
+
+    <span class="n">mt</span> <span class="o">=</span> <span class="n">hl</span><span class="o">.</span><span class="n">vds</span><span class="o">.</span><span class="n">to_dense_mt</span><span class="p">(</span><span class="n">vds</span><span class="p">)</span>
+
+    <span class="n">mt</span> <span class="o">=</span> <span class="n">mt</span><span class="o">.</span><span class="n">transmute_entries</span><span class="p">(</span><span class="n">GT</span><span class="o">=</span><span class="n">mt</span><span class="o">.</span><span class="n">LGT</span><span class="p">)</span>
+    <span class="n">mt</span> <span class="o">=</span> <span class="n">annotate_adj</span><span class="p">(</span><span class="n">mt</span><span class="p">)</span>
+    <span class="n">mt</span> <span class="o">=</span> <span class="n">hl</span><span class="o">.</span><span class="n">trio_matrix</span><span class="p">(</span><span class="n">mt</span><span class="p">,</span> <span class="n">pedigree</span><span class="o">=</span><span class="n">fam_ped</span><span class="p">,</span> <span class="n">complete_trios</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">generate_trio_stats</span><span class="p">(</span><span class="n">mt</span><span class="p">,</span> <span class="n">bi_allelic_only</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="run_generate_sib_stats"><a class="viewcode-back" href="../../../../api_reference/v4/annotations/generate_variant_qc_annotations.html#gnomad_qc.v4.annotations.generate_variant_qc_annotations.run_generate_sib_stats">[docs]</a><span class="k">def</span> <span class="nf">run_generate_sib_stats</span><span class="p">(</span>
+    <span class="n">mt</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">MatrixTable</span><span class="p">,</span>
+    <span class="n">rel_ht</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Generate stats for the number of alternate alleles in common between sibling pairs.</span>
+
+<span class="sd">    :param mt: MatrixTable to generate sibling stats from.</span>
+<span class="sd">    :param rel_ht: Table containing relatedness info for pairs in `mt`.</span>
+<span class="sd">    :return: Table containing sibling stats.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="c1"># Filter relatedness Table to only exomes-exome pairs.</span>
+    <span class="n">rel_ht</span> <span class="o">=</span> <span class="n">rel_ht</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span>
+        <span class="p">(</span><span class="n">rel_ht</span><span class="o">.</span><span class="n">i</span><span class="o">.</span><span class="n">data_type</span> <span class="o">==</span> <span class="s2">&quot;exomes&quot;</span><span class="p">)</span> <span class="o">&amp;</span> <span class="p">(</span><span class="n">rel_ht</span><span class="o">.</span><span class="n">j</span><span class="o">.</span><span class="n">data_type</span> <span class="o">==</span> <span class="s2">&quot;exomes&quot;</span><span class="p">)</span>
+    <span class="p">)</span>
+    <span class="k">return</span> <span class="n">generate_sib_stats</span><span class="p">(</span><span class="n">mt</span><span class="o">.</span><span class="n">transmute_entries</span><span class="p">(</span><span class="n">GT</span><span class="o">=</span><span class="n">mt</span><span class="o">.</span><span class="n">LGT</span><span class="p">),</span> <span class="n">rel_ht</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="create_variant_qc_annotation_ht"><a class="viewcode-back" href="../../../../api_reference/v4/annotations/generate_variant_qc_annotations.html#gnomad_qc.v4.annotations.generate_variant_qc_annotations.create_variant_qc_annotation_ht">[docs]</a><span class="k">def</span> <span class="nf">create_variant_qc_annotation_ht</span><span class="p">(</span>
+    <span class="n">info_ht</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">,</span>
+    <span class="n">trio_stats_ht</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">,</span>
+    <span class="n">sib_stats_ht</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">,</span>
+    <span class="n">impute_features</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span>
+    <span class="n">n_partitions</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">5000</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Create a Table with all necessary annotations for variant QC.</span>
+
+<span class="sd">    Annotations that are included:</span>
+
+<span class="sd">        Features for RF:</span>
+<span class="sd">            - variant_type</span>
+<span class="sd">            - allele_type</span>
+<span class="sd">            - n_alt_alleles</span>
+<span class="sd">            - has_star</span>
+<span class="sd">            - AS_QD</span>
+<span class="sd">            - AS_pab_max</span>
+<span class="sd">            - AS_MQRankSum</span>
+<span class="sd">            - AS_SOR</span>
+<span class="sd">            - AS_ReadPosRankSum</span>
+
+<span class="sd">        Training sites (bool):</span>
+<span class="sd">            - transmitted_singleton</span>
+<span class="sd">            - sibling_singleton</span>
+<span class="sd">            - fail_hard_filters - (ht.QD &lt; 2) | (ht.FS &gt; 60) | (ht.MQ &lt; 30)</span>
+
+<span class="sd">    :param info_ht: Info Table with split multi-allelics.</span>
+<span class="sd">    :param trio_stats_ht: Table with trio statistics.</span>
+<span class="sd">    :param sib_stats_ht: Table with sibling statistics.</span>
+<span class="sd">    :param impute_features: Whether to impute features using feature medians (this is</span>
+<span class="sd">        done by variant type).</span>
+<span class="sd">    :param n_partitions: Number of partitions to use for final annotated Table.</span>
+<span class="sd">    :return: Hail Table with all annotations needed for variant QC.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">info_methods</span> <span class="o">=</span> <span class="p">[</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">m</span><span class="si">}</span><span class="s2">_info&quot;</span> <span class="k">for</span> <span class="n">m</span> <span class="ow">in</span> <span class="n">INFO_METHODS</span><span class="p">]</span>
+    <span class="n">truth_data_ht</span> <span class="o">=</span> <span class="n">get_truth_ht</span><span class="p">()</span>
+
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">get_reformatted_info_fields</span><span class="p">(</span><span class="n">info_ht</span><span class="p">)</span>
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">annotate</span><span class="p">(</span><span class="o">**</span><span class="p">{</span><span class="n">m</span><span class="p">:</span> <span class="n">ht</span><span class="p">[</span><span class="n">m</span><span class="p">]</span><span class="o">.</span><span class="n">select</span><span class="p">(</span><span class="o">*</span><span class="n">INFO_FEATURES</span><span class="p">)</span> <span class="k">for</span> <span class="n">m</span> <span class="ow">in</span> <span class="n">info_methods</span><span class="p">})</span>
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">transmute</span><span class="p">(</span><span class="o">**</span><span class="n">ht</span><span class="o">.</span><span class="n">AC_info</span><span class="p">,</span> <span class="o">**</span><span class="n">ht</span><span class="o">.</span><span class="n">allele_info</span><span class="p">,</span> <span class="o">**</span><span class="n">ht</span><span class="o">.</span><span class="n">site_info</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">impute_features</span><span class="p">:</span>
+        <span class="n">feature_imputed</span> <span class="o">=</span> <span class="p">{}</span>
+        <span class="n">feature_medians</span> <span class="o">=</span> <span class="p">{}</span>
+        <span class="k">for</span> <span class="n">m</span> <span class="ow">in</span> <span class="n">info_methods</span><span class="p">:</span>
+            <span class="n">m_info_ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">select</span><span class="p">(</span><span class="s2">&quot;variant_type&quot;</span><span class="p">,</span> <span class="o">**</span><span class="n">ht</span><span class="p">[</span><span class="n">m</span><span class="p">])</span>
+            <span class="n">m_info_ht</span> <span class="o">=</span> <span class="n">median_impute_features</span><span class="p">(</span>
+                <span class="n">m_info_ht</span><span class="p">,</span> <span class="p">{</span><span class="s2">&quot;variant_type&quot;</span><span class="p">:</span> <span class="n">m_info_ht</span><span class="o">.</span><span class="n">variant_type</span><span class="p">}</span>
+            <span class="p">)</span><span class="o">.</span><span class="n">checkpoint</span><span class="p">(</span><span class="n">hl</span><span class="o">.</span><span class="n">utils</span><span class="o">.</span><span class="n">new_temp_file</span><span class="p">(</span><span class="s2">&quot;median_impute&quot;</span><span class="p">,</span> <span class="s2">&quot;ht&quot;</span><span class="p">))</span>
+            <span class="n">feature_imputed</span><span class="p">[</span><span class="n">m</span><span class="p">]</span> <span class="o">=</span> <span class="n">m_info_ht</span><span class="p">[</span><span class="n">ht</span><span class="o">.</span><span class="n">key</span><span class="p">]</span>
+            <span class="n">feature_medians</span><span class="p">[</span><span class="n">m</span><span class="p">]</span> <span class="o">=</span> <span class="n">hl</span><span class="o">.</span><span class="n">eval</span><span class="p">(</span><span class="n">m_info_ht</span><span class="o">.</span><span class="n">feature_medians</span><span class="p">)</span>
+
+        <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">annotate</span><span class="p">(</span>
+            <span class="o">**</span><span class="p">{</span>
+                <span class="n">k</span><span class="p">:</span> <span class="n">v</span><span class="o">.</span><span class="n">drop</span><span class="p">(</span><span class="s2">&quot;feature_imputed&quot;</span><span class="p">,</span> <span class="s2">&quot;variant_type&quot;</span><span class="p">)</span>
+                <span class="k">for</span> <span class="n">k</span><span class="p">,</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">feature_imputed</span><span class="o">.</span><span class="n">items</span><span class="p">()</span>
+            <span class="p">},</span>
+            <span class="n">feature_imputed</span><span class="o">=</span><span class="n">hl</span><span class="o">.</span><span class="n">struct</span><span class="p">(</span>
+                <span class="o">**</span><span class="p">{</span><span class="n">k</span><span class="p">:</span> <span class="n">v</span><span class="o">.</span><span class="n">feature_imputed</span> <span class="k">for</span> <span class="n">k</span><span class="p">,</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">feature_imputed</span><span class="o">.</span><span class="n">items</span><span class="p">()}</span>
+            <span class="p">),</span>
+        <span class="p">)</span>
+        <span class="n">feature_medians</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">feature_medians</span><span class="o">.</span><span class="n">items</span><span class="p">())</span>
+        <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">annotate_globals</span><span class="p">(</span>
+            <span class="n">feature_medians</span><span class="o">=</span><span class="p">{</span>
+                <span class="n">k</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">struct</span><span class="p">(</span><span class="o">**</span><span class="p">{</span><span class="n">m</span><span class="p">:</span> <span class="n">f</span><span class="p">[</span><span class="n">k</span><span class="p">]</span> <span class="k">for</span> <span class="n">m</span><span class="p">,</span> <span class="n">f</span> <span class="ow">in</span> <span class="n">feature_medians</span><span class="p">})</span>
+                <span class="k">for</span> <span class="n">k</span> <span class="ow">in</span> <span class="n">feature_medians</span><span class="p">[</span><span class="mi">0</span><span class="p">][</span><span class="mi">1</span><span class="p">]</span>
+            <span class="p">}</span>
+        <span class="p">)</span>
+
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Annotating Table with trio and sibling stats and reference truth data&quot;</span><span class="p">)</span>
+    <span class="n">trio_stats_ht</span> <span class="o">=</span> <span class="n">trio_stats_ht</span><span class="o">.</span><span class="n">select</span><span class="p">(</span>
+        <span class="o">*</span><span class="p">[</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">a</span><span class="si">}</span><span class="s2">_</span><span class="si">{</span><span class="n">group</span><span class="si">}</span><span class="s2">&quot;</span> <span class="k">for</span> <span class="n">a</span> <span class="ow">in</span> <span class="p">[</span><span class="s2">&quot;n_transmitted&quot;</span><span class="p">,</span> <span class="s2">&quot;ac_children&quot;</span><span class="p">]</span> <span class="k">for</span> <span class="n">group</span> <span class="ow">in</span> <span class="n">GROUPS</span><span class="p">]</span>
+    <span class="p">)</span>
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">annotate</span><span class="p">(</span>
+        <span class="o">**</span><span class="n">trio_stats_ht</span><span class="p">[</span><span class="n">ht</span><span class="o">.</span><span class="n">key</span><span class="p">],</span>
+        <span class="o">**</span><span class="n">sib_stats_ht</span><span class="p">[</span><span class="n">ht</span><span class="o">.</span><span class="n">key</span><span class="p">],</span>
+        <span class="o">**</span><span class="n">truth_data_ht</span><span class="p">[</span><span class="n">ht</span><span class="o">.</span><span class="n">key</span><span class="p">],</span>
+    <span class="p">)</span>
+    <span class="n">tp_map</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="s2">&quot;transmitted_singleton&quot;</span><span class="p">:</span> <span class="s2">&quot;n_transmitted&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;sibling_singleton&quot;</span><span class="p">:</span> <span class="s2">&quot;n_sib_shared_variants&quot;</span><span class="p">,</span>
+    <span class="p">}</span>
+
+    <span class="c1"># Filter to only variants found in high quality samples and are not lowqual.</span>
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">filter</span><span class="p">((</span><span class="n">ht</span><span class="o">.</span><span class="n">AC_high_quality_raw</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">)</span> <span class="o">&amp;</span> <span class="o">~</span><span class="n">ht</span><span class="o">.</span><span class="n">AS_lowqual</span><span class="p">)</span>
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">select</span><span class="p">(</span>
+        <span class="s2">&quot;a_index&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;was_split&quot;</span><span class="p">,</span>
+        <span class="o">*</span><span class="n">NON_INFO_FEATURES</span><span class="p">,</span>
+        <span class="o">*</span><span class="n">info_methods</span><span class="p">,</span>
+        <span class="o">**</span><span class="p">{</span><span class="n">tp</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">or_else</span><span class="p">(</span><span class="n">ht</span><span class="p">[</span><span class="n">tp</span><span class="p">],</span> <span class="kc">False</span><span class="p">)</span> <span class="k">for</span> <span class="n">tp</span> <span class="ow">in</span> <span class="n">TRUTH_DATA</span><span class="p">},</span>
+        <span class="o">**</span><span class="p">{</span>
+            <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">tp</span><span class="si">}</span><span class="s2">_</span><span class="si">{</span><span class="n">group</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">or_else</span><span class="p">(</span>
+                <span class="p">(</span><span class="n">ht</span><span class="p">[</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">n</span><span class="si">}</span><span class="s2">_</span><span class="si">{</span><span class="n">group</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">]</span> <span class="o">==</span> <span class="mi">1</span><span class="p">)</span>
+                <span class="o">&amp;</span> <span class="p">(</span><span class="n">ht</span><span class="p">[</span><span class="sa">f</span><span class="s2">&quot;AC_high_quality</span><span class="si">{</span><span class="s1">&#39;&#39;</span><span class="w"> </span><span class="k">if</span><span class="w"> </span><span class="n">group</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="s1">&#39;adj&#39;</span><span class="w"> </span><span class="k">else</span><span class="w"> </span><span class="sa">f</span><span class="s1">&#39;_raw&#39;</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">]</span> <span class="o">==</span> <span class="mi">2</span><span class="p">),</span>
+                <span class="kc">False</span><span class="p">,</span>
+            <span class="p">)</span>
+            <span class="k">for</span> <span class="n">tp</span><span class="p">,</span> <span class="n">n</span> <span class="ow">in</span> <span class="n">tp_map</span><span class="o">.</span><span class="n">items</span><span class="p">()</span>
+            <span class="k">for</span> <span class="n">group</span> <span class="ow">in</span> <span class="n">GROUPS</span>
+        <span class="p">},</span>
+        <span class="n">fail_hard_filters</span><span class="o">=</span><span class="p">(</span><span class="n">ht</span><span class="o">.</span><span class="n">QD</span> <span class="o">&lt;</span> <span class="mi">2</span><span class="p">)</span> <span class="o">|</span> <span class="p">(</span><span class="n">ht</span><span class="o">.</span><span class="n">FS</span> <span class="o">&gt;</span> <span class="mi">60</span><span class="p">)</span> <span class="o">|</span> <span class="p">(</span><span class="n">ht</span><span class="o">.</span><span class="n">MQ</span> <span class="o">&lt;</span> <span class="mi">30</span><span class="p">),</span>
+        <span class="n">singleton</span><span class="o">=</span><span class="n">ht</span><span class="o">.</span><span class="n">AC_release_raw</span> <span class="o">==</span> <span class="mi">1</span><span class="p">,</span>
+        <span class="n">ac_raw</span><span class="o">=</span><span class="n">ht</span><span class="o">.</span><span class="n">AC_high_quality_raw</span><span class="p">,</span>
+        <span class="n">ac</span><span class="o">=</span><span class="n">ht</span><span class="o">.</span><span class="n">AC_release</span><span class="p">,</span>
+        <span class="n">ac_unrelated_raw</span><span class="o">=</span><span class="n">ht</span><span class="o">.</span><span class="n">AC_unrelated_raw</span><span class="p">,</span>
+    <span class="p">)</span>
+
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">repartition</span><span class="p">(</span><span class="n">n_partitions</span><span class="p">,</span> <span class="n">shuffle</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">checkpoint</span><span class="p">(</span><span class="n">hl</span><span class="o">.</span><span class="n">utils</span><span class="o">.</span><span class="n">new_temp_file</span><span class="p">(</span><span class="s2">&quot;variant_qc_annotations&quot;</span><span class="p">,</span> <span class="s2">&quot;ht&quot;</span><span class="p">))</span>
+    <span class="n">ht</span><span class="o">.</span><span class="n">describe</span><span class="p">()</span>
+
+    <span class="n">summary</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">group_by</span><span class="p">(</span>
+        <span class="o">*</span><span class="n">TRUTH_DATA</span><span class="p">,</span> <span class="o">*</span><span class="p">[</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">tp</span><span class="si">}</span><span class="s2">_</span><span class="si">{</span><span class="n">group</span><span class="si">}</span><span class="s2">&quot;</span> <span class="k">for</span> <span class="n">tp</span> <span class="ow">in</span> <span class="n">tp_map</span> <span class="k">for</span> <span class="n">group</span> <span class="ow">in</span> <span class="n">GROUPS</span><span class="p">]</span>
+    <span class="p">)</span><span class="o">.</span><span class="n">aggregate</span><span class="p">(</span><span class="n">n</span><span class="o">=</span><span class="n">hl</span><span class="o">.</span><span class="n">agg</span><span class="o">.</span><span class="n">count</span><span class="p">())</span>
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Summary of truth data annotations:&quot;</span><span class="p">)</span>
+    <span class="n">summary</span><span class="o">.</span><span class="n">show</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">ht</span></div>
+
+
+<div class="viewcode-block" id="get_tp_ht_for_vcf_export"><a class="viewcode-back" href="../../../../api_reference/v4/annotations/generate_variant_qc_annotations.html#gnomad_qc.v4.annotations.generate_variant_qc_annotations.get_tp_ht_for_vcf_export">[docs]</a><span class="k">def</span> <span class="nf">get_tp_ht_for_vcf_export</span><span class="p">(</span>
+    <span class="n">ht</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">,</span>
+    <span class="n">transmitted_singletons</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+    <span class="n">sibling_singletons</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Get Tables with raw and adj true positive variants to export as a VCF for use in VQSR.</span>
+
+<span class="sd">    :param ht: Input Table with transmitted singleton and sibling singleton information.</span>
+<span class="sd">    :param transmitted_singletons: Whether to include transmitted singletons in the</span>
+<span class="sd">        true positive variants.</span>
+<span class="sd">    :param sibling_singletons: Whether to include sibling singletons in the true</span>
+<span class="sd">        positive variants.</span>
+<span class="sd">    :return: Dictionary of &#39;raw&#39; and &#39;adj&#39; true positive variant sites Tables.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">transmitted_singletons</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">sibling_singletons</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+            <span class="s2">&quot;At least one of transmitted_singletons or sibling_singletons must be set &quot;</span>
+            <span class="s2">&quot;to True&quot;</span>
+        <span class="p">)</span>
+    <span class="n">tp_hts</span> <span class="o">=</span> <span class="p">{}</span>
+    <span class="k">for</span> <span class="n">group</span> <span class="ow">in</span> <span class="n">GROUPS</span><span class="p">:</span>
+        <span class="n">filter_expr</span> <span class="o">=</span> <span class="kc">False</span>
+        <span class="k">if</span> <span class="n">transmitted_singletons</span><span class="p">:</span>
+            <span class="n">filter_expr</span> <span class="o">=</span> <span class="n">ht</span><span class="p">[</span><span class="sa">f</span><span class="s2">&quot;transmitted_singleton_</span><span class="si">{</span><span class="n">group</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">]</span>
+        <span class="k">if</span> <span class="n">sibling_singletons</span><span class="p">:</span>
+            <span class="n">filter_expr</span> <span class="o">=</span> <span class="n">filter_expr</span> <span class="o">|</span> <span class="n">ht</span><span class="p">[</span><span class="sa">f</span><span class="s2">&quot;sibling_singleton_</span><span class="si">{</span><span class="n">group</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">]</span>
+
+        <span class="n">filtered_ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">filter_expr</span><span class="p">)</span><span class="o">.</span><span class="n">select</span><span class="p">()</span><span class="o">.</span><span class="n">select_globals</span><span class="p">()</span>
+        <span class="n">filtered_ht</span> <span class="o">=</span> <span class="n">filtered_ht</span><span class="o">.</span><span class="n">checkpoint</span><span class="p">(</span>
+            <span class="n">hl</span><span class="o">.</span><span class="n">utils</span><span class="o">.</span><span class="n">new_temp_file</span><span class="p">(</span><span class="s2">&quot;true_positive_variants&quot;</span><span class="p">,</span> <span class="s2">&quot;ht&quot;</span><span class="p">),</span>
+        <span class="p">)</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span>
+            <span class="s2">&quot;True positive </span><span class="si">%s</span><span class="s2"> Table for VCF export contains </span><span class="si">%d</span><span class="s2"> variants&quot;</span><span class="p">,</span>
+            <span class="n">group</span><span class="p">,</span>
+            <span class="n">filtered_ht</span><span class="o">.</span><span class="n">count</span><span class="p">(),</span>
+        <span class="p">)</span>
+        <span class="n">tp_hts</span><span class="p">[</span><span class="n">group</span><span class="p">]</span> <span class="o">=</span> <span class="n">filtered_ht</span>
+
+    <span class="k">return</span> <span class="n">tp_hts</span></div>
+
+
+<div class="viewcode-block" id="get_variant_qc_annotation_resources"><a class="viewcode-back" href="../../../../api_reference/v4/annotations/generate_variant_qc_annotations.html#gnomad_qc.v4.annotations.generate_variant_qc_annotations.get_variant_qc_annotation_resources">[docs]</a><span class="k">def</span> <span class="nf">get_variant_qc_annotation_resources</span><span class="p">(</span>
+    <span class="n">test</span><span class="p">:</span> <span class="nb">bool</span><span class="p">,</span>
+    <span class="n">overwrite</span><span class="p">:</span> <span class="nb">bool</span><span class="p">,</span>
+    <span class="n">over_n_alleles</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">bool</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">combine_compute_info</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+    <span class="n">true_positive_type</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">releasable_trios_only</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+    <span class="n">vep_data_type</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;exomes&quot;</span><span class="p">,</span>
+    <span class="n">vep_version</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="n">DEFAULT_VEP_VERSION</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">PipelineResourceCollection</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Get PipelineResourceCollection for all resources needed in the variant QC annotation pipeline.</span>
+
+<span class="sd">    :param test: Whether to gather all resources for testing.</span>
+<span class="sd">    :param overwrite: Whether to overwrite resources if they exist.</span>
+<span class="sd">    :param over_n_alleles: Whether to use a temporary info TableResource for results.</span>
+<span class="sd">        When True, use temporary info TableResource for only sites that have more</span>
+<span class="sd">        than the passed arg --compute-info-split-n-alleles alleles. When False, use</span>
+<span class="sd">        temporary info TableResource for only sites with fewer alleles. When None,</span>
+<span class="sd">        the finalize info ht is used instead of a temporary location. Default is None.</span>
+<span class="sd">    :param combine_compute_info: Whether the input for --compute-info should be the two</span>
+<span class="sd">        temporary files (with and without the --compute-info-over-split-n-alleles flag)</span>
+<span class="sd">        produced by running --compute-info with --compute-info-split-n-alleles.</span>
+<span class="sd">    :param true_positive_type: Type of true positive variants to use for true positive</span>
+<span class="sd">        VCF path resource. Default is None.</span>
+<span class="sd">    :param releasable_trios_only: Whether to only include releasable trios in the trio</span>
+<span class="sd">        stats. Default is False.</span>
+<span class="sd">    :param vep_data_type: Data type to use for VEP annotations. Default is exomes.</span>
+<span class="sd">    :param vep_version: VEP version to use (e.g., &quot;105&quot;, &quot;115&quot;). Default is &quot;105&quot;.</span>
+<span class="sd">    :return: PipelineResourceCollection containing resources for all steps of the</span>
+<span class="sd">        variant QC annotation pipeline.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="n">over_n_alleles</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">or</span> <span class="n">combine_compute_info</span><span class="p">:</span>
+        <span class="n">info_ht</span> <span class="o">=</span> <span class="n">get_info</span><span class="p">(</span><span class="n">split</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">test</span><span class="o">=</span><span class="n">test</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">info_ht</span> <span class="o">=</span> <span class="n">TableResource</span><span class="p">(</span>
+            <span class="n">get_checkpoint_path</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s2">&quot;compute_info</span><span class="si">{</span><span class="s1">&#39;.test&#39;</span><span class="w"> </span><span class="k">if</span><span class="w"> </span><span class="n">test</span><span class="w"> </span><span class="k">else</span><span class="w"> </span><span class="s1">&#39;&#39;</span><span class="si">}</span><span class="s2">.</span><span class="si">{</span><span class="s1">&#39;over_n_alleles&#39;</span><span class="w"> </span><span class="k">if</span><span class="w"> </span><span class="n">over_n_alleles</span><span class="w"> </span><span class="k">else</span><span class="w"> </span><span class="s1">&#39;under_n_alleles&#39;</span><span class="si">}</span><span class="s2">&quot;</span>
+            <span class="p">)</span>
+        <span class="p">)</span>
+    <span class="n">compute_info_input_resources</span> <span class="o">=</span> <span class="p">{}</span>
+    <span class="k">if</span> <span class="n">combine_compute_info</span><span class="p">:</span>
+        <span class="n">res_key</span> <span class="o">=</span> <span class="s2">&quot;--compute-info --compute-info-split-n-alleles&quot;</span>
+        <span class="k">for</span> <span class="n">n_alleles</span> <span class="ow">in</span> <span class="p">[</span><span class="s2">&quot;under&quot;</span><span class="p">,</span> <span class="s2">&quot;over&quot;</span><span class="p">]:</span>
+            <span class="k">if</span> <span class="n">n_alleles</span> <span class="o">==</span> <span class="s2">&quot;over&quot;</span><span class="p">:</span>
+                <span class="n">res_key</span> <span class="o">+=</span> <span class="s2">&quot; --compute-info-over-split-n-alleles&quot;</span>
+            <span class="n">compute_info_input_resources</span><span class="p">[</span><span class="n">res_key</span><span class="p">]</span> <span class="o">=</span> <span class="p">{</span>
+                <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">n_alleles</span><span class="si">}</span><span class="s2">_info_ht&quot;</span><span class="p">:</span> <span class="n">TableResource</span><span class="p">(</span>
+                    <span class="n">get_checkpoint_path</span><span class="p">(</span>
+                        <span class="sa">f</span><span class="s2">&quot;compute_info</span><span class="si">{</span><span class="s1">&#39;.test&#39;</span><span class="w"> </span><span class="k">if</span><span class="w"> </span><span class="n">test</span><span class="w"> </span><span class="k">else</span><span class="w"> </span><span class="s1">&#39;&#39;</span><span class="si">}</span><span class="s2">.</span><span class="si">{</span><span class="n">n_alleles</span><span class="si">}</span><span class="s2">_n_alleles&quot;</span>
+                    <span class="p">)</span>
+                <span class="p">)</span>
+            <span class="p">}</span>
+
+    <span class="c1"># Initialize variant QC annotation pipeline resource collection.</span>
+    <span class="n">ann_pipeline</span> <span class="o">=</span> <span class="n">PipelineResourceCollection</span><span class="p">(</span>
+        <span class="n">pipeline_name</span><span class="o">=</span><span class="s2">&quot;variant_qc_annotation&quot;</span><span class="p">,</span>
+        <span class="n">overwrite</span><span class="o">=</span><span class="n">overwrite</span><span class="p">,</span>
+    <span class="p">)</span>
+
+    <span class="c1"># Create resource collection for each step of the variant QC annotation pipeline.</span>
+    <span class="n">compute_info</span> <span class="o">=</span> <span class="n">PipelineStepResourceCollection</span><span class="p">(</span>
+        <span class="s2">&quot;--compute-info&quot;</span><span class="p">,</span>
+        <span class="n">input_resources</span><span class="o">=</span><span class="n">compute_info_input_resources</span><span class="p">,</span>
+        <span class="n">output_resources</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;info_ht&quot;</span><span class="p">:</span> <span class="n">info_ht</span><span class="p">},</span>
+    <span class="p">)</span>
+    <span class="n">split_info_ann</span> <span class="o">=</span> <span class="n">PipelineStepResourceCollection</span><span class="p">(</span>
+        <span class="s2">&quot;--split-info&quot;</span><span class="p">,</span>
+        <span class="n">output_resources</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;split_info_ht&quot;</span><span class="p">:</span> <span class="n">get_info</span><span class="p">(</span><span class="n">test</span><span class="o">=</span><span class="n">test</span><span class="p">)},</span>
+        <span class="n">pipeline_input_steps</span><span class="o">=</span><span class="p">[</span><span class="n">compute_info</span><span class="p">],</span>
+    <span class="p">)</span>
+    <span class="n">export_info_vcf</span> <span class="o">=</span> <span class="n">PipelineStepResourceCollection</span><span class="p">(</span>
+        <span class="s2">&quot;--export-info-vcf&quot;</span><span class="p">,</span>
+        <span class="n">output_resources</span><span class="o">=</span><span class="p">{</span>
+            <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">m</span><span class="si">}</span><span class="s2">_info_vcf&quot;</span><span class="p">:</span> <span class="n">info_vcf_path</span><span class="p">(</span><span class="n">info_method</span><span class="o">=</span><span class="n">m</span><span class="p">,</span> <span class="n">test</span><span class="o">=</span><span class="n">test</span><span class="p">)</span>
+            <span class="k">for</span> <span class="n">m</span> <span class="ow">in</span> <span class="n">INFO_METHODS</span>
+        <span class="p">},</span>
+        <span class="n">pipeline_input_steps</span><span class="o">=</span><span class="p">[</span><span class="n">compute_info</span><span class="p">],</span>
+    <span class="p">)</span>
+    <span class="n">export_split_info_vcf</span> <span class="o">=</span> <span class="n">PipelineStepResourceCollection</span><span class="p">(</span>
+        <span class="s2">&quot;--export-split-info-vcf&quot;</span><span class="p">,</span>
+        <span class="n">output_resources</span><span class="o">=</span><span class="p">{</span>
+            <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">m</span><span class="si">}</span><span class="s2">_info_vcf&quot;</span><span class="p">:</span> <span class="n">info_vcf_path</span><span class="p">(</span><span class="n">info_method</span><span class="o">=</span><span class="n">m</span><span class="p">,</span> <span class="n">split</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">test</span><span class="o">=</span><span class="n">test</span><span class="p">)</span>
+            <span class="k">for</span> <span class="n">m</span> <span class="ow">in</span> <span class="n">INFO_METHODS</span>
+        <span class="p">},</span>
+        <span class="n">pipeline_input_steps</span><span class="o">=</span><span class="p">[</span><span class="n">compute_info</span><span class="p">],</span>
+    <span class="p">)</span>
+    <span class="n">run_vep</span> <span class="o">=</span> <span class="n">PipelineStepResourceCollection</span><span class="p">(</span>
+        <span class="s2">&quot;--run-vep&quot;</span><span class="p">,</span>
+        <span class="n">output_resources</span><span class="o">=</span><span class="p">{</span>
+            <span class="s2">&quot;vep_ht&quot;</span><span class="p">:</span> <span class="n">get_vep</span><span class="p">(</span>
+                <span class="n">test</span><span class="o">=</span><span class="n">test</span><span class="p">,</span> <span class="n">data_type</span><span class="o">=</span><span class="n">vep_data_type</span><span class="p">,</span> <span class="n">vep_version</span><span class="o">=</span><span class="n">vep_version</span>
+            <span class="p">)</span>
+        <span class="p">},</span>
+    <span class="p">)</span>
+    <span class="n">validate_vep</span> <span class="o">=</span> <span class="n">PipelineStepResourceCollection</span><span class="p">(</span>
+        <span class="s2">&quot;--validate-vep&quot;</span><span class="p">,</span>
+        <span class="n">output_resources</span><span class="o">=</span><span class="p">{</span>
+            <span class="s2">&quot;vep_count_ht&quot;</span><span class="p">:</span> <span class="n">validate_vep_path</span><span class="p">(</span>
+                <span class="n">test</span><span class="o">=</span><span class="n">test</span><span class="p">,</span> <span class="n">data_type</span><span class="o">=</span><span class="n">vep_data_type</span><span class="p">,</span> <span class="n">vep_version</span><span class="o">=</span><span class="n">vep_version</span>
+            <span class="p">)</span>
+        <span class="p">},</span>
+        <span class="n">pipeline_input_steps</span><span class="o">=</span><span class="p">[</span><span class="n">run_vep</span><span class="p">],</span>
+    <span class="p">)</span>
+    <span class="n">trio_stats</span> <span class="o">=</span> <span class="n">PipelineStepResourceCollection</span><span class="p">(</span>
+        <span class="s2">&quot;--generate-trio-stats&quot;</span><span class="p">,</span>
+        <span class="n">output_resources</span><span class="o">=</span><span class="p">{</span>
+            <span class="s2">&quot;trio_stats_ht&quot;</span><span class="p">:</span> <span class="n">get_trio_stats</span><span class="p">(</span>
+                <span class="n">test</span><span class="o">=</span><span class="n">test</span><span class="p">,</span> <span class="n">releasable_only</span><span class="o">=</span><span class="n">releasable_trios_only</span>
+            <span class="p">)</span>
+        <span class="p">},</span>
+        <span class="n">input_resources</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;identify_trios.py --finalize-ped&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;final_ped&quot;</span><span class="p">:</span> <span class="n">pedigree</span><span class="p">()}},</span>
+    <span class="p">)</span>
+    <span class="n">sib_stats</span> <span class="o">=</span> <span class="n">PipelineStepResourceCollection</span><span class="p">(</span>
+        <span class="s2">&quot;--generate-sib-stats&quot;</span><span class="p">,</span>
+        <span class="n">output_resources</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;sib_stats_ht&quot;</span><span class="p">:</span> <span class="n">get_sib_stats</span><span class="p">(</span><span class="n">test</span><span class="o">=</span><span class="n">test</span><span class="p">)},</span>
+        <span class="n">input_resources</span><span class="o">=</span><span class="p">{</span>
+            <span class="s2">&quot;relatedness.py --finalize-relatedness-ht&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;rel_ht&quot;</span><span class="p">:</span> <span class="n">relatedness</span><span class="p">()}</span>
+        <span class="p">},</span>
+    <span class="p">)</span>
+    <span class="n">variant_qc_annotation_ht</span> <span class="o">=</span> <span class="n">PipelineStepResourceCollection</span><span class="p">(</span>
+        <span class="s2">&quot;--create-variant-qc-annotation-ht&quot;</span><span class="p">,</span>
+        <span class="n">output_resources</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;vqc_ht&quot;</span><span class="p">:</span> <span class="n">get_variant_qc_annotations</span><span class="p">(</span><span class="n">test</span><span class="o">=</span><span class="n">test</span><span class="p">)},</span>
+        <span class="n">pipeline_input_steps</span><span class="o">=</span><span class="p">[</span><span class="n">split_info_ann</span><span class="p">,</span> <span class="n">trio_stats</span><span class="p">,</span> <span class="n">sib_stats</span><span class="p">],</span>
+    <span class="p">)</span>
+
+    <span class="c1"># Add all steps to the variant QC annotation pipeline resource collection.</span>
+    <span class="n">ann_pipeline</span><span class="o">.</span><span class="n">add_steps</span><span class="p">(</span>
+        <span class="p">{</span>
+            <span class="s2">&quot;compute_info&quot;</span><span class="p">:</span> <span class="n">compute_info</span><span class="p">,</span>
+            <span class="s2">&quot;split_info&quot;</span><span class="p">:</span> <span class="n">split_info_ann</span><span class="p">,</span>
+            <span class="s2">&quot;export_info_vcf&quot;</span><span class="p">:</span> <span class="n">export_info_vcf</span><span class="p">,</span>
+            <span class="s2">&quot;export_split_info_vcf&quot;</span><span class="p">:</span> <span class="n">export_split_info_vcf</span><span class="p">,</span>
+            <span class="s2">&quot;run_vep&quot;</span><span class="p">:</span> <span class="n">run_vep</span><span class="p">,</span>
+            <span class="s2">&quot;validate_vep&quot;</span><span class="p">:</span> <span class="n">validate_vep</span><span class="p">,</span>
+            <span class="s2">&quot;generate_trio_stats&quot;</span><span class="p">:</span> <span class="n">trio_stats</span><span class="p">,</span>
+            <span class="s2">&quot;generate_sib_stats&quot;</span><span class="p">:</span> <span class="n">sib_stats</span><span class="p">,</span>
+            <span class="s2">&quot;variant_qc_annotation_ht&quot;</span><span class="p">:</span> <span class="n">variant_qc_annotation_ht</span><span class="p">,</span>
+        <span class="p">}</span>
+    <span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">true_positive_type</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">export_true_positive_vcfs</span> <span class="o">=</span> <span class="n">PipelineStepResourceCollection</span><span class="p">(</span>
+            <span class="s2">&quot;--export-true-positive-vcfs&quot;</span><span class="p">,</span>
+            <span class="n">output_resources</span><span class="o">=</span><span class="p">{</span>
+                <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">group</span><span class="si">}</span><span class="s2">_tp_vcf_path&quot;</span><span class="p">:</span> <span class="n">get_true_positive_vcf_path</span><span class="p">(</span>
+                    <span class="n">test</span><span class="o">=</span><span class="n">test</span><span class="p">,</span>
+                    <span class="n">adj</span><span class="o">=</span><span class="p">(</span><span class="n">group</span> <span class="o">==</span> <span class="s2">&quot;adj&quot;</span><span class="p">),</span>
+                    <span class="n">true_positive_type</span><span class="o">=</span><span class="n">true_positive_type</span><span class="p">,</span>
+                <span class="p">)</span>
+                <span class="k">for</span> <span class="n">group</span> <span class="ow">in</span> <span class="n">GROUPS</span>
+            <span class="p">},</span>
+            <span class="n">pipeline_input_steps</span><span class="o">=</span><span class="p">[</span><span class="n">variant_qc_annotation_ht</span><span class="p">],</span>
+        <span class="p">)</span>
+        <span class="n">ann_pipeline</span><span class="o">.</span><span class="n">add_steps</span><span class="p">({</span><span class="s2">&quot;export_true_positive_vcfs&quot;</span><span class="p">:</span> <span class="n">export_true_positive_vcfs</span><span class="p">})</span>
+
+    <span class="k">return</span> <span class="n">ann_pipeline</span></div>
+
+
+<div class="viewcode-block" id="main"><a class="viewcode-back" href="../../../../api_reference/v4/annotations/generate_variant_qc_annotations.html#gnomad_qc.v4.annotations.generate_variant_qc_annotations.main">[docs]</a><span class="k">def</span> <span class="nf">main</span><span class="p">(</span><span class="n">args</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Generate all variant annotations needed for variant QC.&quot;&quot;&quot;</span>
+    <span class="n">hl</span><span class="o">.</span><span class="n">init</span><span class="p">(</span>
+        <span class="n">default_reference</span><span class="o">=</span><span class="s2">&quot;GRCh38&quot;</span><span class="p">,</span>
+        <span class="n">log</span><span class="o">=</span><span class="s2">&quot;/variant_qc_annotations.log&quot;</span><span class="p">,</span>
+        <span class="n">tmp_dir</span><span class="o">=</span><span class="s2">&quot;gs://gnomad-tmp-4day&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">test_dataset</span> <span class="o">=</span> <span class="n">args</span><span class="o">.</span><span class="n">test_dataset</span>
+    <span class="n">test_n_partitions</span> <span class="o">=</span> <span class="n">args</span><span class="o">.</span><span class="n">test_n_partitions</span>
+    <span class="n">test</span> <span class="o">=</span> <span class="n">test_dataset</span> <span class="ow">or</span> <span class="n">test_n_partitions</span>
+    <span class="n">over_split_n_alleles</span> <span class="o">=</span> <span class="n">args</span><span class="o">.</span><span class="n">compute_info_over_split_n_alleles</span>
+    <span class="n">split_n_alleles</span> <span class="o">=</span> <span class="n">args</span><span class="o">.</span><span class="n">compute_info_split_n_alleles</span>
+    <span class="n">combine_compute_info</span> <span class="o">=</span> <span class="n">args</span><span class="o">.</span><span class="n">combine_compute_info</span>
+    <span class="n">run_vep</span> <span class="o">=</span> <span class="n">args</span><span class="o">.</span><span class="n">run_vep</span>
+    <span class="n">vep_data_type</span> <span class="o">=</span> <span class="n">args</span><span class="o">.</span><span class="n">vep_data_type</span>
+    <span class="n">vep_version</span> <span class="o">=</span> <span class="n">args</span><span class="o">.</span><span class="n">vep_version</span>
+    <span class="n">overwrite</span> <span class="o">=</span> <span class="n">args</span><span class="o">.</span><span class="n">overwrite</span>
+    <span class="n">transmitted_singletons</span> <span class="o">=</span> <span class="n">args</span><span class="o">.</span><span class="n">transmitted_singletons</span>
+    <span class="n">sibling_singletons</span> <span class="o">=</span> <span class="n">args</span><span class="o">.</span><span class="n">sibling_singletons</span>
+    <span class="n">retain_cdfs</span> <span class="o">=</span> <span class="n">args</span><span class="o">.</span><span class="n">retain_cdfs</span>
+    <span class="n">cdf_k</span> <span class="o">=</span> <span class="n">args</span><span class="o">.</span><span class="n">cdf_k</span>
+    <span class="n">releasable_trios_only</span> <span class="o">=</span> <span class="n">args</span><span class="o">.</span><span class="n">releasable_trios_only</span>
+
+    <span class="n">max_n_alleles</span> <span class="o">=</span> <span class="n">min_n_alleles</span> <span class="o">=</span> <span class="n">over_n_alleles</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="k">if</span> <span class="n">split_n_alleles</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">over_split_n_alleles</span><span class="p">:</span>
+            <span class="n">min_n_alleles</span> <span class="o">=</span> <span class="n">split_n_alleles</span>
+            <span class="n">max_n_alleles</span> <span class="o">=</span> <span class="mi">10000</span>
+            <span class="n">over_n_alleles</span> <span class="o">=</span> <span class="kc">True</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">max_n_alleles</span> <span class="o">=</span> <span class="n">split_n_alleles</span> <span class="o">-</span> <span class="mi">1</span>
+            <span class="n">over_n_alleles</span> <span class="o">=</span> <span class="kc">False</span>
+
+    <span class="n">true_positive_type</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="k">if</span> <span class="n">transmitted_singletons</span> <span class="ow">and</span> <span class="n">sibling_singletons</span><span class="p">:</span>
+        <span class="n">true_positive_type</span> <span class="o">=</span> <span class="s2">&quot;transmitted_singleton.sibling_singleton&quot;</span>
+    <span class="k">elif</span> <span class="n">transmitted_singletons</span><span class="p">:</span>
+        <span class="n">true_positive_type</span> <span class="o">=</span> <span class="s2">&quot;transmitted_singleton&quot;</span>
+    <span class="k">elif</span> <span class="n">sibling_singletons</span><span class="p">:</span>
+        <span class="n">true_positive_type</span> <span class="o">=</span> <span class="s2">&quot;sibling_singleton&quot;</span>
+
+    <span class="n">vqc_resources</span> <span class="o">=</span> <span class="n">get_variant_qc_annotation_resources</span><span class="p">(</span>
+        <span class="n">test</span><span class="o">=</span><span class="n">test</span><span class="p">,</span>
+        <span class="n">overwrite</span><span class="o">=</span><span class="n">overwrite</span><span class="p">,</span>
+        <span class="n">over_n_alleles</span><span class="o">=</span><span class="n">over_n_alleles</span><span class="p">,</span>
+        <span class="n">combine_compute_info</span><span class="o">=</span><span class="n">combine_compute_info</span><span class="p">,</span>
+        <span class="n">true_positive_type</span><span class="o">=</span><span class="n">true_positive_type</span><span class="p">,</span>
+        <span class="n">releasable_trios_only</span><span class="o">=</span><span class="n">releasable_trios_only</span><span class="p">,</span>
+        <span class="n">vep_data_type</span><span class="o">=</span><span class="n">vep_data_type</span><span class="p">,</span>
+        <span class="n">vep_version</span><span class="o">=</span><span class="n">vep_version</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">compute_info</span> <span class="ow">or</span> <span class="n">args</span><span class="o">.</span><span class="n">generate_trio_stats</span> <span class="ow">or</span> <span class="n">args</span><span class="o">.</span><span class="n">generate_sibling_stats</span><span class="p">:</span>
+        <span class="n">vds</span> <span class="o">=</span> <span class="n">get_gnomad_v4_vds</span><span class="p">(</span>
+            <span class="n">test</span><span class="o">=</span><span class="n">test_dataset</span><span class="p">,</span>
+            <span class="n">high_quality_only</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+            <span class="c1"># Keep control/truth samples because they are used in variant QC.</span>
+            <span class="n">keep_controls</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+            <span class="n">annotate_meta</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+        <span class="p">)</span>
+        <span class="n">mt</span> <span class="o">=</span> <span class="n">vds</span><span class="o">.</span><span class="n">variant_data</span>
+
+        <span class="k">if</span> <span class="n">test_n_partitions</span><span class="p">:</span>
+            <span class="n">mt</span> <span class="o">=</span> <span class="n">mt</span><span class="o">.</span><span class="n">_filter_partitions</span><span class="p">(</span><span class="nb">range</span><span class="p">(</span><span class="n">test_n_partitions</span><span class="p">))</span>
+
+    <span class="k">try</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">compute_info</span><span class="p">:</span>
+            <span class="c1"># TODO: is there any reason to also compute info per platform?</span>
+            <span class="n">res</span> <span class="o">=</span> <span class="n">vqc_resources</span><span class="o">.</span><span class="n">compute_info</span>
+            <span class="n">res</span><span class="o">.</span><span class="n">check_resource_existence</span><span class="p">()</span>
+            <span class="k">if</span> <span class="n">combine_compute_info</span><span class="p">:</span>
+                <span class="n">ht</span> <span class="o">=</span> <span class="n">mt</span><span class="o">.</span><span class="n">select_rows</span><span class="p">()</span><span class="o">.</span><span class="n">rows</span><span class="p">()</span>
+                <span class="n">lt_ht</span> <span class="o">=</span> <span class="n">res</span><span class="o">.</span><span class="n">under_info_ht</span><span class="o">.</span><span class="n">ht</span><span class="p">()</span>
+                <span class="n">gt_eq_ht</span> <span class="o">=</span> <span class="n">res</span><span class="o">.</span><span class="n">over_info_ht</span><span class="o">.</span><span class="n">ht</span><span class="p">()</span>
+                <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">annotate</span><span class="p">(</span><span class="o">**</span><span class="n">hl</span><span class="o">.</span><span class="n">coalesce</span><span class="p">(</span><span class="n">lt_ht</span><span class="p">[</span><span class="n">ht</span><span class="o">.</span><span class="n">key</span><span class="p">],</span> <span class="n">gt_eq_ht</span><span class="p">[</span><span class="n">ht</span><span class="o">.</span><span class="n">key</span><span class="p">]))</span>
+                <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">checkpoint</span><span class="p">(</span>
+                    <span class="n">hl</span><span class="o">.</span><span class="n">utils</span><span class="o">.</span><span class="n">new_temp_file</span><span class="p">(</span><span class="s2">&quot;combined_info&quot;</span><span class="p">,</span> <span class="n">extension</span><span class="o">=</span><span class="s2">&quot;ht&quot;</span><span class="p">),</span>
+                    <span class="n">overwrite</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+                <span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">ht</span> <span class="o">=</span> <span class="n">run_compute_info</span><span class="p">(</span>
+                    <span class="n">mt</span><span class="p">,</span>
+                    <span class="n">max_n_alleles</span><span class="p">,</span>
+                    <span class="n">min_n_alleles</span><span class="p">,</span>
+                    <span class="n">retain_cdfs</span><span class="o">=</span><span class="n">retain_cdfs</span><span class="p">,</span>
+                    <span class="n">cdf_k</span><span class="o">=</span><span class="n">cdf_k</span><span class="p">,</span>
+                <span class="p">)</span>
+
+            <span class="k">if</span> <span class="n">split_n_alleles</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">or</span> <span class="n">combine_compute_info</span><span class="p">:</span>
+                <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">naive_coalesce</span><span class="p">(</span><span class="n">args</span><span class="o">.</span><span class="n">compute_info_n_partitions</span><span class="p">)</span>
+
+            <span class="n">ht</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">res</span><span class="o">.</span><span class="n">info_ht</span><span class="o">.</span><span class="n">path</span><span class="p">,</span> <span class="n">overwrite</span><span class="o">=</span><span class="n">overwrite</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">split_info</span><span class="p">:</span>
+            <span class="n">res</span> <span class="o">=</span> <span class="n">vqc_resources</span><span class="o">.</span><span class="n">split_info</span>
+            <span class="n">res</span><span class="o">.</span><span class="n">check_resource_existence</span><span class="p">()</span>
+            <span class="n">split_info</span><span class="p">(</span><span class="n">res</span><span class="o">.</span><span class="n">info_ht</span><span class="o">.</span><span class="n">ht</span><span class="p">())</span><span class="o">.</span><span class="n">write</span><span class="p">(</span>
+                <span class="n">res</span><span class="o">.</span><span class="n">split_info_ht</span><span class="o">.</span><span class="n">path</span><span class="p">,</span> <span class="n">overwrite</span><span class="o">=</span><span class="n">overwrite</span>
+            <span class="p">)</span>
+
+        <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">export_info_vcf</span> <span class="ow">or</span> <span class="n">args</span><span class="o">.</span><span class="n">export_split_info_vcf</span><span class="p">:</span>
+            <span class="n">info_res</span> <span class="o">=</span> <span class="p">[]</span>
+            <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">export_info_vcf</span><span class="p">:</span>
+                <span class="n">info_res</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">vqc_resources</span><span class="o">.</span><span class="n">export_info_vcf</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">export_split_info_vcf</span><span class="p">:</span>
+                <span class="n">info_res</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">vqc_resources</span><span class="o">.</span><span class="n">export_split_info_vcf</span><span class="p">)</span>
+            <span class="k">for</span> <span class="n">res</span> <span class="ow">in</span> <span class="n">info_res</span><span class="p">:</span>
+                <span class="n">res</span><span class="o">.</span><span class="n">check_resource_existence</span><span class="p">()</span>
+                <span class="n">info_ht</span> <span class="o">=</span> <span class="n">res</span><span class="o">.</span><span class="n">info_ht</span><span class="o">.</span><span class="n">ht</span><span class="p">()</span>
+                <span class="k">for</span> <span class="n">m</span> <span class="ow">in</span> <span class="n">INFO_METHODS</span><span class="p">:</span>
+                    <span class="n">m_info_ht</span> <span class="o">=</span> <span class="n">get_info_ht_for_vcf_export</span><span class="p">(</span><span class="n">info_ht</span><span class="p">,</span> <span class="n">m</span><span class="p">)</span>
+                    <span class="n">hl</span><span class="o">.</span><span class="n">export_vcf</span><span class="p">(</span><span class="n">m_info_ht</span><span class="p">,</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">res</span><span class="p">,</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">m</span><span class="si">}</span><span class="s2">_info_vcf&quot;</span><span class="p">),</span> <span class="n">tabix</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="n">run_vep</span><span class="p">:</span>
+            <span class="n">res</span> <span class="o">=</span> <span class="n">vqc_resources</span><span class="o">.</span><span class="n">run_vep</span>
+            <span class="n">res</span><span class="o">.</span><span class="n">check_resource_existence</span><span class="p">()</span>
+
+            <span class="k">if</span> <span class="n">vep_data_type</span> <span class="o">==</span> <span class="s2">&quot;exomes&quot;</span><span class="p">:</span>
+                <span class="n">ht</span> <span class="o">=</span> <span class="n">get_gnomad_v4_vds</span><span class="p">(</span>
+                    <span class="n">test</span><span class="o">=</span><span class="n">test_dataset</span><span class="p">,</span> <span class="n">remove_hard_filtered_samples</span><span class="o">=</span><span class="kc">False</span>
+                <span class="p">)</span><span class="o">.</span><span class="n">variant_data</span><span class="o">.</span><span class="n">rows</span><span class="p">()</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">ht</span> <span class="o">=</span> <span class="n">get_gnomad_v4_genomes_vds</span><span class="p">(</span>
+                    <span class="n">test</span><span class="o">=</span><span class="n">test_dataset</span><span class="p">,</span> <span class="n">remove_hard_filtered_samples</span><span class="o">=</span><span class="kc">False</span>
+                <span class="p">)</span><span class="o">.</span><span class="n">variant_data</span><span class="o">.</span><span class="n">rows</span><span class="p">()</span>
+
+            <span class="k">if</span> <span class="n">test_n_partitions</span><span class="p">:</span>
+                <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">_filter_partitions</span><span class="p">(</span><span class="nb">range</span><span class="p">(</span><span class="n">test_n_partitions</span><span class="p">))</span>
+
+            <span class="n">ht</span> <span class="o">=</span> <span class="n">hl</span><span class="o">.</span><span class="n">split_multi</span><span class="p">(</span><span class="n">ht</span><span class="p">)</span>
+            <span class="n">ht</span> <span class="o">=</span> <span class="n">vep_or_lookup_vep</span><span class="p">(</span><span class="n">ht</span><span class="p">,</span> <span class="n">vep_version</span><span class="o">=</span><span class="n">vep_version</span><span class="p">)</span>
+            <span class="n">ht</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">res</span><span class="o">.</span><span class="n">vep_ht</span><span class="o">.</span><span class="n">path</span><span class="p">,</span> <span class="n">overwrite</span><span class="o">=</span><span class="n">overwrite</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">validate_vep</span><span class="p">:</span>
+            <span class="n">res</span> <span class="o">=</span> <span class="n">vqc_resources</span><span class="o">.</span><span class="n">validate_vep</span>
+            <span class="n">res</span><span class="o">.</span><span class="n">check_resource_existence</span><span class="p">()</span>
+            <span class="n">count_ht</span> <span class="o">=</span> <span class="n">count_vep_annotated_variants_per_interval</span><span class="p">(</span>
+                <span class="c1"># TODO: Does the ensembl_interval HT need to be updated for 115?</span>
+                <span class="n">res</span><span class="o">.</span><span class="n">vep_ht</span><span class="o">.</span><span class="n">ht</span><span class="p">(),</span>
+                <span class="n">ensembl_interval</span><span class="o">.</span><span class="n">ht</span><span class="p">(),</span>
+            <span class="p">)</span>
+            <span class="n">count_ht</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">res</span><span class="o">.</span><span class="n">vep_count_ht</span><span class="o">.</span><span class="n">path</span><span class="p">,</span> <span class="n">overwrite</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">overwrite</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">generate_trio_stats</span><span class="p">:</span>
+            <span class="n">res</span> <span class="o">=</span> <span class="n">vqc_resources</span><span class="o">.</span><span class="n">generate_trio_stats</span>
+            <span class="n">res</span><span class="o">.</span><span class="n">check_resource_existence</span><span class="p">()</span>
+            <span class="n">ht</span> <span class="o">=</span> <span class="n">run_generate_trio_stats</span><span class="p">(</span>
+                <span class="n">vds</span><span class="p">,</span>
+                <span class="n">res</span><span class="o">.</span><span class="n">final_ped</span><span class="o">.</span><span class="n">pedigree</span><span class="p">(),</span>
+                <span class="n">res</span><span class="o">.</span><span class="n">final_ped</span><span class="o">.</span><span class="n">ht</span><span class="p">(),</span>
+                <span class="n">releasable_only</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">releasable_trios_only</span><span class="p">,</span>
+            <span class="p">)</span>
+            <span class="n">ht</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">res</span><span class="o">.</span><span class="n">trio_stats_ht</span><span class="o">.</span><span class="n">path</span><span class="p">,</span> <span class="n">overwrite</span><span class="o">=</span><span class="n">overwrite</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">generate_sibling_stats</span><span class="p">:</span>
+            <span class="n">res</span> <span class="o">=</span> <span class="n">vqc_resources</span><span class="o">.</span><span class="n">generate_sib_stats</span>
+            <span class="n">res</span><span class="o">.</span><span class="n">check_resource_existence</span><span class="p">()</span>
+            <span class="n">ht</span> <span class="o">=</span> <span class="n">run_generate_sib_stats</span><span class="p">(</span><span class="n">mt</span><span class="p">,</span> <span class="n">res</span><span class="o">.</span><span class="n">rel_ht</span><span class="o">.</span><span class="n">ht</span><span class="p">())</span>
+            <span class="n">ht</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">res</span><span class="o">.</span><span class="n">sib_stats_ht</span><span class="o">.</span><span class="n">path</span><span class="p">,</span> <span class="n">overwrite</span><span class="o">=</span><span class="n">overwrite</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">create_variant_qc_annotation_ht</span><span class="p">:</span>
+            <span class="n">res</span> <span class="o">=</span> <span class="n">vqc_resources</span><span class="o">.</span><span class="n">variant_qc_annotation_ht</span>
+            <span class="n">res</span><span class="o">.</span><span class="n">check_resource_existence</span><span class="p">()</span>
+            <span class="n">ht</span> <span class="o">=</span> <span class="n">res</span><span class="o">.</span><span class="n">split_info_ht</span><span class="o">.</span><span class="n">ht</span><span class="p">()</span>
+            <span class="n">create_variant_qc_annotation_ht</span><span class="p">(</span>
+                <span class="n">ht</span><span class="p">,</span>
+                <span class="n">res</span><span class="o">.</span><span class="n">trio_stats_ht</span><span class="o">.</span><span class="n">ht</span><span class="p">(),</span>
+                <span class="n">res</span><span class="o">.</span><span class="n">sib_stats_ht</span><span class="o">.</span><span class="n">ht</span><span class="p">(),</span>
+                <span class="n">impute_features</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">impute_features</span><span class="p">,</span>
+                <span class="n">n_partitions</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">n_partitions</span><span class="p">,</span>
+            <span class="p">)</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">res</span><span class="o">.</span><span class="n">vqc_ht</span><span class="o">.</span><span class="n">path</span><span class="p">,</span> <span class="n">overwrite</span><span class="o">=</span><span class="n">overwrite</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">export_true_positive_vcfs</span><span class="p">:</span>
+            <span class="n">res</span> <span class="o">=</span> <span class="n">vqc_resources</span><span class="o">.</span><span class="n">export_true_positive_vcfs</span>
+            <span class="n">res</span><span class="o">.</span><span class="n">check_resource_existence</span><span class="p">()</span>
+            <span class="n">tp_hts</span> <span class="o">=</span> <span class="n">get_tp_ht_for_vcf_export</span><span class="p">(</span>
+                <span class="n">res</span><span class="o">.</span><span class="n">vqc_ht</span><span class="o">.</span><span class="n">ht</span><span class="p">(),</span>
+                <span class="n">transmitted_singletons</span><span class="o">=</span><span class="n">transmitted_singletons</span><span class="p">,</span>
+                <span class="n">sibling_singletons</span><span class="o">=</span><span class="n">sibling_singletons</span><span class="p">,</span>
+            <span class="p">)</span>
+            <span class="n">hl</span><span class="o">.</span><span class="n">export_vcf</span><span class="p">(</span><span class="n">tp_hts</span><span class="p">[</span><span class="s2">&quot;raw&quot;</span><span class="p">],</span> <span class="n">res</span><span class="o">.</span><span class="n">raw_tp_vcf_path</span><span class="p">,</span> <span class="n">tabix</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+            <span class="n">hl</span><span class="o">.</span><span class="n">export_vcf</span><span class="p">(</span><span class="n">tp_hts</span><span class="p">[</span><span class="s2">&quot;adj&quot;</span><span class="p">],</span> <span class="n">res</span><span class="o">.</span><span class="n">adj_tp_vcf_path</span><span class="p">,</span> <span class="n">tabix</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+
+    <span class="k">finally</span><span class="p">:</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Copying log to logging bucket...&quot;</span><span class="p">)</span>
+        <span class="n">hl</span><span class="o">.</span><span class="n">copy_log</span><span class="p">(</span><span class="n">get_logging_path</span><span class="p">(</span><span class="s2">&quot;variant_qc_annotations.log&quot;</span><span class="p">))</span></div>
+
+
+<span class="k">def</span> <span class="nf">get_script_argument_parser</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="n">argparse</span><span class="o">.</span><span class="n">ArgumentParser</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Get script argument parser.&quot;&quot;&quot;</span>
+    <span class="n">parser</span> <span class="o">=</span> <span class="n">argparse</span><span class="o">.</span><span class="n">ArgumentParser</span><span class="p">()</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--slack-channel&quot;</span><span class="p">,</span> <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Slack channel to post results and notifications to.&quot;</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span><span class="s2">&quot;--overwrite&quot;</span><span class="p">,</span> <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Overwrite data&quot;</span><span class="p">,</span> <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--test-dataset&quot;</span><span class="p">,</span> <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Use the test dataset as input.&quot;</span><span class="p">,</span> <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--test-n-partitions&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Use only 2 partitions of the VDS as input for testing purposes.&quot;</span><span class="p">,</span>
+        <span class="n">nargs</span><span class="o">=</span><span class="s2">&quot;?&quot;</span><span class="p">,</span>
+        <span class="n">const</span><span class="o">=</span><span class="mi">2</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">int</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">compute_info_args</span> <span class="o">=</span> <span class="n">parser</span><span class="o">.</span><span class="n">add_argument_group</span><span class="p">(</span>
+        <span class="s2">&quot;Compute info HT.&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;Arguments relevant to computing the info HT..&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">compute_info_args</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--compute-info&quot;</span><span class="p">,</span> <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Compute info HT.&quot;</span><span class="p">,</span> <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span>
+    <span class="p">)</span>
+    <span class="n">compute_info_args</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--compute-info-split-n-alleles&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="p">(</span>
+            <span class="s2">&quot;Number of alleles at a site to filter results on. If &quot;</span>
+            <span class="s2">&quot;--compute-info-over-split-n-alleles is used, the results are filtered to &quot;</span>
+            <span class="s2">&quot;sites with greater than or equal to the value supplied, otherwise the &quot;</span>
+            <span class="s2">&quot;results are filtered to sites with less than the value supplied. By &quot;</span>
+            <span class="s2">&quot;default no sites are filtered.&quot;</span>
+        <span class="p">),</span>
+        <span class="n">default</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">int</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">compute_info_args</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--compute-info-over-split-n-alleles&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="p">(</span>
+            <span class="s2">&quot;Whether to filter to sites greater than or equal to the value supplied to&quot;</span>
+            <span class="s2">&quot;--compute-info-split-n-alleles. By default, sites are filtered to sites &quot;</span>
+            <span class="s2">&quot;less than that value, or None if --compute-info-split-n-alleles is not &quot;</span>
+            <span class="s2">&quot;supplied.&quot;</span>
+        <span class="p">),</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">compute_info_args</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--combine-compute-info&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="p">(</span>
+            <span class="s2">&quot;Whether to combine the output from running --compute-info &quot;</span>
+            <span class="s2">&quot;--compute-info-split-n-alleles with and without the &quot;</span>
+            <span class="s2">&quot;--compute-info-over-split-n-alleles flag.&quot;</span>
+        <span class="p">),</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">compute_info_args</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--compute-info-n-partitions&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Number of desired partitions for the info HT.&quot;</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="mi">5000</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">int</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">compute_info_args</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--retain-cdfs&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="p">(</span>
+            <span class="s2">&quot;If True, retains the cumulative distribution functions (CDFs) for all &quot;</span>
+            <span class="s2">&quot;info annotations that are computed as a median aggregation. Keeping the &quot;</span>
+            <span class="s2">&quot;CDFs is useful for annotations that require calculating the median across&quot;</span>
+            <span class="s2">&quot;combined datasets at a later stage. Default is False.&quot;</span>
+        <span class="p">),</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">compute_info_args</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--cdf-k&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="p">(</span>
+            <span class="s2">&quot;Parameter controlling the accuracy vs. memory usage tradeoff when &quot;</span>
+            <span class="s2">&quot;retaining CDFs. A higher value of `cdf_k` results in a more accurate CDF &quot;</span>
+            <span class="s2">&quot;approximation but increases memory usage and computation time. Default is &quot;</span>
+            <span class="s2">&quot;200.&quot;</span>
+        <span class="p">),</span>
+        <span class="n">default</span><span class="o">=</span><span class="mi">200</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">int</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span><span class="s2">&quot;--split-info&quot;</span><span class="p">,</span> <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Split info HT.&quot;</span><span class="p">,</span> <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--export-info-vcf&quot;</span><span class="p">,</span> <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Export info as VCF.&quot;</span><span class="p">,</span> <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--export-split-info-vcf&quot;</span><span class="p">,</span> <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Export split info as VCF.&quot;</span><span class="p">,</span> <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--run-vep&quot;</span><span class="p">,</span> <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Generates vep annotations.&quot;</span><span class="p">,</span> <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--vep-data-type&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Data type to use for VEP annotations. Default is exomes.&quot;</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="s2">&quot;exomes&quot;</span><span class="p">,</span>
+        <span class="n">choices</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;exomes&quot;</span><span class="p">,</span> <span class="s2">&quot;genomes&quot;</span><span class="p">],</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--validate-vep&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="p">(</span>
+            <span class="s2">&quot;Validate that variants in protein-coding genes are correctly annotated by&quot;</span>
+            <span class="s2">&quot; VEP.&quot;</span>
+        <span class="p">),</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--vep-version&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Version of VEPed context Table to use in vep_or_lookup_vep.&quot;</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="n">DEFAULT_VEP_VERSION</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">trio_stat_args</span> <span class="o">=</span> <span class="n">parser</span><span class="o">.</span><span class="n">add_argument_group</span><span class="p">(</span><span class="s2">&quot;Arguments used to generate trio stats.&quot;</span><span class="p">)</span>
+    <span class="n">trio_stat_args</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--generate-trio-stats&quot;</span><span class="p">,</span> <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Calculates trio stats&quot;</span><span class="p">,</span> <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span>
+    <span class="p">)</span>
+    <span class="n">trio_stat_args</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--releasable-trios-only&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Only include releasable trios. This option is only valid when --generate-trio-stats is true.&quot;</span><span class="p">,</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--generate-sibling-stats&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Calculate sibling variant sharing stats.&quot;</span><span class="p">,</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">variant_qc_annotation_args</span> <span class="o">=</span> <span class="n">parser</span><span class="o">.</span><span class="n">add_argument_group</span><span class="p">(</span>
+        <span class="s2">&quot;Variant QC annotation HT parameters&quot;</span>
+    <span class="p">)</span>
+    <span class="n">variant_qc_annotation_args</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--create-variant-qc-annotation-ht&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Creates an annotated HT with features for variant QC.&quot;</span><span class="p">,</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">variant_qc_annotation_args</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--impute-features&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;If set, imputation is performed for variant QC features.&quot;</span><span class="p">,</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">variant_qc_annotation_args</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--n-partitions&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Desired number of partitions for variant QC annotation HT .&quot;</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">int</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="mi">5000</span><span class="p">,</span>
+    <span class="p">)</span>
+
+    <span class="n">tp_vcf_args</span> <span class="o">=</span> <span class="n">parser</span><span class="o">.</span><span class="n">add_argument_group</span><span class="p">(</span>
+        <span class="s2">&quot;Export true positive VCFs&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;Arguments used to define true positive variant set.&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">tp_vcf_args</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--export-true-positive-vcfs&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="p">(</span>
+            <span class="s2">&quot;Exports true positive variants (--transmitted-singletons and/or&quot;</span>
+            <span class="s2">&quot; --sibling-singletons) to VCF files.&quot;</span>
+        <span class="p">),</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">tp_vcf_args</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--transmitted-singletons&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="p">(</span>
+            <span class="s2">&quot;Include transmitted singletons in the exports of true positive variants to&quot;</span>
+            <span class="s2">&quot; VCF files.&quot;</span>
+        <span class="p">),</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">tp_vcf_args</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--sibling-singletons&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="p">(</span>
+            <span class="s2">&quot;Include sibling singletons in the exports of true positive variants to VCF&quot;</span>
+            <span class="s2">&quot; files.&quot;</span>
+        <span class="p">),</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">parser</span>
+
+
+<span class="k">if</span> <span class="vm">__name__</span> <span class="o">==</span> <span class="s2">&quot;__main__&quot;</span><span class="p">:</span>
+    <span class="n">parser</span> <span class="o">=</span> <span class="n">get_script_argument_parser</span><span class="p">()</span>
+    <span class="n">args</span> <span class="o">=</span> <span class="n">parser</span><span class="o">.</span><span class="n">parse_args</span><span class="p">()</span>
+
+    <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">slack_channel</span><span class="p">:</span>
+        <span class="k">with</span> <span class="n">slack_notifications</span><span class="p">(</span><span class="n">slack_token</span><span class="p">,</span> <span class="n">args</span><span class="o">.</span><span class="n">slack_channel</span><span class="p">):</span>
+            <span class="n">main</span><span class="p">(</span><span class="n">args</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">main</span><span class="p">(</span><span class="n">args</span><span class="p">)</span>
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p></p>
+  </div>
+
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

@@ -1,0 +1,21 @@
+gnomad_qc.v4.sample_qc
+======================
+
+
+
+
+
+.. toctree::
+    :maxdepth: 2
+
+    assign_ancestry <assign_ancestry>
+    create_sample_qc_metadata_ht <create_sample_qc_metadata_ht>
+    create_sample_qc_metadata_ht_genomes <create_sample_qc_metadata_ht_genomes>
+    generate_qc_mt <generate_qc_mt>
+    hard_filters <hard_filters>
+    identify_trios <identify_trios>
+    interval_qc <interval_qc>
+    outlier_filtering <outlier_filtering>
+    platform_inference <platform_inference>
+    relatedness <relatedness>
+    sex_inference <sex_inference>
