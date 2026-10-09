@@ -734,17 +734,11 @@ def union_ac_info_hts(
     for path, n in zip(ac_info_ht_paths, part_counts):
         logger.info("Input AC info HT %s: %d rows", path, n)
 
-    # Repartition on the way in rather than after the checkpoint. The inputs
-    # inherit the generate step's scout partitioning, which is sized for the
-    # entry-heavy VDS read and so is far too fine for a rows-only table (chr20:
-    # 34.4M rows over 62,215 partitions, about 550 rows each), leaving the
-    # checkpoint and the distinct() check dominated by per-partition overhead.
-    # `_n_partitions` recomputes interval bounds from the stored per-partition
-    # counts, so it also evens out the deliberate row imbalance the scout byte
-    # weighting introduces -- `naive_coalesce` would merge a fixed number of
-    # adjacent partitions and carry that imbalance through. The counts above are
-    # taken from the plain read, where they come from table metadata; reading
-    # with derived intervals first would turn them into a full pass.
+    # Repartition on read before the checkpoint: inputs carry the
+    # generate step's scout partitioning, far too fine for a rows-only table
+    # and dominated by per-partition overhead. `_n_partitions` recomputes intervals
+    # from stored per-partition counts, evening out the scout byte-weight imbalance
+    # rather than carrying it through.
     if n_partitions is not None:
         total_rows = sum(part_counts)
         hts = [
