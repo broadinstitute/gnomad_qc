@@ -735,8 +735,7 @@ def union_ac_info_hts(
         logger.info("Input AC info HT %s: %d rows", path, n)
 
     # Repartition before the checkpoint: inputs carry the scout partitioning,
-    # far too fine for a rows-only table. naive_coalesce is a cheap merge of
-    # adjacent partitions and doesn't need a full-table scan.
+    # far too fine for a rows-only table.
     if n_partitions is not None:
         total_rows = sum(part_counts)
         hts = [
