@@ -2208,8 +2208,12 @@ def main(args):
     # sibling-stats steps; the union, sites-VCF, and final-join steps never
     # read the VDS.
     need_vds = args.generate_ac_info_ht or args.generate_sibling_stats
+    sib_only = args.generate_sibling_stats and not args.generate_ac_info_ht
+    # Sib-only runs restrict --chrom via filter_chromosomes on the workers:
+    # compute_contig_intervals reads VDS metadata client-side, which fails
+    # outside the AoU perimeter, and sib stats need no partition subdivision.
     sub_intervals, scout_byte_weight_info = _derive_read_intervals(
-        args, need_intervals=need_vds
+        args, need_intervals=need_vds and not sib_only
     )
     vds = None
     if need_vds:
@@ -2222,13 +2226,12 @@ def main(args):
                 else range(test_n_partitions) if test_n_partitions else None
             ),
             read_intervals=sub_intervals,
+            chrom=args.chrom if sib_only else None,
             # Only the AC-info aggregation reads mt.meta; sibling stats don't.
             annotate_meta=args.generate_ac_info_ht,
             # Dead-allele recode on hard-filter removal is a full-width per-row LA
             # aggregation; sibling stats don't need it (bi-allelic doubletons only).
-            remove_dead_alleles=not (
-                args.generate_sibling_stats and not args.generate_ac_info_ht
-            ),
+            remove_dead_alleles=not sib_only,
             # NOTE: Using args.test here so that sibling stats test can be calculated from
             # a few partitions of the full (not test) VDS).
             test=args.test,
