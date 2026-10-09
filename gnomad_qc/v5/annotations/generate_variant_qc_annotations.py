@@ -736,9 +736,13 @@ def union_ac_info_hts(
 
     # Repartition on read before the checkpoint: inputs carry the
     # generate step's scout partitioning, far too fine for a rows-only table
-    # and dominated by per-partition overhead. `_n_partitions` recomputes intervals
-    # from stored per-partition counts, evening out the scout byte-weight imbalance
-    # rather than carrying it through.
+    # and dominated by per-partition overhead. `read_table(_n_partitions=N)`
+    # triggers a Spark job (TableCalculateNewPartitions) that samples keys
+    # across every row to pick new, balanced partition boundaries -- not a
+    # free metadata operation, but it buys evenly-sized output partitions.
+    # `naive_coalesce` would be cheaper but only merges adjacent existing
+    # partitions, so it would carry the scout byte-weight skew through
+    # instead of evening it out.
     if n_partitions is not None:
         total_rows = sum(part_counts)
         hts = [
