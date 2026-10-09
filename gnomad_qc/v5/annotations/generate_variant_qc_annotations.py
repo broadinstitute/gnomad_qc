@@ -952,14 +952,11 @@ def run_generate_sib_stats(
         - Derives the sibling sample set from `relatedness_ht` first (no MT scan).
         - Filters the VDS to those samples and autosomes, keeping only
           the entries needed for the split + adj (LA/LGT/LAD/GQ).
-        - Filters to natively bi-allelic sites (multi-allelic-derived variants are
-          excluded from sibling stats), then runs `sparse_split_multi`. Filtering to
-          bi-allelic first means the split does no multi-allelic explosion -- it only
-          puts alleles in minimal representation (so keys match the split `info_ht`) and
-          downcodes entries, and that per-entry work stays lazy.
-        - Restricts to loci with AC_high_quality_raw == 2 or AC_high_quality == 2
-          (raw/adj doubletons) from `info_ht`, since only sibling singletons are used
-          downstream.
+        - Restricts to `info_ht` sites that are bi-allelic (two nonsplit alleles, as
+          in main's split-then-bi-allelic filter) and raw/adj doubletons
+          (AC_high_quality_raw == 2 or AC_high_quality == 2), since only sibling
+          singletons are used downstream: a locus-keyed prefilter before
+          `sparse_split_multi`, then an exact-key semi-join after it.
 
     :param vds: AoU VariantDataset. Load with `remove_dead_alleles=False`: the
         dead-allele recode is a full-width per-row LA aggregation that sibling stats
@@ -983,28 +980,32 @@ def run_generate_sib_stats(
     vds = hl.vds.filter_chromosomes(vds, keep_autosomes=True)
     vds = hl.vds.filter_samples(vds, sib_samples_ht)
     mt = vds.variant_data
-    # LA is needed by sparse_split_multi to downcode LGT/LAD; like the other entries
-    # it is only decoded for the rows that survive the AC==2 restriction.
+    # LA is needed by sparse_split_multi to downcode LGT/LAD.
     mt = mt.select_entries("LA", "LGT", "LAD", "GQ")
-    # Keep only natively bi-allelic sites (the AoU VDS is about 77% biallelics), then split
-    # Filtering to bi-allelic first means the split is explosion-free: it just min_reps
-    # the alleles (so keys match the split info_ht) and downcodes LGT/LAD -> GT/AD.
-    # The per-entry downcode is lazy, so it only materializes
-    # for the rows that survive the AC==2 restriction below.
-    mt = mt.filter_rows(hl.len(mt.alleles) == 2)
-    mt = hl.experimental.sparse_split_multi(mt)
-    # Restrict to raw/adj doubleton loci. Read the info HT natively: semi_join_rows
-    # is an index join that reads the overlapping info partitions inside the main
-    # stage. Re-reading with _n_partitions adds a calculate_new_partitions stage of
-    # one job per source partition (62k jobs on the chr20 test HT) for no gain.
+    # Target sites from the info HT: bi-allelic after main's cohort-wide dead-allele
+    # recode (two nonsplit alleles, i.e. main's ~was_split; n_alt_alleles would miss
+    # star alleles) and raw/adj doubletons. Adj doubletons are needed because
+    # sibling_singleton_adj downstream requires AC_high_quality == 2, which can hold
+    # where AC_high_quality_raw > 2.
+    # Read the info HT natively: semi_join_rows is an index join that reads the
+    # overlapping info partitions inside the main stage; re-reading with
+    # _n_partitions adds a calculate_new_partitions stage of one job per source
+    # partition (62k jobs on the chr20 test HT) for no gain.
     info_ht = hl.read_table(info_ht_path)
-    # Keep adj doubletons too: sibling_singleton_adj downstream requires
-    # AC_high_quality == 2, which can hold at loci where AC_high_quality_raw > 2.
     ac_info = info_ht.AC_info
-    ac2_loci = info_ht.filter(
-        (ac_info.AC_high_quality_raw == 2) | (ac_info.AC_high_quality == 2)
+    ac2 = info_ht.filter(
+        ((ac_info.AC_high_quality_raw == 2) | (ac_info.AC_high_quality == 2))
+        & (hl.len(info_ht.allele_info.nonsplit_alleles) == 2)
     ).select()
-    mt = mt.semi_join_rows(ac2_loci)
+    # Locus-keyed prefilter before the split, instead of a native len(alleles) == 2
+    # filter: with remove_dead_alleles=False a site whose extra allele is carried only
+    # by hard-filtered samples is still multi-allelic here but bi-allelic in main and
+    # the info HT (692 such doubleton rows on chr20). Splitting only the target loci
+    # keeps the explosion small; the exact-key semi-join below drops the dead allele.
+    ac2_loci = ac2.key_by("locus").select().distinct()
+    mt = mt.filter_rows(hl.is_defined(ac2_loci[mt.locus]))
+    mt = hl.experimental.sparse_split_multi(mt)
+    mt = mt.semi_join_rows(ac2)
     # Add adj before generate_sib_stats so it skips its own (DP-requiring) annotate_adj.
     mt = annotate_adj_no_dp(mt)
     return generate_sib_stats(mt, relatedness_ht)
