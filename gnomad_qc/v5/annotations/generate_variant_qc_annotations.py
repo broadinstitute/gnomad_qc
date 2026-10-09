@@ -966,7 +966,7 @@ def run_generate_sib_stats(
         don't need (bi-allelic doubletons only).
     :param relatedness_ht: Table containing relatedness info.
     :param info_ht_path: Path to the info HT (with AC_info), used to restrict to AC == 2
-        loci. Read co-partitioned with the MT so the semi-join is shuffle-free.
+        loci.
     :return: Table containing sibling stats.
     """
     # Sibling sample set, kept as a Hail Table to avoid localizing the IDs.
@@ -993,15 +993,11 @@ def run_generate_sib_stats(
     # for the rows that survive the AC==2 restriction below.
     mt = mt.filter_rows(hl.len(mt.alleles) == 2)
     mt = hl.experimental.sparse_split_multi(mt)
-    # Restrict to raw/adj doubleton loci. Read the info HT with the
-    # same partition count as the MT: both derive from the same VDS, so matching the count
-    # makes the bounds align closely. semi_join_rows lowers to
-    # filter_rows(is_defined(index(...))), whose index-join would otherwise have to
-    # repartition the AC==2 side to the MT's partitioner; aligned partitioning keeps that
-    # cheap (closer to a zip). (For a full prod run mt.n_partitions() is the autosomal VDS
-    # count; for --test-n-partitions the counts match but the MT is a contiguous slice
-    # while the info HT spans the genome, so alignment only fully holds for prod.)
-    info_ht = hl.read_table(info_ht_path, _n_partitions=mt.n_partitions())
+    # Restrict to raw/adj doubleton loci. Read the info HT natively: semi_join_rows
+    # is an index join that reads the overlapping info partitions inside the main
+    # stage. Re-reading with _n_partitions adds a calculate_new_partitions stage of
+    # one job per source partition (62k jobs on the chr20 test HT) for no gain.
+    info_ht = hl.read_table(info_ht_path)
     # Keep adj doubletons too: sibling_singleton_adj downstream requires
     # AC_high_quality == 2, which can hold at loci where AC_high_quality_raw > 2.
     ac_info = info_ht.AC_info
