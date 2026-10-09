@@ -663,7 +663,7 @@ def union_ac_info_hts(
     instead of silently duplicating rows.
 
     :param ac_info_ht_paths: Paths to the per-stratum AC info HTs to union. Must contain at least two paths.
-    :param n_partitions: Optional number of partitions for the unioned Table. Default is None (keep the union's partitioning).
+    :param n_partitions: Optional number of partitions for the unioned Table, applied via `naive_coalesce` on each input with a share of this total proportional to its row count, so it governs the checkpoint and the distinct() check as well as the final write. Default is None (keep the inputs' partitioning).
     :param expected_strata: Optional list (aligned with `ac_info_ht_paths`) of dicts of expected `ac_info_ht_parameters` global fields (e.g. contig, min_alleles, max_alleles, test). Each input's recorded parameters must match its expectation -- a path name is only a convention, but the globals are written by the run itself, so this catches a table sitting at the right path with the wrong contents. Inputs without the provenance global fail verification. Default is None (no verification).
     :return: Unioned AC info HT (checkpointed to a temp path).
     """
@@ -734,6 +734,16 @@ def union_ac_info_hts(
     for path, n in zip(ac_info_ht_paths, part_counts):
         logger.info("Input AC info HT %s: %d rows", path, n)
 
+    # Repartition before the checkpoint: inputs carry the scout partitioning,
+    # far too fine for a rows-only table.
+    if n_partitions is not None:
+        total_rows = sum(part_counts)
+        hts = [
+            ht.naive_coalesce(max(1, round(n_partitions * n / total_rows)))
+            for ht, n in zip(hts, part_counts)
+        ]
+        first = hts[0]
+
     ht = first.union(*hts[1:])
     tmp_path = hl.utils.new_temp_file("union_ac_info_ht", "ht")
     ht = ht.checkpoint(tmp_path)
@@ -755,9 +765,6 @@ def union_ac_info_hts(
     logger.info(
         "Unioned AC info HT contains %d rows across %d inputs.", n_total, len(hts)
     )
-
-    if n_partitions is not None:
-        ht = hl.read_table(tmp_path, _n_partitions=n_partitions)
 
     # Table.union keeps only the first input's globals, which would silently
     # claim one stratum's parameters for the whole table. Replace the single
@@ -2690,8 +2697,14 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
     split_workflow_args.add_argument(
         "--union-n-partitions",
         help=(
-            "Optional number of partitions for the unioned AC info HT. Default is "
-            "None (keep the union's partitioning)."
+            "Optional number of partitions for the unioned AC info HT. Applied "
+            "via naive_coalesce on each input (a share proportional to its row "
+            "count), so it also sets the partitioning of the union's checkpoint "
+            "and duplicate-key check, not just the final write. The per-stratum "
+            "inputs carry the generate step's scout partitioning, which is sized "
+            "for the entry-heavy VDS read and is far too fine for a rows-only "
+            "table, so setting this is usually worthwhile. Default is None (keep "
+            "the inputs' partitioning)."
         ),
         type=int,
         default=None,
