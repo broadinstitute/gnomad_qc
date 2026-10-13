@@ -1,8 +1,7 @@
 """
 Hail Batch relay fan-out for the v5 annotation scripts.
 
-``compute_coverage.py`` uses it today; ``generate_frequency.py`` is written to adopt it
-next. A Query-on-Batch run has one driver, and a driver crash loses everything it was
+A Query-on-Batch run has one driver, and a driver crash loses everything it was
 computing. The scripts therefore cut the genome into chunks and run each chunk from
 its own small, non-spot Batch job (a "relay") that starts a QoB driver inside its
 container. A crash then costs one chunk, and a rerun skips the chunks that already

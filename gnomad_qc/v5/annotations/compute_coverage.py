@@ -2042,7 +2042,10 @@ def _orchestrate_coverage_batch(
 
     def _write_manifest(failed: List[int], records: List[Dict[str, Any]]) -> None:
         """Rewrite after each wave and retry pass so the list survives a crash."""
-        n_sent = sum(r["n_dispatched"] for r in records)
+        # Retry passes re-dispatch chunks the waves already counted, so count
+        # chunks from the numbered waves only and relay jobs from every record.
+        n_sent = sum(r["n_dispatched"] for r in records if isinstance(r["wave"], int))
+        n_relay_jobs = sum(r["n_dispatched"] for r in records)
         manifest = write_failed_chunks_manifest(
             ht_path=cov_and_an_ht_path,
             intervals_hash=intervals_hash,
@@ -2055,10 +2058,11 @@ def _orchestrate_coverage_batch(
         )
         if failed:
             logger.warning(
-                "%d of %d dispatched chunk(s) still missing; rerun list written to"
-                " %s (run_id=%s)",
+                "%d of %d dispatched chunk(s) still missing after %d relay job(s)"
+                " in total; rerun list written to %s (run_id=%s)",
                 len(failed),
                 n_sent,
+                n_relay_jobs,
                 manifest,
                 run_id,
             )
@@ -3182,11 +3186,12 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         "--batch-image",
         type=str,
         default=(
-            "us-central1-docker.pkg.dev/broad-mpg-gnomad/images/v5_freq_batch:0.2.137"
+            "us-central1-docker.pkg.dev/broad-mpg-gnomad/images/"
+            f"v5_freq_batch:{HAIL_VERSION}"
         ),
         help=(
-            "Docker image for the relay containers. The tag's Hail should match"
-            " HAIL_VERSION, which the relay reinstalls regardless."
+            "Docker image for the relay containers. The default tag is HAIL_VERSION,"
+            " which the relay reinstalls regardless."
         ),
     )
     fanout_group.add_argument(
