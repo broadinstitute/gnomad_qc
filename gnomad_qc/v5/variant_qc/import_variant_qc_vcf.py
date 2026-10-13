@@ -164,10 +164,6 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         action="store_true",
     )
     parser.add_argument(
-        "--slack-channel",
-        help="Slack channel to post results and notifications to.",
-    )
-    parser.add_argument(
         "--vcf-path",
         help="Path to variant QC result VCF. Can be specified as Hadoop glob patterns.",
         required=True,

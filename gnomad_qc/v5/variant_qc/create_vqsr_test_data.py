@@ -3,8 +3,7 @@
 The v5 VQSR pipeline (``vqsr.py``) consumes a sites-only info VCF
 (:func:`info_vcf_path`) and, optionally, a true-positive/singleton VCF
 (:func:`get_true_positive_vcf_path`). Those are produced by
-``generate_variant_qc_annotations.py`` (branch ``kl/info_edits``) from AoU data,
-which is not yet available.
+``generate_variant_qc_annotations.py`` from AoU data, which is not yet available.
 
 This script stands in for that step so the VQSR pipeline can be exercised
 end-to-end before the real v5 info VCF exists. It reads the public gnomAD v4

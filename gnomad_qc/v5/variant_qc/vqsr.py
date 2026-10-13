@@ -535,9 +535,9 @@ def gather_tranches(
     gcp_billing_project: str,
 ) -> Job:
     """
-    Third step of VQSR for SNPs: run GatherTranches to gather scattered per-interval tranches outputs.
+    Third step of VQSR for SNPs and INDELs: run GatherTranches to gather scattered per-interval tranches outputs.
 
-    To support cohorts with more than 10,000 WGS samples, the SNP recalibration process
+    To support cohorts with more than 10,000 WGS samples, the recalibration process
     is broken down across genomic regions for parallel processing, and done in 3 steps:
 
         - Run the recalibrator with the following additional arguments:
@@ -548,7 +548,7 @@ def gather_tranches(
         - Collate the resulting per-interval tranches with GatherTranches
 
     :param b: Batch object to add jobs to.
-    :param tranches: Index for the tranches file.
+    :param tranches: List of per-interval tranches files to gather.
     :param mode: Recalibration mode to employ, either SNP or INDEL.
     :param disk_size: Disk size to be used for the job.
     :param gcp_billing_project: GCP billing project for requester-pays buckets.
@@ -628,6 +628,8 @@ def apply_recalibration(
         scattered mode.
     :param interval: Genomic interval to apply the model to.
     :param out_bucket: Full path to output bucket to write output(s) to.
+    :param overlap_skip: Skip the bcftools step that trims each scattered VCF to its
+        interval so an INDEL at a chunk boundary is not written to both chunks.
     :return: Job object with one ResourceGroup output j.output_vcf, corresponding
         to a VCF with tranche annotated in the FILTER field.
     """
@@ -763,7 +765,7 @@ def make_vqsr_jobs(
     output_vcf_name: str,
     utils: Dict,
     out_bucket: str,
-    intervals: Dict,
+    intervals: Optional[hb.ResourceGroup],
     use_as_annotations: bool,
     gcp_billing_project: str,
     gatk_image: str,
@@ -790,7 +792,8 @@ def make_vqsr_jobs(
     :param output_vcf_name: Name, without extension, to use for the output VCF file(s).
     :param utils: Dictionary containing resource files and parameters to be used in VQSR.
     :param out_bucket: Path to write, plots, evaluation results, and recalibrated VCF to.
-    :param intervals: ResourceGroup object with intervals to scatter.
+    :param intervals: ResourceGroup object with intervals to scatter. Only read when
+        is_large_callset is True; pass None otherwise.
     :param use_as_annotations: Whether to use allele-specific annotation for VQSR.
     :param gcp_billing_project: GCP billing project for requester-pays buckets.
     :param gatk_image: GATK docker image.
@@ -801,6 +804,8 @@ def make_vqsr_jobs(
     :param scatter_count: Number of intervals to scatter over.
     :param singleton_vcf_path: Full path to transmitted and/or sibling singletons VCF
         file and its index.
+    :param overlap_skip: In scattered mode, skip trimming each scattered VCF to its
+        interval and skip the final gather, leaving the sharded VCFs as the output.
     :param snp_max_gaussians: Maximum number of Gaussians for the SNP model. Lower this
         for small test callsets that lack enough clusters. Default is 6.
     :param indel_max_gaussians: Maximum number of Gaussians for the indel model. Lower
@@ -809,18 +814,11 @@ def make_vqsr_jobs(
     """
     # Scale resources for jobs as appropriate.
     if is_small_callset:
-        small_disk = 50
+        small_disk, huge_disk = 50, 200
     elif not is_large_callset:
-        small_disk = 100
+        small_disk, huge_disk = 100, 500
     else:
-        small_disk = 200
-
-    if is_small_callset:
-        huge_disk = 200
-    elif not is_large_callset:
-        huge_disk = 500
-    else:
-        huge_disk = 2000
+        small_disk, huge_disk = 200, 2000
 
     # If it is a large callset, run in scatter mode.
     if is_large_callset:
@@ -1017,8 +1015,6 @@ def make_vqsr_jobs(
             out_bucket=out_bucket,
         )
 
-        return
-
 
 def main(args):
     """Run VQSR variant qc workflow."""
@@ -1071,15 +1067,17 @@ def main(args):
         backend=backend,
     )
 
-    # Split passed intervals into value specified in resources json.
-    # These are used for scattered jobs, if required.
-    intervals_j = split_intervals(
-        b=b,
-        utils=utils,
-        gcp_billing_project=gcp_billing_project,
-        gatk_image=args.gatk_image,
-        scatter_count=scatter_count,
-    )
+    # Split the intervals file from the resources json into scatter_count pieces.
+    # Only the large run mode scatters, so skip the SplitIntervals job otherwise.
+    intervals = None
+    if args.run_mode == "large":
+        intervals = split_intervals(
+            b=b,
+            utils=utils,
+            gcp_billing_project=gcp_billing_project,
+            gatk_image=args.gatk_image,
+            scatter_count=scatter_count,
+        ).intervals
 
     if transmitted_singletons and sibling_singletons:
         true_positive_type = "transmitted_singleton.sibling_singleton"
@@ -1107,7 +1105,7 @@ def main(args):
         scatter_count=scatter_count,
         utils=utils,
         out_bucket=tmp_vqsr_bucket,
-        intervals=intervals_j.intervals,
+        intervals=intervals,
         use_as_annotations=True,
         gcp_billing_project=gcp_billing_project,
         gatk_image=args.gatk_image,
@@ -1239,9 +1237,8 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         default="standard",
         choices=["small", "standard", "large"],
         help=(
-            "Option to pass so that the mode/resources fit the size of the database."
-            " This affects the size of the clusters and, if --large is set, will run in"
-            " a scattered mode (one job for each partition)."
+            "Scale job resources to the size of the callset. 'large' also runs the"
+            " recalibrators and ApplyVQSR scattered over --scatter-count intervals."
         ),
     )
     parser.add_argument(
@@ -1255,16 +1252,6 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         type=str,
         default="broad-mpg-gnomad",
         help="Google Cloud billing project for reading requester pays buckets.",
-    )
-    parser.add_argument(
-        "--compute-info-method",
-        help=(
-            "Method of computing the INFO score to use for the variant QC features. "
-            "Default is 'quasi'."
-        ),
-        default="quasi",
-        type=str,
-        choices=["AS", "quasi", "set_long_AS_missing"],
     )
     parser.add_argument(
         "--adj",
