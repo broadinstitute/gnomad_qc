@@ -864,6 +864,13 @@ def main(args):
     # passed to GATK -XL in the Batch step, then re-read during reconciliation.
     exclude_intervals = f"{run_prefix}/exclude.intervals"
 
+    # Clear old outputs before recording the new config so a resume after a failed
+    # --overwrite cannot see a matching config beside stale outputs.
+    if args.overwrite and not args.load_only:
+        for d in ("extract", "model", "score"):
+            if hfs.is_dir(f"{run_prefix}/{d}"):
+                hfs.rmtree(f"{run_prefix}/{d}")
+
     # Everything that determines what the reused extract/model/score outputs contain.
     check_run_config(
         run_prefix,
@@ -885,11 +892,6 @@ def main(args):
     )
 
     if not args.load_only:
-        # Clear old outputs so a resume after a failed --overwrite cannot reuse them.
-        if args.overwrite:
-            for d in ("extract", "model", "score"):
-                if hfs.is_dir(f"{run_prefix}/{d}"):
-                    hfs.rmtree(f"{run_prefix}/{d}")
         backend = hb.ServiceBackend(
             billing_project=args.batch_billing_project,
             remote_tmpdir=f"gs://{BATCH_TMP_BUCKET}/",
