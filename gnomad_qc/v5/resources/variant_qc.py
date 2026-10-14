@@ -1,5 +1,7 @@
 """Script containing variant QC related resources for v5."""
 
+from gnomad.resources.resource_utils import VariantDatasetResource
+
 from gnomad_qc.v5.resources.basics import (
     _ALL_ENVIRONMENTS,
     _get_base_bucket,
@@ -34,3 +36,46 @@ def _variant_qc_root(
         )
 
     return f"gs://{_get_base_bucket(environment)}/v{version}/{path_suffix}"
+
+
+######################################################################
+# Truth sample resources
+######################################################################
+
+truth_samples_gvcf_paths = f"{_variant_qc_root(version='5.0', environment='batch')}/aou/truth_samples/truth_samples_gvcf_paths.tsv"
+"""
+Path to a single-column TSV listing the GCS path to each truth-sample gVCF (one per line).
+
+The truth samples are 8 Genomes-in-a-Bottle (GiaB) samples sequenced with the same protocol as the AoU v8 data.
+Their gVCFs are stored here: gs://fc-aou-datasets-controlled/v8/wgs/short_read/snpindel/aux/qc/control_samples/
+
+The sample IDs are intentionally not stored in this repo. The combiner therefore reads the gVCF paths from this
+manifest by known object paths rather than globbing the bucket.
+"""
+
+truth_samples_vds = VariantDatasetResource(
+    f"{_variant_qc_root(version='5.0', test=False, environment='batch')}/aou/truth_samples/truth_samples.vds",
+)
+"""
+VDS containing 8 GiaB samples.
+
+This resource does not need to be remade for future versions.
+"""
+
+
+def get_truth_samples_combiner_plan(test: bool = False) -> str:
+    """
+    Return the path to the truth-samples VDS combiner plan (combiner ``save_path``).
+
+    The plan lets a failed or interrupted combiner run be resumed. It is written to the
+    writable batch variant QC tree (or a temp path for tests).
+
+    Like `truth_samples_vds`, this resource does not need to be remade for future versions.
+
+    :param test: Whether to return a temporary test path. Default is False.
+    :return: Path to the combiner plan JSON.
+    """
+    if test:
+        return f"{qc_temp_prefix(environment='batch', days=4)}truth_samples_combiner_plan.json"
+
+    return f"{_variant_qc_root(version='5.0', environment='batch')}/aou/truth_samples/truth_samples_combiner_plan.json"

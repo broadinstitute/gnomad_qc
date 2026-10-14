@@ -50,10 +50,10 @@ from gnomad.resources.grch38.reference_data import vep_context
 from gnomad.sample_qc.sex import adjusted_sex_ploidy_expr
 from gnomad.utils.annotations import (
     agg_by_strata,
-    annotate_and_index_source_mt_for_sex_ploidy,
     get_gq_dp_adj_expr,
     get_het_ab_adj_expr,
     get_is_haploid_expr,
+    index_sex_ploidy_flags,
     merge_freq_arrays,
     merge_histograms,
     qual_hist_expr,
@@ -212,9 +212,19 @@ def prep_vds_for_all_sites_stats(vds: hl.vds.VariantDataset) -> hl.vds.VariantDa
     logger.info(
         "Adjusting sex ploidy for variant data MT and annotating with DP/GQ adj..."
     )
+    # NOTE: This is not how production was run. The call below was updated so the
+    # script remains runnable after gnomad_methods changed
+    # `annotate_and_index_source_mt_for_sex_ploidy` to take a MatrixTable
+    # (broadinstitute/gnomad_methods#844). `index_sex_ploidy_flags` is the old
+    # behavior under a new name, so the flags are identical. The last
+    # gnomad_methods commit that runs the original call is d0c014be.
+    # Original:
+    # c_idx, r_idx = annotate_and_index_source_mt_for_sex_ploidy(
+    #     locus_expr=vmt.locus, karyotype_expr=vmt.sex_karyotype
+    # )
     # An optimization that annotates the locus's source matrix table with the
     # fields in the case statements below, so they are not re-computed for every entry.
-    c_idx, r_idx = annotate_and_index_source_mt_for_sex_ploidy(
+    c_idx, r_idx = index_sex_ploidy_flags(
         locus_expr=vmt.locus, karyotype_expr=vmt.sex_karyotype
     )
     ploidy_expr = (

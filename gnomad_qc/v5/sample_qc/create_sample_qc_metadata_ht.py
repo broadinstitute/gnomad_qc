@@ -24,7 +24,12 @@ from gnomad_qc.v5.resources.basics import (
     get_logging_path,
     get_samples_to_exclude,
 )
-from gnomad_qc.v5.resources.meta import get_project_meta, get_sample_id_collisions, meta
+from gnomad_qc.v5.resources.meta import (
+    get_project_meta,
+    get_sample_id_collisions,
+    meta,
+    write_aou_vds_sample_jsons,
+)
 from gnomad_qc.v5.resources.sample_qc import (
     finalized_outlier_filtering,
     get_gen_anc_ht,
@@ -489,6 +494,14 @@ def main(args):
     _init_hail("create_sample_meta", environment)
 
     try:
+        if args.write_vds_sample_artifact_jsons:
+            logger.info("Writing permanent VDS-loading sample artifact JSONs...")
+            write_aou_vds_sample_jsons(
+                environment=environment,
+                overwrite=args.overwrite,
+            )
+            return
+
         check_resource_existence(
             output_step_resources={
                 "sample_qc_meta": [meta(environment=environment).path],
@@ -590,6 +603,19 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         help="Environment where script will run.",
         choices=["rwb", "batch"],
         default="rwb",
+    )
+    parser.add_argument(
+        "--write-vds-sample-artifact-jsons",
+        help=(
+            "Write the permanent VDS-loading sample artifact JSONs "
+            "(sample_id_collisions.json, high_quality_samples.json, and "
+            "release_samples.json) from the finished meta HT, so every "
+            "get_aou_vds call reads small JSONs instead of rescanning the "
+            "~330-partition sample tables. Runs standalone (skips the meta HT "
+            "build); rerun it whenever the meta HT is rewritten. Requires "
+            "--overwrite to replace existing artifacts."
+        ),
+        action="store_true",
     )
     return parser
 
