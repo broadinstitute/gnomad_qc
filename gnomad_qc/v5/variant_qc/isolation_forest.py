@@ -395,7 +395,7 @@ def isolation_forest_workflow(
     :param gatk_image: GATK docker image.
     :param gcp_billing_project: GCP billing project for requester-pays buckets.
     :param hyperparameters_json: Optional model hyperparameters JSON path.
-    :param overwrite: Whether to rerun extract/train even if outputs exist.
+    :param overwrite: Whether to rerun extract/train/score even if outputs exist.
     :return: None.
     """
     # Skip SplitIntervals when every score shard is reused.
@@ -952,7 +952,7 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "-o",
         "--overwrite",
-        help="Whether to overwrite existing outputs.",
+        help="Whether to overwrite existing outputs (with --load-only, only overwrite the result HT).",
         action="store_true",
     )
     parser.add_argument(
