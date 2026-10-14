@@ -1008,7 +1008,9 @@ def run_generate_sib_stats(
     mt = mt.semi_join_rows(ac2)
     # Add adj before generate_sib_stats so it skips its own (DP-requiring) annotate_adj.
     mt = annotate_adj_no_dp(mt)
-    return generate_sib_stats(mt, relatedness_ht)
+    # bi_allelic_only=False: its ~was_split filter would re-drop the natively
+    # multi-allelic rows the info HT prefilter above deliberately kept.
+    return generate_sib_stats(mt, relatedness_ht, bi_allelic_only=False)
 
 
 def create_variant_qc_annotation_ht(
