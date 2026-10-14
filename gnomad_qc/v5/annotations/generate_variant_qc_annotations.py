@@ -975,8 +975,9 @@ def run_generate_sib_stats(
         .distinct()
     )
 
-    # NOTE: Checked sibling IDs; none have sample ID collisions, so they match the
-    # VDS sample IDs directly (no 'aou_' prefix needed).
+    # NOTE: Sibling IDs are in the same 'aou_'-prefixed ID space as the loaded VDS
+    # (one high-quality sibling is a collision sample; checked 2026-10-14), so they
+    # match directly.
     vds = hl.vds.filter_chromosomes(vds, keep_autosomes=True)
     vds = hl.vds.filter_samples(vds, sib_samples_ht)
     mt = vds.variant_data
@@ -2508,7 +2509,6 @@ def main(args):
                 output_step_resources={"sib_stats_ht": [sib_stats_ht_path]},
                 overwrite=overwrite,
             )
-            # Note: Checked sibling IDs; none of them have sample ID collisions.
             ht = run_generate_sib_stats(
                 vds, relatedness(environment=environment).ht(), sib_info_ht_path
             )
