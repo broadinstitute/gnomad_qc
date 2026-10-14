@@ -16,8 +16,10 @@ on GCS.
 here is published to PyPI and nothing outside this repo imports it. Code is run
 as scripts, not consumed as an API. The practical consequence: internal
 refactors are cheap here (there are no downstream consumers to break), and
-reusable logic should not accumulate here at all — if it's genuinely general, it
-belongs in [gnomad_methods](https://github.com/broadinstitute/gnomad_methods).
+reusable logic should not accumulate here at all. A transformation that is
+Table/expression in, Table/expression out with no file I/O is a candidate for
+[gnomad_methods](https://github.com/broadinstitute/gnomad_methods); if it's
+genuinely general, put it there.
 
 **Do not over-optimize for style.** Correctness and efficiency are what matter
 in this repo; pipeline code is allowed to be uglier than library code. Don't
@@ -40,11 +42,10 @@ Two tightly coupled dependencies:
 Function names, signatures, and locations change between releases — discover
 them at point of use rather than relying on memory or this file:
 
-- **Dataset paths**: every dataset is referenced through a `get_*()` resource
-  function in the version's `resources/` package, organized by domain
-  (`basics.py`, `sample_qc.py`, `variant_qc.py`, `annotations.py`, `meta.py`,
-  `release.py`, `constants.py`). Grep `def get_` in the relevant module. Never
-  hardcode `gs://` paths in pipeline code.
+- **Dataset paths**: datasets are referenced through resource objects in the
+  version's `resources/` package, organized by domain — mostly `get_*()`
+  functions, some module-level objects. Grep `def get_` or the dataset name in
+  that package rather than relying on a list here.
 - **Shared utilities**: check gnomad_methods (`gnomad.utils.*`,
   `gnomad.sample_qc.*`, `gnomad.variant_qc.*`, `gnomad.resources.*`) before
   writing a new helper — it probably exists. A local checkout often sits next
@@ -77,7 +78,7 @@ autopep8 --in-place gnomad_qc
 black --check gnomad_qc
 isort --check-only gnomad_qc
 autopep8 --exit-code --diff gnomad_qc
-./lint --disable=W                                    # pylint, warnings disabled
+./lint --disable=W                                    # pylint, warnings disabled; .pylintrc skips v2 and cuKING
 pydocstyle --match-dir='(?!v2|cuKING).*' gnomad_qc    # skips v2 and cuKING
 ```
 
@@ -90,8 +91,11 @@ pydocstyle --match-dir='(?!v2|cuKING).*' gnomad_qc    # skips v2 and cuKING
 
 ### Per-release versioning
 
-Code is split by release: `gnomad_qc/v2/`, `v3/`, `v4/`, `v5/`. Each release
-directory repeats the same structure, laid out roughly in pipeline order:
+Code is split by release: `gnomad_qc/v2/`, `v3/`, `v4/`, `v5/`. A few packages
+sit outside that split: `gnomad_qc/analyses/` (cross-release analyses such as
+the pext release files), `gnomad_qc/federated/` (federated-data ingestion and
+validity checks), and `gnomad_qc/example_notebooks/`. Each release directory
+repeats the same structure, laid out roughly in pipeline order:
 
 | Subpackage | Purpose |
 |------------|---------|
@@ -101,8 +105,10 @@ directory repeats the same structure, laid out roughly in pipeline order:
 | `variant_qc/` | Random forest / VQSR training, evaluation, final filter. |
 | `create_release/` | Combine annotations, prepare the VCF release, validity checks. |
 
-Not every version has every subpackage (v5 has no `variant_qc/` yet; v4 also has
-`assessment/`, `analyses/`, `plots/`), so check before assuming a path exists.
+Not every version has every subpackage, some have extras (v4 also has
+`assessment/`, `analyses/`, `plots/`), and the newest version may be missing
+some entirely or hold only a script or two in them. List the version directory
+before assuming a path exists rather than trusting this file.
 Because the structure repeats, **the equivalent file in the previous version is
 almost always the best starting point** for new work.
 
@@ -125,9 +131,12 @@ v5 runs in three environments — `"rwb"` (All of Us Researcher Workbench),
 `"batch"` (Hail Query-on-Batch, the primary backend), and `"dataproc"` —
 selected by the `--environment` flag. `v5/resources/basics.py` owns
 environment validation, GCS bucket routing, and Hail initialization; scripts
-call its init helper before any Hail work. Some resource-existence checks are
-intentionally skipped under `"batch"` (users lack read access to the read-only
-bucket). Earlier versions submit jobs with `hailctl dataproc`.
+call its init helper before any Hail work. It also provides
+`_check_resource_existence(environment, ...)`, a wrapper around the shared
+existence check that is deliberately a no-op under `"batch"` (user accounts
+can't read the read-only Batch bucket) — so in that environment the `overwrite`
+flag on the write is the only thing protecting existing outputs. Earlier
+versions submit jobs with `hailctl dataproc`.
 
 ### Pipeline script anatomy
 
@@ -145,25 +154,29 @@ same version rather than from memory:
 - Parser built in a `get_script_argument_parser()`-style function, invoked
   under `if __name__ == "__main__":`.
 
-v4 scripts manage inter-step dependencies with `PipelineStepResourceCollection`
-/ `check_resource_existence` from `gnomad_qc/resource_utils.py`, and optionally
-wrap `main` in `slack_notifications(...)` (token from `gnomad_qc/slack_creds.py`,
-channel from `--slack-channel`). v5 favors simpler `main()` bodies.
+v4 and v5 scripts gate each step with `check_resource_existence` from
+`gnomad_qc/resource_utils.py` (v5 sometimes via the `_check_resource_existence`
+wrapper above). v2–v4 scripts additionally wrap `main` in
+`slack_notifications(...)` (token from `gnomad_qc/slack_creds.py`, channel from
+`--slack-channel`), and v4 groups step inputs/outputs in
+`PipelineStepResourceCollection`. v5 drops both of those wrappers in favor of
+simpler `main()` bodies.
 
 ### Script invocation pattern
 
 Pipeline scripts expose argparse step flags (e.g. `--create-info-ht`,
-`--generate-trio-stats`, `--run-pc-relate`). A single script typically implements
-many discrete steps, and `main(args)` dispatches by flag — you run one step at a
-time, not the whole script.
+`--generate-trio-stats`, `--compute-related-samples-to-drop`). A single script
+typically implements many discrete steps, and `main(args)` dispatches by flag —
+you run one step at a time, not the whole script.
 
 When adding a step, follow the existing pattern:
 
 1. Add a CLI flag for it.
 2. Add a corresponding output resource in `resources/<area>.py`.
-3. Gate I/O with `check_resource_existence` (`gnomad_qc/resource_utils.py`) so
-   reruns fail fast on missing inputs and refuse to clobber existing outputs
-   unless `--overwrite` is passed.
+3. Gate I/O with `check_resource_existence` (`gnomad_qc/resource_utils.py`), or
+   in v5 whichever form the neighboring script uses, so reruns fail fast on
+   missing inputs and refuse to clobber existing outputs unless `--overwrite` is
+   passed.
 
 **Always support a test mode** on a new step, and run it that way — small or
 mock data, temp output paths — before anything runs genome-wide. Most scripts use
@@ -186,15 +199,27 @@ Exploratory work happens in Jupyter notebooks on a Dataproc cluster
 (`hailctl dataproc connect <cluster> nb`). Small checks can run against Hail's
 local Spark backend, streaming data from GCS via the storage connector.
 
-Cost conventions: read from the public gnomAD buckets where possible to avoid
-requester-pays and egress charges, use **us-central1-b**, prefer autoscaling
-clusters, and prefer preemptible workers for initial runs.
+Cost conventions:
+
+- Read from the public gnomAD buckets where possible to avoid requester-pays
+  and egress charges.
+- Use region **us-central1** — that's where the data lives, and reading it from
+  another region incurs egress charges. The zone within it is flexible:
+  `us-central1-a`, `-b`, `-c`, and `-f` are all fine, and switching zones is a
+  reasonable response to a capacity error.
+- **Always autoscale, and always use preemptible workers**, unless you have hit
+  a problem that requires otherwise. The usual reason to fall back to
+  non-preemptible workers is a job that keeps dying in a shuffle: preemption
+  during a large shuffle forces recomputation and can turn into a job that never
+  finishes.
 
 ## Code Style
 
 - black (`preview = true`, py39–py311), isort (`black` profile, `gnomad` is
-  third-party), autopep8. `cuKING` is excluded from all formatting/linting;
-  `v2` is excluded from pydocstyle.
+  third-party), autopep8. `cuKING` is excluded from all formatting/linting.
+  `v2` is excluded from pylint (`ignore-paths` in `.pylintrc`) and from
+  pydocstyle (the CI `--match-dir` pattern and the pre-commit `exclude`), but
+  black/isort/autopep8 still run on it.
 - All functions have type annotations. Use `Optional[...]` when the default is
   `None`; never use mutable defaults. Hail types: `hl.Table`,
   `hl.MatrixTable`, `hl.vds.VariantDataset`, `hl.expr.*Expression`.
@@ -217,10 +242,6 @@ def my_function(ht: hl.Table, max_af: Optional[float] = None) -> hl.Table:
     """
 ```
 
-- Reusable transformations should be Table/expression in, Table/expression out
-  with no file I/O — and if genuinely general, belong in gnomad_methods, not
-  here.
-
 ## Hail Notes
 
 - **Lazy evaluation drives most surprises.** Anything that pulls Hail data into
@@ -240,8 +261,8 @@ def my_function(ht: hl.Table, max_af: Optional[float] = None) -> hl.Table:
   joins benefit from more. Joining a many-partition table to a few-partition
   table is pathologically slow. After aggressively filtering a large table,
   `.naive_coalesce(N)` to avoid empty-partition skew in downstream aggregations.
-  **Never use `repartition()`** — use `naive_coalesce()` to reduce partitions, and
-  repartition on read to increase them.
+  To reduce partitions use `naive_coalesce()`; to increase them, set the count
+  at read time. Don't add `repartition()` calls (see Never Do This).
 - **Aggregations are costly.** If a step needs many, build one aggregator
   expression (a single `hl.struct` of `hl.agg.*` fields) and make one pass.
 - **Hail defaults to GRCh37.** Set the reference genome explicitly; gnomAD v3+ is
@@ -286,16 +307,24 @@ scale, rather than calling a change verified.
   the data is expensive to regenerate.
 - **Never delete data outside temp buckets**, and never delete files that are
   referenced or built by the repo.
-- **Never remove code without asking first.**
-- **Never use `repartition()`** — see the Hail notes above.
-- **Never hardcode a `gs://` path** — go through a `get_*()` resource function.
+- **Never remove code without asking first.** Deleted pipeline logic is easy to
+  miss in review and may still be needed to rerun or reproduce a release step.
+- **Never add a `repartition()` call to a large dataset** — it defaults to
+  `shuffle=True` and forces a full shuffle. Existing calls in older scripts are
+  not bugs to refactor.
+- **Never hardcode a `gs://` dataset path** — go through a resource object in
+  the version's `resources/` package. Hail scratch dirs (`tmp_dir="gs://gnomad-tmp-..."`
+  in `hl.init`) are the accepted exception.
 
 ## Repo Gotchas
 
-- `tmp_*.py` and other `tmp_*` files at the repo root are scratch/debugging
-  artifacts, not pipeline code — don't pattern-match off them or import them.
-- `cuKING/` (in versions that have it) is a vendored CUDA relatedness tool,
-  exempt from all style tooling.
+- Untracked `tmp_*.py` and other `tmp_*` files at the repo root are
+  scratch/debugging artifacts, not pipeline code — don't pattern-match off them
+  or import them.
+- `gnomad_qc/v4/sample_qc/cuKING/` is a **git submodule** (see `.gitmodules`;
+  upstream is `populationgenomics/cuKING`), not vendored code. A fresh clone has
+  an empty directory there until `git submodule update --init`; CI checks out
+  submodules recursively. It is exempt from all style tooling.
 - Machine-specific environment notes (Python paths, Hail version pairing) live
   in the gitignored `CLAUDE.local.md`.
 
