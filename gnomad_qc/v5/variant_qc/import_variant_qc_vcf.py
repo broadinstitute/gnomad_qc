@@ -127,6 +127,12 @@ def import_variant_qc_vcf(
                 }
             )
         )
+        # GATK declares AS_VQSLOD as a String; cast so the score is numeric downstream
+        # (the unsplit path does this before splitting).
+        if model_type == "vqsr":
+            split_ht = split_ht.annotate(
+                info=split_ht.info.annotate(AS_VQSLOD=hl.float(split_ht.info.AS_VQSLOD))
+            )
 
     # `ht` is already materialized at `tmp_path`; only checkpoint if it was changed
     # (the split-path scalar indexing is cheap enough to recompute).

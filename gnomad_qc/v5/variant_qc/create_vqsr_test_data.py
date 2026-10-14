@@ -30,6 +30,7 @@ from gnomad.utils.vcf import adjust_vcf_incompatible_types
 
 from gnomad_qc.v4.resources.annotations import get_info as get_v4_info
 from gnomad_qc.v5.resources.annotations import get_true_positive_vcf_path, info_vcf_path
+from gnomad_qc.v5.resources.variant_qc import VQSR_FEATURES
 
 logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
 logger = logging.getLogger("create_vqsr_test_data")
@@ -44,12 +45,6 @@ FLOAT64_FEATURES = [
     "AS_SOR",
     "AS_MQ",
 ]
-
-# The VQSR '-an' feature annotations. GATK's --use-allele-specific-annotations
-# decodes these as per-allele lists (indexed by allele), so they must be emitted
-# as arrays with Number=A. Scalars (Number=1) crash VariantRecalibrator with an
-# IndexOutOfBoundsException in VariantDataManager.decodeAnnotation.
-AS_FEATURES = ["AS_QD"] + FLOAT64_FEATURES
 
 
 def build_info_vcf(region: str, out_path: str) -> None:
@@ -68,17 +63,14 @@ def build_info_vcf(region: str, out_path: str) -> None:
         ht, [hl.parse_locus_interval(region, reference_genome="GRCh38")]
     )
 
-    # Remap the v4 'AS_info' struct onto the v5 info VCF INFO schema. The '-an'
-    # feature annotations are wrapped in a length-1 array (one value per ALT on
-    # this biallelic Table) so export_vcf + Number=A metadata emit them as
-    # per-allele lists that GATK's AS VQSR can decode.
+    # Remap the v4 'AS_info' struct onto the v5 info VCF INFO schema.
     ht = ht.select(
         info=hl.struct(
-            AS_QD=hl.array([hl.float32(ht.AS_info.AS_QD)]),
+            AS_QD=hl.float32(ht.AS_info.AS_QD),
             AS_QUALapprox=hl.int64(ht.AS_info.AS_QUALapprox),
             AS_VarDP=hl.int32(ht.AS_info.AS_VarDP),
             AS_SB_TABLE=ht.AS_info.AS_SB_TABLE,
-            **{f: hl.array([ht.AS_info[f]]) for f in FLOAT64_FEATURES},
+            **{f: ht.AS_info[f] for f in FLOAT64_FEATURES},
         )
     ).select_globals()
 
@@ -92,9 +84,13 @@ def build_info_vcf(region: str, out_path: str) -> None:
 
     ht = adjust_vcf_incompatible_types(ht, pipe_delimited_annotations=[])
 
-    # Declare the per-allele feature annotations as Number=A so GATK reads them
-    # as allele-indexed lists.
-    info_meta = {f: {"Number": "A"} for f in AS_FEATURES}
+    # Same header the production export writes: GATK's allele-specific VQSR needs the
+    # features declared Number=A, and Hail would write Number=1 for these scalars.
+    # The values are unchanged; only the header line differs.
+    info_meta = {
+        f: {"Number": "A", "Type": "Float", "Description": ""}
+        for f in VQSR_FEATURES["snv"]
+    }
 
     logger.info("Exporting info VCF to %s", out_path)
     hl.export_vcf(ht, out_path, tabix=True, metadata={"info": info_meta})

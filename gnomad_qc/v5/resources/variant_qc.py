@@ -42,6 +42,14 @@ VARIANT_QC_FEATURES = {
 }
 """Features used by the v5 variant QC models, keyed by variant type."""
 
+# VQSR fits a Gaussian mixture, which AS_pab_max was never used in (v4 convention);
+# the isolation forest keeps it. Everything else is shared.
+VQSR_FEATURES = {
+    variant_type: [f for f in features if f != "AS_pab_max"]
+    for variant_type, features in VARIANT_QC_FEATURES.items()
+}
+"""Features used by the v5 VQSR models, keyed by variant type."""
+
 
 # GATK isolation forest resource VCFs, used as labeled training/calibration sets. SNP
 # and INDEL modes use different truth resources. These stay on the Broad references

@@ -1289,14 +1289,14 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--snp-features",
         help="Features to use in the SNP VQSR model.",
-        default=VQSR_FEATURES["genomes"]["snv"],
+        default=VQSR_FEATURES["snv"],
         type=str,
         nargs="+",
     )
     parser.add_argument(
         "--indel-features",
         help="Features to use in the indel VQSR model.",
-        default=VQSR_FEATURES["genomes"]["indel"],
+        default=VQSR_FEATURES["indel"],
         type=str,
         nargs="+",
     )
