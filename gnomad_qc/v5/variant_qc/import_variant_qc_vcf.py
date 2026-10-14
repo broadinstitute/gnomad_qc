@@ -2,12 +2,21 @@
 
 import argparse
 import logging
-from typing import Optional, Tuple, Union
+from typing import List, Optional, Tuple, Union
 
 import hail as hl
 from gnomad.utils.sparse_mt import split_info_annotation
 
-from gnomad_qc.v5.resources.variant_qc import VQSR_FEATURES, get_variant_qc_result
+from gnomad_qc.v5.resources.basics import (
+    _check_resource_existence,
+    _get_batch_resource_kwargs,
+    _init_hail,
+)
+from gnomad_qc.v5.resources.variant_qc import (
+    VARIANT_QC_FEATURES,
+    _validate_model_id,
+    get_variant_qc_result,
+)
 
 logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
 logger = logging.getLogger("import_variant_qc_vcf")
@@ -15,7 +24,7 @@ logger.setLevel(logging.INFO)
 
 
 def import_variant_qc_vcf(
-    vcf_path: str,
+    vcf_path: Union[str, List[str]],
     model_id: str,
     num_partitions: int = 5000,
     import_header_path: Optional[str] = None,
@@ -23,44 +32,55 @@ def import_variant_qc_vcf(
     is_split: bool = False,
     deduplicate_check: bool = False,
 ) -> Union[hl.Table, Tuple[hl.Table, hl.Table]]:
-    r"""
-    Import variant QC result site VCF into a HT.
-
-    :param vcf_path: Path to input variant QC result site vcf. This can be specified
-        as Hadoop glob patterns.
-    :param model_id: Model ID for the variant QC results. Must start with 'rf\_',
-        'vqsr\_', or 'if\_'.
-    :param num_partitions: Number of partitions to use for the output HT.
-    :param import_header_path: Optional path to a header file to use for import.
-    :param array_elements_required: Value of array_elements_required to pass to
-        hl.import_vcf.
-    :param is_split: Whether the VCF is already split.
-    :param deduplicate_check: Check for and remove duplicate variants.
-    :return: HT containing variant QC results.
     """
-    model_type = model_id.split("_")[0]
-    if model_type not in ["rf", "vqsr", "if"]:
-        raise ValueError(
-            f"Model ID must start with 'rf_', 'vqsr_', or 'if_', but got {model_id}"
-        )
+    Import variant QC result sites VCF into a HT.
 
-    logger.info(f"Importing variant QC annotations for model: {model_id}...")
-    logger.info(f"Array elements field as {array_elements_required}")
-    mt = hl.import_vcf(
+    :param vcf_path: Path(s) to variant QC result sites VCF(s). Can be a Hadoop glob
+        pattern or a list of paths.
+    :param model_id: Model ID. Must start with ``rf_``, ``vqsr_``, or ``if_``.
+    :param num_partitions: Number of partitions for the output HT.
+    :param import_header_path: Optional header file to use for import.
+    :param array_elements_required: Value passed to hl.import_vcf.
+    :param is_split: Whether the VCF is already split.
+    :param deduplicate_check: Whether to remove duplicate variants.
+    :return: HT (or split, unsplit HTs) containing variant QC results.
+    """
+    model_type = _validate_model_id(model_id)
+
+    logger.info(
+        "Importing variant QC annotations for model %s (array_elements_required=%s)...",
+        model_id,
+        array_elements_required,
+    )
+    ht = hl.import_vcf(
         vcf_path,
         force_bgz=True,
         reference_genome="GRCh38",
         array_elements_required=array_elements_required,
         header_file=import_header_path,
-    ).repartition(num_partitions)
+    ).rows()
 
-    ht = mt.rows()
+    # Read back with `_n_partitions` to repartition off the table index (no shuffle).
+    tmp_path = hl.utils.new_temp_file("imported_vcq_result", "ht")
+    ht.write(tmp_path)
+    ht = hl.read_table(tmp_path, _n_partitions=num_partitions)
 
     if deduplicate_check:
-        original_count = ht.count()
-        ht = ht.distinct()
-        count_difference = original_count - ht.count()
-        logger.info(f"Difference after ht.distinct() as: {count_difference}")
+        dup_ht = ht.group_by(ht.locus, ht.alleles).aggregate(n=hl.agg.count())
+        dup_ht = dup_ht.filter(dup_ht.n > 1)
+        n_dup = dup_ht.count()
+        if n_dup > 0:
+            # NOTE: distinct() keeps one arbitrary row per key, so if shards disagree
+            # on INFO values the surviving row is non-deterministic.
+            logger.warning(
+                "Found %s variants with duplicate keys; keeping distinct rows. "
+                "Examples: %s",
+                n_dup,
+                [(e.locus, e.alleles) for e in dup_ht.take(5)],
+            )
+            ht = ht.distinct()
+        else:
+            logger.info("No duplicate variants found.")
 
     unsplit_count = None
     if not is_split:
@@ -68,26 +88,27 @@ def import_variant_qc_vcf(
             as_vqslod_expr = {"AS_VQSLOD": ht.info.AS_VQSLOD.map(lambda x: hl.float(x))}
         else:
             as_vqslod_expr = {}
-        ht = ht.annotate(
-            info=ht.info.annotate(
-                **as_vqslod_expr,
-                AS_QUALapprox=ht.info.AS_QUALapprox.split("\|")[1:].map(
-                    lambda x: hl.int(x)
-                ),
-                AS_VarDP=ht.info.AS_VarDP.split("\|")[1:].map(lambda x: hl.int(x)),
-                AS_SB_TABLE=ht.info.AS_SB_TABLE.split("\|").map(
-                    lambda x: hl.or_missing(
-                        x != "", x.split(",").map(lambda y: hl.int(y))
-                    )
-                ),
+        # Reformat the pipe-delimited AS fields. This branch is v4-only: v4 exports them
+        # pipe-delimited (adjust_vcf_incompatible_types default) while v5 passes
+        # pipe_delimited_annotations=[]. Guards allow for fields absent from the input.
+        reformat_expr = {}
+        if "AS_QUALapprox" in ht.info:
+            reformat_expr["AS_QUALapprox"] = ht.info.AS_QUALapprox.split("\|")[1:].map(
+                lambda x: hl.int(x)
             )
-        )
+        if "AS_VarDP" in ht.info:
+            reformat_expr["AS_VarDP"] = ht.info.AS_VarDP.split("\|")[1:].map(
+                lambda x: hl.int(x)
+            )
+        if "AS_SB_TABLE" in ht.info:
+            reformat_expr["AS_SB_TABLE"] = ht.info.AS_SB_TABLE.split("\|").map(
+                lambda x: hl.or_missing(x != "", x.split(",").map(lambda y: hl.int(y)))
+            )
+        ht = ht.annotate(info=ht.info.annotate(**as_vqslod_expr, **reformat_expr))
 
         unsplit_ht = ht.checkpoint(hl.utils.new_temp_file("unsplit_vcq_result", "ht"))
-
         unsplit_count = unsplit_ht.count()
         split_ht = hl.split_multi_hts(unsplit_ht)
-
         split_ht = split_ht.annotate(
             info=split_ht.info.annotate(
                 **split_info_annotation(split_ht.info, split_ht.a_index)
@@ -95,16 +116,30 @@ def import_variant_qc_vcf(
         )
     else:
         unsplit_ht = None
-        split_ht = ht
+        # Number=A fields import as length-1 arrays on split input; index to scalars
+        # (split_info_annotation does this via a_index on the unsplit path).
+        split_ht = ht.annotate(
+            info=ht.info.annotate(
+                **{
+                    f: ht.info[f][0]
+                    for f, t in ht.info.dtype.items()
+                    if f.startswith("AS_") and isinstance(t, hl.tarray)
+                }
+            )
+        )
 
-    split_ht = split_ht.checkpoint(hl.utils.new_temp_file("split_vcq_result", "ht"))
-
+    # `ht` is already materialized at `tmp_path`; only checkpoint if it was changed
+    # (the split-path scalar indexing is cheap enough to recompute).
+    if not is_split or deduplicate_check:
+        split_ht = split_ht.checkpoint(hl.utils.new_temp_file("split_vcq_result", "ht"))
     split_count = split_ht.count()
     if unsplit_count is None:
-        logger.info(f"Found {split_count} split variants in the VCF")
+        logger.info("Found %s split variants in the VCF.", split_count)
     else:
         logger.info(
-            f"Found {unsplit_count} unsplit and {split_count} split variants in the VCF"
+            "Found %s unsplit and %s split variants in the VCF.",
+            unsplit_count,
+            split_count,
         )
 
     if unsplit_ht is None:
@@ -114,16 +149,31 @@ def import_variant_qc_vcf(
 
 
 def main(args):
-    """Load variant QC result VCF into a Hail Table."""
-    hl.init(
-        log="/load_variant_qc_vcf.log",
-        default_reference="GRCh38",
-        tmp_dir="gs://gnomad-tmp-4day",
+    """Load a single variant QC result VCF into a Hail Table."""
+    environment = args.environment
+    _init_hail(
+        "import_variant_qc_vcf",
+        environment,
+        **_get_batch_resource_kwargs(args),
     )
 
-    logger.info(f"passed array elements required as: {args.array_elements_required}")
+    # An already-split input yields only the split HT; otherwise split and unsplit.
+    splits = (True,) if args.is_split else (True, False)
+    resources = [
+        get_variant_qc_result(
+            args.model_id, test=args.test, split=split, environment=environment
+        )
+        for split in splits
+    ]
+    # Check up front so a rerun fails before the import instead of after it, and
+    # never after the split HT has already been written.
+    _check_resource_existence(
+        environment=environment,
+        output_step_resources={"variant_qc_result": resources},
+        overwrite=args.overwrite,
+    )
 
-    result = import_variant_qc_vcf(
+    hts = import_variant_qc_vcf(
         args.vcf_path,
         args.model_id,
         args.n_partitions,
@@ -132,26 +182,16 @@ def main(args):
         args.is_split,
         args.deduplication_check,
     )
+    if not isinstance(hts, tuple):
+        hts = (hts,)
 
-    # Handle both single Table (is_split=True) and tuple (is_split=False) returns.
-    if isinstance(result, tuple):
-        split_ht, unsplit_ht = result
-        hts_and_splits = [(split_ht, True), (unsplit_ht, False)]
-    else:
-        hts_and_splits = [(result, True)]
-
-    for ht, split in hts_and_splits:
+    for ht, res in zip(hts, resources):
         ht = ht.annotate_globals(
-            transmitted_singletons=args.transmitted_singletons,
-            sibling_singletons=args.sibling_singletons,
-            adj=args.adj,
-            indel_features=args.indel_features,
+            model_id=args.model_id,
             snp_features=args.snp_features,
+            indel_features=args.indel_features,
         )
-        ht.checkpoint(
-            get_variant_qc_result(args.model_id, split=split).path,
-            overwrite=args.overwrite,
-        )
+        ht.write(res.path, overwrite=args.overwrite)
 
 
 def get_script_argument_parser() -> argparse.ArgumentParser:
@@ -164,48 +204,64 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         action="store_true",
     )
     parser.add_argument(
-        "--vcf-path",
-        help="Path to variant QC result VCF. Can be specified as Hadoop glob patterns.",
-        required=True,
+        "--test", help="Whether to use a tmp path for output.", action="store_true"
     )
     parser.add_argument(
-        "--model-id",
-        help="Model ID for the variant QC result HT.",
+        "--environment",
+        help="Compute environment.",
+        default="batch",
         type=str,
-        required=True,
+        choices=["rwb", "batch", "dataproc"],
     )
     parser.add_argument(
-        "--transmitted-singletons",
-        help="Whether transmitted singletons were used in training the model.",
-        action="store_true",
+        "--app-name",
+        help="Job name for the batch/QoB backend.",
+        default=None,
+        type=str,
     )
     parser.add_argument(
-        "--sibling-singletons",
-        help="Whether sibling singletons were used in training the model.",
-        action="store_true",
-    )
-    parser.add_argument(
-        "--adj",
-        help="Whether adj filtered singletons were used in training the model.",
-        action="store_true",
-    )
-    parser.add_argument(
-        "--n-partitions",
-        help="Number of desired partitions for output Table.",
-        default=5000,
+        "--driver-cores",
+        help="Number of driver cores (Batch only).",
+        default=None,
         type=int,
     )
     parser.add_argument(
-        "--header-path",
-        help=(
-            "Optional path to a header file to use for importing the variant QC result"
-            " VCF."
-        ),
+        "--driver-memory",
+        help="Driver memory (Batch only).",
+        default=None,
+        type=str,
     )
+    parser.add_argument(
+        "--worker-cores",
+        help="Number of worker cores (Batch only).",
+        default=None,
+        type=int,
+    )
+    parser.add_argument(
+        "--worker-memory",
+        help="Worker memory (Batch only).",
+        default=None,
+        type=str,
+    )
+    parser.add_argument(
+        "--vcf-path",
+        help="Path to variant QC result VCF. Can be Hadoop glob patterns.",
+        required=True,
+    )
+    parser.add_argument(
+        "--model-id", help="Model ID for the result HT.", type=str, required=True
+    )
+    parser.add_argument(
+        "--n-partitions",
+        help="Number of partitions for the output Table.",
+        default=5000,
+        type=int,
+    )
+    parser.add_argument("--header-path", help="Optional header file to use for import.")
     parser.add_argument(
         "--array-elements-required",
         action="store_true",
-        help="Pass if you would like array elements required in import_vcf to be true.",
+        help="Set array_elements_required=True in import_vcf.",
     )
     parser.add_argument(
         "--is-split", action="store_true", help="Whether the VCF is already split."
@@ -213,30 +269,25 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--deduplication-check",
         action="store_true",
-        help=(
-            "Remove duplicate variants. Useful for v4 MVP when reading from potentially"
-            " overlapping shards."
-        ),
+        help="Remove duplicate variants (for overlapping shards).",
     )
     parser.add_argument(
         "--snp-features",
-        help="Features used in the SNP VQSR model.",
-        default=VQSR_FEATURES["genomes"]["snv"],
+        help="SNP model features (stored as a global).",
+        default=VARIANT_QC_FEATURES["snv"],
         type=str,
         nargs="+",
     )
     parser.add_argument(
         "--indel-features",
-        help="Features used in the indel VQSR model.",
-        default=VQSR_FEATURES["genomes"]["indel"],
+        help="Indel model features (stored as a global).",
+        default=VARIANT_QC_FEATURES["indel"],
         type=str,
         nargs="+",
     )
-
     return parser
 
 
 if __name__ == "__main__":
     parser = get_script_argument_parser()
-    args = parser.parse_args()
-    main(args)
+    main(parser.parse_args())

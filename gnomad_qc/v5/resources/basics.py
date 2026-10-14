@@ -412,6 +412,7 @@ def get_aou_vds(
     filter_samples: Optional[Union[List[str], hl.Table]] = None,
     test: bool = False,
     filter_partitions: Optional[List[int]] = None,
+    read_intervals: Optional[List[hl.utils.Interval]] = None,
     chrom: Optional[Union[str, List[str], Set[str]]] = None,
     autosomes_only: bool = False,
     sex_chr_only: bool = False,
@@ -426,6 +427,7 @@ def get_aou_vds(
     add_project_prefix: bool = False,
     environment: str = "batch",
     log_sample_counts: bool = True,
+    sample_collisions: Optional[Set[str]] = None,
 ) -> hl.vds.VariantDataset:
     """
     Load the AOU VDS.
@@ -442,6 +444,7 @@ def get_aou_vds(
         `add_project_prefix` must be set to True to filter properly. Default is None.
     :param test: Whether to load the test VDS instead of the full VDS. The test VDS includes 10 samples selected from the full dataset for testing purposes. Default is False.
     :param filter_partitions: Optional argument to filter the VDS to a list of specific partitions.
+    :param read_intervals: Optional list of locus intervals passed to ``hl.vds.read_vds`` at read time; one VDS partition per interval, no shuffle. Unlike ``filter_intervals``, reference blocks are kept by start locus, so a block that starts before an interval and extends into it is dropped: widen each contig's leading interval by ``ref_block_max_length - 1`` (see ``_expand_leading_edges`` in compute_coverage.py). Mutually exclusive with ``filter_partitions``.
     :param chrom: Optional argument to filter the VDS to a specific chromosome(s).
     :param autosomes_only: Whether to include only autosomes. Default is False.
     :param sex_chr_only: Whether to include only sex chromosomes. Default is False.
@@ -457,11 +460,26 @@ def get_aou_vds(
     :param environment: Environment to use. Default is "batch". Must be one of "rwb" or "batch".
     :param log_sample_counts: Whether to log sample counts before/after filtering out samples to exclude.
         When False, skips the ``count_cols`` calls used for logging. Default is True.
+    :param sample_collisions: Optional pre-collected set of sample IDs that collide with
+        gnomAD samples. When None, the set is collected from the sample-collisions
+        Table here (a full scan of it), so callers that run this per chunk should
+        collect once and pass it in. Default is None.
     :return: AoU v8 VDS.
     """
     _validate_environment(environment, _SAMPLE_DATA_ENVIRONMENTS)
+    if filter_partitions is not None and read_intervals is not None:
+        raise ValueError(
+            "`filter_partitions` and `read_intervals` are mutually exclusive."
+        )
     aou_v8_resource = aou_test_dataset if test else aou_genotypes
-    vds = aou_v8_resource.vds()
+    # NOTE: explicit None check -- an empty interval list must restrict the read
+    # to zero rows, not silently fall back to an unrestricted full-VDS read. The
+    # zero-row read is intentional, not an error: the info HT pipeline
+    # passes read_intervals=[] when a
+    # chunk/scout stratum derives no target intervals, so it can still write an
+    # empty provenance-stamped stratum.
+    read_args = {"intervals": read_intervals} if read_intervals is not None else None
+    vds = aou_v8_resource.vds(read_args=read_args)
 
     if isinstance(chrom, str):
         chrom = [chrom]
@@ -547,14 +565,38 @@ def get_aou_vds(
 
     if release_only or high_quality_only or annotate_meta or add_project_prefix:
         # Import here to avoid circular imports.
-        from gnomad_qc.v5.resources.meta import get_sample_id_collisions, meta
+        from gnomad_qc.v5.resources.meta import (
+            get_sample_id_collisions,
+            load_aou_sample_artifact_json,
+            meta,
+        )
 
         meta_ht = meta(data_type="genomes", environment=environment).ht()
 
         logger.warning(
             "Adding 'aou_' prefix to samples that had ID collisions with gnomAD samples..."
         )
-        sample_collisions = get_sample_id_collisions(environment=environment).ht()
+        if sample_collisions is None:
+            # Prefer the permanent precomputed JSON (write_aou_vds_sample_jsons)
+            # over rescanning the sample-collisions Table.
+            collisions = load_aou_sample_artifact_json(
+                "sample_id_collisions.json", environment=environment
+            )
+            if collisions is not None:
+                logger.info(
+                    "Using precomputed sample_id_collisions.json (%d sample IDs).",
+                    len(collisions),
+                )
+                sample_collisions = set(collisions)
+        if sample_collisions is None:
+            sample_collisions_ht = get_sample_id_collisions(
+                environment=environment
+            ).ht()
+            # Collect once: passing the Table would rescan it inside each of the two
+            # calls below.
+            sample_collisions = sample_collisions_ht.aggregate(
+                hl.agg.collect_as_set(sample_collisions_ht.s)
+            )
         vmt = add_project_prefix_to_sample_collisions(
             t=vmt, sample_collisions=sample_collisions, project="aou"
         )
@@ -588,15 +630,36 @@ def get_aou_vds(
 
     vds = hl.vds.VariantDataset(rmt, vmt)
 
+    # For the release and high-quality filters, prefer the permanent precomputed
+    # JSONs (write_aou_vds_sample_jsons) over the meta-table scans. The JSON IDs
+    # are post-prefix, matching the VDS sample IDs at this point.
     if release_only:
         logger.info("Filtering VDS to release samples only...")
-        filter_expr = meta_ht.release
-        vds = hl.vds.filter_samples(vds, meta_ht.filter(filter_expr))
+        release_samples = load_aou_sample_artifact_json(
+            "release_samples.json", environment=environment
+        )
+        if release_samples is not None:
+            logger.info(
+                "Using precomputed release_samples.json (%d sample IDs).",
+                len(release_samples),
+            )
+            vds = hl.vds.filter_samples(vds, release_samples)
+        else:
+            vds = hl.vds.filter_samples(vds, meta_ht.filter(meta_ht.release))
 
     if high_quality_only:
         logger.info("Filtering VDS to high quality samples only...")
-        filter_expr = meta_ht.high_quality
-        vds = hl.vds.filter_samples(vds, meta_ht.filter(filter_expr))
+        hq_samples = load_aou_sample_artifact_json(
+            "high_quality_samples.json", environment=environment
+        )
+        if hq_samples is not None:
+            logger.info(
+                "Using precomputed high_quality_samples.json (%d sample IDs).",
+                len(hq_samples),
+            )
+            vds = hl.vds.filter_samples(vds, hq_samples)
+        else:
+            vds = hl.vds.filter_samples(vds, meta_ht.filter(meta_ht.high_quality))
 
     if filter_samples:
         logger.info(
@@ -624,6 +687,7 @@ def get_gnomad_v5_genomes_vds(
     annotate_meta: bool = False,
     test: bool = False,
     filter_partitions: Optional[List[int]] = None,
+    read_intervals: Optional[List[hl.utils.Interval]] = None,
     chrom: Optional[Union[str, List[str], Set[str]]] = None,
     autosomes_only: bool = False,
     sex_chr_only: bool = False,
@@ -649,6 +713,14 @@ def get_gnomad_v5_genomes_vds(
     :param test: Whether to use the test VDS instead of the full v4 genomes VDS.
     :param filter_partitions: Optional argument to filter the VDS to specific partitions
         in the provided list.
+    :param read_intervals: Optional list of locus intervals passed through to
+        ``get_gnomad_v3_vds`` / ``hl.vds.read_vds`` at read time. Creates one VDS
+        partition per interval so the VDS can be co-partitioned with another table
+        read on the same intervals (a shuffle-free join). Unlike ``filter_intervals``,
+        reference blocks are kept by start locus, so a block that starts before an
+        interval and extends into it is dropped: widen each contig's leading interval
+        by ``ref_block_max_length - 1`` (see ``_expand_leading_edges`` in
+        compute_coverage.py). Mutually exclusive with ``filter_partitions``.
     :param chrom: Optional argument to filter the VDS to a specific chromosome(s).
     :param autosomes_only: Whether to filter the VDS to autosomes only. Default is
         False.
@@ -681,6 +753,7 @@ def get_gnomad_v5_genomes_vds(
         samples_meta=False,
         test=test,
         filter_partitions=filter_partitions,
+        read_intervals=read_intervals,
         chrom=chrom,
         autosomes_only=autosomes_only,
         sex_chr_only=sex_chr_only,
@@ -890,7 +963,7 @@ def get_samples_to_exclude(
 
 def add_project_prefix_to_sample_collisions(
     t: Union[hl.Table, hl.MatrixTable],
-    sample_collisions: hl.Table,
+    sample_collisions: Union[hl.Table, Set[str]],
     project: Optional[str] = None,
     sample_id_field: str = "s",
 ) -> hl.Table:
@@ -898,7 +971,10 @@ def add_project_prefix_to_sample_collisions(
     Add project prefix to sample IDs that exist in multiple projects.
 
     :param t: Table/MatrixTable to add project prefix to sample IDs.
-    :param sample_collisions: Table of sample IDs that exist in multiple projects.
+    :param sample_collisions: Table of sample IDs that exist in multiple projects, or
+        an already-collected set of those IDs. Collecting from a Table launches a full
+        scan of it, so callers applying the same collisions to several tables should
+        collect once and pass the set.
     :param project: Optional project name to prepend to sample collisions. If not set, will use 'ht.project' annotation. Default is None.
     :param sample_id_field: Field name for sample IDs in the table.
     :return: Table with project prefix added to sample IDs.
@@ -906,7 +982,12 @@ def add_project_prefix_to_sample_collisions(
     logger.info(
         "Adding project prefix to sample IDs that exists in multiple projects..."
     )
-    collisions = sample_collisions.aggregate(hl.agg.collect_as_set(sample_collisions.s))
+    if isinstance(sample_collisions, hl.Table):
+        collisions = sample_collisions.aggregate(
+            hl.agg.collect_as_set(sample_collisions.s)
+        )
+    else:
+        collisions = sample_collisions
 
     if project:
         prefix_expr = hl.literal(project)
