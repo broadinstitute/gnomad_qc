@@ -14,6 +14,7 @@ from gnomad_qc.v5.resources.variant_qc import VQSR_FEATURES, get_variant_qc_resu
 from gnomad_qc.v5.variant_qc.import_variant_qc_vcf import (
     import_variant_qc_vcf as import_vqsr,
 )
+from gnomad_qc.v5.variant_qc.isolation_forest import run_batch
 
 logger = logging.getLogger(__file__)
 logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
@@ -1118,8 +1119,8 @@ def main(args):
         snp_max_gaussians=args.snp_max_gaussians,
         indel_max_gaussians=args.indel_max_gaussians,
     )
-    # Run all jobs, as loaded into the Batch b.
-    b.run()
+    # Run all jobs, as loaded into the Batch b. Batch.run does not raise on failure.
+    run_batch(b, "VQSR")
 
     logger.info("VQSR Batch jobs executed successfully")
 

@@ -63,14 +63,18 @@ def build_info_vcf(region: str, out_path: str) -> None:
         ht, [hl.parse_locus_interval(region, reference_genome="GRCh38")]
     )
 
-    # Remap the v4 'AS_info' struct onto the v5 info VCF INFO schema.
+    # Remap the v4 'AS_info' struct onto the v5 info VCF INFO schema. The features
+    # are wrapped in a length-1 array, as the production export does, so a missing
+    # value is written as '.' instead of the field being omitted. GATK 4.2.6.1's
+    # allele-specific VariantRecalibrator parses '.' as NaN but crashes with an
+    # IndexOutOfBoundsException when the field is absent.
     ht = ht.select(
         info=hl.struct(
-            AS_QD=hl.float32(ht.AS_info.AS_QD),
+            AS_QD=hl.array([hl.float32(ht.AS_info.AS_QD)]),
             AS_QUALapprox=hl.int64(ht.AS_info.AS_QUALapprox),
             AS_VarDP=hl.int32(ht.AS_info.AS_VarDP),
             AS_SB_TABLE=ht.AS_info.AS_SB_TABLE,
-            **{f: ht.AS_info[f] for f in FLOAT64_FEATURES},
+            **{f: hl.array([ht.AS_info[f]]) for f in FLOAT64_FEATURES},
         )
     ).select_globals()
 
@@ -85,8 +89,7 @@ def build_info_vcf(region: str, out_path: str) -> None:
     ht = adjust_vcf_incompatible_types(ht, pipe_delimited_annotations=[])
 
     # Same header the production export writes: GATK's allele-specific VQSR needs the
-    # features declared Number=A, and Hail would write Number=1 for these scalars.
-    # The values are unchanged; only the header line differs.
+    # features declared Number=A, and Hail would write Number=. for these arrays.
     info_meta = {
         f: {"Number": "A", "Type": "Float", "Description": ""}
         for f in VQSR_FEATURES["snv"]
