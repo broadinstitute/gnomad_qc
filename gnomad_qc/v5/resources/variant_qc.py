@@ -1,5 +1,6 @@
 """Script containing variant QC related resources for v5."""
 
+import hailtop.batch as hb
 from gnomad.resources.resource_utils import (
     TableResource,
     VariantDatasetResource,
@@ -216,3 +217,20 @@ def get_iforest_run_prefix(
         version, test=test, data_type=data_type, environment=environment
     )
     return f"{root}/if/models/{model_id}"
+
+
+def run_batch(b: hb.Batch, description: str) -> None:
+    """
+    Run a Batch to completion and raise if it did not succeed.
+
+    ``Batch.run`` waits but only prints the final state, so a failed batch would
+    otherwise fall through to the next step.
+
+    :param b: Batch to run.
+    :param description: Batch description used in the error message.
+    :return: None.
+    """
+    batch = b.run()
+    state = None if batch is None else batch.status()["state"]
+    if state != "success":
+        raise RuntimeError(f"{description} batch did not succeed (state: {state}).")

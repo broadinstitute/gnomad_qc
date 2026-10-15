@@ -10,11 +10,14 @@ import hailtop.batch as hb
 from hailtop.batch.job import Job
 
 from gnomad_qc.v5.resources.annotations import get_true_positive_vcf_path, info_vcf_path
-from gnomad_qc.v5.resources.variant_qc import VQSR_FEATURES, get_variant_qc_result
+from gnomad_qc.v5.resources.variant_qc import (
+    VQSR_FEATURES,
+    get_variant_qc_result,
+    run_batch,
+)
 from gnomad_qc.v5.variant_qc.import_variant_qc_vcf import (
     import_variant_qc_vcf as import_vqsr,
 )
-from gnomad_qc.v5.variant_qc.isolation_forest import run_batch
 
 logger = logging.getLogger(__file__)
 logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")

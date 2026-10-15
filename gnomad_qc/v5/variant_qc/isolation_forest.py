@@ -33,6 +33,7 @@ from gnomad_qc.v5.resources.variant_qc import (
     _validate_model_id,
     get_iforest_run_prefix,
     get_variant_qc_result,
+    run_batch,
 )
 from gnomad_qc.v5.variant_qc.import_variant_qc_vcf import import_variant_qc_vcf
 
@@ -568,23 +569,6 @@ def export_v4_test_sites_vcf(contigs: List[str], out_path: str) -> None:
         }
     }
     hl.export_vcf(ht, out_path, tabix=True, metadata=metadata)
-
-
-def run_batch(b: hb.Batch, description: str) -> None:
-    """
-    Run a Batch to completion and raise if it did not succeed.
-
-    ``Batch.run`` waits but only prints the final state, so a failed batch would
-    otherwise fall through to the next step.
-
-    :param b: Batch to run.
-    :param description: Batch description used in the error message.
-    :return: None.
-    """
-    batch = b.run()
-    state = None if batch is None else batch.status()["state"]
-    if state != "success":
-        raise RuntimeError(f"{description} batch did not succeed (state: {state}).")
 
 
 def merge_iforest_result(
