@@ -10,6 +10,7 @@ from typing import Dict, List, Tuple
 import hail as hl
 from gnomad.resources.grch38.gnomad import GROUPS
 from gnomad.resources.grch38.reference_data import get_truth_ht
+from gnomad.sample_qc.relatedness import SIBLINGS
 from gnomad.utils.annotations import (
     annotate_allele_info,
     get_lowqual_expr,
@@ -944,19 +945,80 @@ def validate_trio_stats(
 
 
 def run_generate_sib_stats(
-    mt: hl.MatrixTable,
+    vds: hl.vds.VariantDataset,
     relatedness_ht: hl.Table,
+    info_ht_path: str,
 ) -> hl.Table:
     """
-    Generate sibling stats from a VariantDataset and relatedness info.
+    Generate sibling stats from the AoU VDS and relatedness info.
 
-    :param mt: Input MatrixTable.
+    Sibling stats only require autosomal, bi-allelic sites for the subset of samples
+    that form sibling pairs. To avoid doing per-entry work on the full sample set,
+    this function:
+
+        - Derives the sibling sample set from `relatedness_ht` first (no MT scan).
+        - Filters the VDS to those samples and autosomes, keeping only
+          the entries needed for the split + adj (LA/LGT/LAD/GQ).
+        - Restricts to `info_ht` sites that are bi-allelic (two nonsplit alleles, as
+          in main's split-then-bi-allelic filter) and raw/adj doubletons
+          (AC_high_quality_raw == 2 or AC_high_quality == 2), since only sibling
+          singletons are used downstream: a locus-keyed prefilter before
+          `sparse_split_multi`, then an exact-key semi-join after it.
+
+    :param vds: AoU VariantDataset. Load with `remove_dead_alleles=False`: the
+        dead-allele recode is a full-width per-row LA aggregation that sibling stats
+        don't need (bi-allelic doubletons only).
     :param relatedness_ht: Table containing relatedness info.
+    :param info_ht_path: Path to the info HT (with AC_info), used to restrict to AC == 2
+        loci.
     :return: Table containing sibling stats.
     """
-    mt = annotate_adj_no_dp(mt)
+    # Sibling sample set, kept as a Hail Table to avoid localizing the IDs.
+    sib_ht = relatedness_ht.filter(relatedness_ht.relationship == SIBLINGS)
+    sib_samples_ht = (
+        sib_ht.key_by(s=sib_ht.i.s)
+        .select()
+        .union(sib_ht.key_by(s=sib_ht.j.s).select())
+        .distinct()
+    )
+
+    # NOTE: Sibling IDs are in the same 'aou_'-prefixed ID space as the loaded VDS
+    # (one high-quality sibling is a collision sample; checked 2026-10-14), so they
+    # match directly.
+    vds = hl.vds.filter_chromosomes(vds, keep_autosomes=True)
+    vds = hl.vds.filter_samples(vds, sib_samples_ht)
+    mt = vds.variant_data
+    # LA is needed by sparse_split_multi to downcode LGT/LAD.
+    mt = mt.select_entries("LA", "LGT", "LAD", "GQ")
+    # Target sites from the info HT: bi-allelic after main's cohort-wide dead-allele
+    # recode (two nonsplit alleles, i.e. main's ~was_split; n_alt_alleles would miss
+    # star alleles) and raw/adj doubletons. Adj doubletons are needed because
+    # sibling_singleton_adj downstream requires AC_high_quality == 2, which can hold
+    # where AC_high_quality_raw > 2.
+    # Read the info HT natively: semi_join_rows is an index join that reads the
+    # overlapping info partitions inside the main stage; re-reading with
+    # _n_partitions adds a calculate_new_partitions stage of one job per source
+    # partition (62k jobs on the chr20 test HT) for no gain.
+    info_ht = hl.read_table(info_ht_path)
+    ac_info = info_ht.AC_info
+    ac2 = info_ht.filter(
+        ((ac_info.AC_high_quality_raw == 2) | (ac_info.AC_high_quality == 2))
+        & (hl.len(info_ht.allele_info.nonsplit_alleles) == 2)
+    ).select()
+    # Locus-keyed prefilter before the split, instead of a native len(alleles) == 2
+    # filter: with remove_dead_alleles=False a site whose extra allele is carried only
+    # by hard-filtered samples is still multi-allelic here but bi-allelic in main and
+    # the info HT (692 such doubleton rows on chr20). Splitting only the target loci
+    # keeps the explosion small; the exact-key semi-join below drops the dead allele.
+    ac2_loci = ac2.key_by("locus").select().distinct()
+    mt = mt.filter_rows(hl.is_defined(ac2_loci[mt.locus]))
     mt = hl.experimental.sparse_split_multi(mt)
-    return generate_sib_stats(mt, relatedness_ht)
+    mt = mt.semi_join_rows(ac2)
+    # Add adj before generate_sib_stats so it skips its own (DP-requiring) annotate_adj.
+    mt = annotate_adj_no_dp(mt)
+    # bi_allelic_only=False: its ~was_split filter would re-drop the natively
+    # multi-allelic rows the info HT prefilter above deliberately kept.
+    return generate_sib_stats(mt, relatedness_ht, bi_allelic_only=False)
 
 
 def create_variant_qc_annotation_ht(
@@ -1829,11 +1891,14 @@ def _validate_args(args) -> None:
         )
 
     if args.generate_sibling_stats and (
-        args.chrom is not None or args.explode_partitions or args.scout_alleles
+        args.explode_partitions
+        or args.scout_alleles
+        or (args.chrom is not None and not args.sib_stats_ht_path_override)
     ):
         raise ValueError(
-            "--generate-sibling-stats cannot be combined with --chrom/"
-            "--explode-partitions/--scout-alleles: those flags restrict the "
+            "--generate-sibling-stats cannot be combined with "
+            "--explode-partitions/--scout-alleles, or with --chrom unless "
+            "--sib-stats-ht-path-override is set: those flags restrict the "
             "shared VDS read, so a partial-genome sib-stats table would be "
             "written to the canonical sib-stats path and downstream joins "
             "would silently mark out-of-region loci as non-sibling-singletons."
@@ -2097,7 +2162,10 @@ def main(args):
         or get_info_ht(test=test, environment=environment).path
     )
     trio_stats_ht_path = get_trio_stats(test=test, environment=environment).path
-    sib_stats_ht_path = get_sib_stats(test=test, environment=environment).path
+    sib_stats_ht_path = (
+        args.sib_stats_ht_path_override
+        or get_sib_stats(test=test, environment=environment).path
+    )
     variant_qc_annotation_ht_path = get_variant_qc_annotations(
         test=test, environment=environment
     ).path
@@ -2148,8 +2216,12 @@ def main(args):
     # sibling-stats steps; the union, sites-VCF, and final-join steps never
     # read the VDS.
     need_vds = args.generate_ac_info_ht or args.generate_sibling_stats
+    sib_only = args.generate_sibling_stats and not args.generate_ac_info_ht
+    # Sib-only runs restrict --chrom via filter_chromosomes on the workers:
+    # compute_contig_intervals reads VDS metadata client-side, which fails
+    # outside the AoU perimeter, and sib stats need no partition subdivision.
     sub_intervals, scout_byte_weight_info = _derive_read_intervals(
-        args, need_intervals=need_vds
+        args, need_intervals=need_vds and not sib_only
     )
     vds = None
     if need_vds:
@@ -2162,7 +2234,12 @@ def main(args):
                 else range(test_n_partitions) if test_n_partitions else None
             ),
             read_intervals=sub_intervals,
-            annotate_meta=True,
+            chrom=args.chrom if sib_only else None,
+            # Only the AC-info aggregation reads mt.meta; sibling stats don't.
+            annotate_meta=args.generate_ac_info_ht,
+            # Dead-allele recode on hard-filter removal is a full-width per-row LA
+            # aggregation; sibling stats don't need it (bi-allelic doubletons only).
+            remove_dead_alleles=not sib_only,
             # NOTE: Using args.test here so that sibling stats test can be calculated from
             # a few partitions of the full (not test) VDS).
             test=args.test,
@@ -2454,15 +2531,28 @@ def main(args):
 
         if args.generate_sibling_stats:
             logger.info("Generating sibling stats...")
+            # args.test (not combined test): a --test-n-partitions run reads partitions
+            # of the full VDS, so it needs the full (non-test) info HT for AC and for
+            # matching split keys.
+            sib_info_ht_path = (
+                args.info_ht_path_override
+                or get_info_ht(test=args.test, environment=environment).path
+            )
             _check_resource_existence(
                 environment=environment,
+                input_step_resources={"info_ht": [sib_info_ht_path]},
                 output_step_resources={"sib_stats_ht": [sib_stats_ht_path]},
                 overwrite=overwrite,
             )
-            # Note: Checked sibling IDs; none of them have sample ID collisions.
             ht = run_generate_sib_stats(
-                vds.variant_data, relatedness(environment=environment).ht()
+                vds, relatedness(environment=environment).ht(), sib_info_ht_path
             )
+            # Checkpoint to materialize the aggregation at full (~per-VDS-partition)
+            # parallelism before coalescing the output. A lazy naive_coalesce on the
+            # write would otherwise run the whole upstream decode/aggregation at the
+            # coalesced partition count.
+            ht = ht.checkpoint(hl.utils.new_temp_file("sib_stats", "ht"))
+            ht = ht.naive_coalesce(args.sib_stats_n_partitions)
             ht.write(sib_stats_ht_path, overwrite=overwrite)
 
         if args.create_variant_qc_annotation_ht:
@@ -2634,6 +2724,15 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         action="store_true",
     )
     parser.add_argument(
+        "--sib-stats-n-partitions",
+        help=(
+            "Number of partitions to coalesce the final sibling stats HT to (applied"
+            " after a checkpoint so it doesn't throttle the aggregation)."
+        ),
+        type=int,
+        default=5000,
+    )
+    parser.add_argument(
         "--vcf-ht-checkpoint-path-override",
         help=(
             "Optional override path for the reformatted sites VCF HT. By "
@@ -2659,6 +2758,16 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         help=(
             "Optional override path for the info HT output. "
             "If set, this path is used instead of the default resource path."
+        ),
+        type=str,
+        default=None,
+    )
+    parser.add_argument(
+        "--sib-stats-ht-path-override",
+        help=(
+            "Optional override path for the sibling stats HT output. Required "
+            "to combine --generate-sibling-stats with --chrom, so a "
+            "single-contig table never lands on the canonical path."
         ),
         type=str,
         default=None,
