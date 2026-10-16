@@ -290,7 +290,7 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         "--snp-features",
         help=(
             "SNP model features (stored as a global). Defaults to the --model-id"
-            " type's list: VQSR_FEATURES for 'vqsr_', else VARIANT_QC_FEATURES."
+            " type's list: VQSR_FEATURES for vqsr models, else VARIANT_QC_FEATURES."
         ),
         default=None,
         type=str,
@@ -300,7 +300,7 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         "--indel-features",
         help=(
             "Indel model features (stored as a global). Defaults to the --model-id"
-            " type's list: VQSR_FEATURES for 'vqsr_', else VARIANT_QC_FEATURES."
+            " type's list: VQSR_FEATURES for vqsr models, else VARIANT_QC_FEATURES."
         ),
         default=None,
         type=str,
