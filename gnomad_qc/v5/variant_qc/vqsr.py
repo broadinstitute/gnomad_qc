@@ -537,6 +537,7 @@ def gather_tranches(
     mode: str,
     disk_size: int,
     gcp_billing_project: str,
+    gatk_image: str,
 ) -> Job:
     """
     Third step of VQSR for SNPs and INDELs: run GatherTranches to gather scattered per-interval tranches outputs.
@@ -556,13 +557,11 @@ def gather_tranches(
     :param mode: Recalibration mode to employ, either SNP or INDEL.
     :param disk_size: Disk size to be used for the job.
     :param gcp_billing_project: GCP billing project for requester-pays buckets.
+    :param gatk_image: GATK docker image.
     :return: Job object with one output j.out_tranches.
     """
     j = b.new_job(f"VQSR: {mode}GatherTranches")
-    # TODO: Should this switch to a GATK image?
-    j.image(
-        "us.gcr.io/broad-dsde-methods/gatk-for-ccdg@sha256:9e9f105ecf3534fbda91a4f2c2816ec3edf775882917813337a8d6e18092c959"
-    )
+    j.image(gatk_image)
     j.memory("8G")
     j.cpu(2)
     j.storage(f"{disk_size}G")
@@ -594,6 +593,7 @@ def apply_recalibration(
     disk_size: int,
     use_as_annotations: bool,
     gcp_billing_project: str,
+    gatk_image: str,
     scatter: Optional[int] = None,
     interval: Optional[hb.ResourceGroup] = None,
     out_bucket: Optional[str] = None,
@@ -628,6 +628,8 @@ def apply_recalibration(
     :param disk_size: Disk size to be used for the job.
     :param use_as_annotations: If set, Allele-Specific variant recalibrator will be used.
     :param gcp_billing_project: GCP billing project for requester-pays buckets.
+    :param gatk_image: Docker image with GATK, bcftools, and tabix; bcftools trims each
+        scattered VCF to its interval.
     :param scatter: Scatter index to be used in output VCF filename if running in
         scattered mode.
     :param interval: Genomic interval to apply the model to.
@@ -645,10 +647,7 @@ def apply_recalibration(
         outpath = out_bucket
 
     j = b.new_job("VQSR: ApplyRecalibration")
-    # Custom image from Lindo Nkambule with GATK and BCFtools installed
-    # TODO: Only in docker and used GATK v4.2.6.1 and bcftools 1.10.2  -- need
-    # to make our own image for this since lindo's is only in docker.
-    j.image("docker.io/lindonkambule/vqsr_gatk_bcftools_img:latest")
+    j.image(gatk_image)
     j.memory("8G")
     j.storage(f"{disk_size}G")
     j.declare_resource_group(
@@ -800,7 +799,8 @@ def make_vqsr_jobs(
         is_large_callset is True; pass None otherwise.
     :param use_as_annotations: Whether to use allele-specific annotation for VQSR.
     :param gcp_billing_project: GCP billing project for requester-pays buckets.
-    :param gatk_image: GATK docker image.
+    :param gatk_image: Docker image for every GATK job. Must also have bcftools and
+        tabix, which ApplyRecalibration uses to trim scattered VCFs.
     :param snp_features: List of features to be used in the SNP VQSR model.
     :param indel_features: List of features to be used in the INDEL VQSR model.
     :param snp_hard_filter: SNP hard filter level.
@@ -877,6 +877,7 @@ def make_vqsr_jobs(
             mode="SNP",
             disk_size=small_disk,
             gcp_billing_project=gcp_billing_project,
+            gatk_image=gatk_image,
         ).out_tranches
 
         # 2. Run INDEL recalibrator in a scattered mode.
@@ -930,6 +931,7 @@ def make_vqsr_jobs(
             mode="INDEL",
             disk_size=small_disk,
             gcp_billing_project=gcp_billing_project,
+            gatk_image=gatk_image,
         ).out_tranches
 
         # 3. Apply recalibration.
@@ -949,6 +951,7 @@ def make_vqsr_jobs(
                 disk_size=small_disk,
                 use_as_annotations=use_as_annotations,
                 gcp_billing_project=gcp_billing_project,
+                gatk_image=gatk_image,
                 scatter=idx,
                 interval=intervals[f"interval_{idx}"],
                 out_bucket=out_bucket,
@@ -1016,6 +1019,7 @@ def make_vqsr_jobs(
             disk_size=huge_disk,
             use_as_annotations=use_as_annotations,
             gcp_billing_project=gcp_billing_project,
+            gatk_image=gatk_image,
             out_bucket=out_bucket,
         )
 
@@ -1205,8 +1209,15 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--gatk-image",
-        default="us.gcr.io/broad-gatk/gatk:4.2.6.1",
-        help="GATK Image.",
+        default=(
+            "us-central1-docker.pkg.dev/broad-mpg-gnomad/images/"
+            "gatk-bcftools:4.2.6.1-1.10.2"
+        ),
+        help=(
+            "Docker image for every GATK job. Must also have bcftools and tabix, which"
+            " ApplyRecalibration uses to trim scattered VCFs to their interval. Built"
+            " from gnomad_qc/v5/variant_qc/Dockerfile."
+        ),
         type=str,
     )
     parser.add_argument(
