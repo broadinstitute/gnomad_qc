@@ -14,6 +14,7 @@ from gnomad_qc.v5.resources.basics import (
 )
 from gnomad_qc.v5.resources.variant_qc import (
     VARIANT_QC_FEATURES,
+    VQSR_FEATURES,
     _validate_model_id,
     get_variant_qc_result,
 )
@@ -127,6 +128,12 @@ def import_variant_qc_vcf(
                 }
             )
         )
+        # GATK declares AS_VQSLOD as a String; cast so the score is numeric downstream
+        # (the unsplit path does this before splitting).
+        if model_type == "vqsr":
+            split_ht = split_ht.annotate(
+                info=split_ht.info.annotate(AS_VQSLOD=hl.float(split_ht.info.AS_VQSLOD))
+            )
 
     # `ht` is already materialized at `tmp_path`; only checkpoint if it was changed
     # (the split-path scalar indexing is cheap enough to recompute).
@@ -151,6 +158,14 @@ def import_variant_qc_vcf(
 def main(args):
     """Load a single variant QC result VCF into a Hail Table."""
     environment = args.environment
+
+    # The feature lists are stored as globals, so default them to the model type's
+    # features: VQSR never used AS_pab_max, which the isolation forest list includes.
+    model_type = _validate_model_id(args.model_id)
+    features = VQSR_FEATURES if model_type == "vqsr" else VARIANT_QC_FEATURES
+    snp_features = args.snp_features or features["snv"]
+    indel_features = args.indel_features or features["indel"]
+
     _init_hail(
         "import_variant_qc_vcf",
         environment,
@@ -188,8 +203,8 @@ def main(args):
     for ht, res in zip(hts, resources):
         ht = ht.annotate_globals(
             model_id=args.model_id,
-            snp_features=args.snp_features,
-            indel_features=args.indel_features,
+            snp_features=snp_features,
+            indel_features=indel_features,
         )
         ht.write(res.path, overwrite=args.overwrite)
 
@@ -273,15 +288,21 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--snp-features",
-        help="SNP model features (stored as a global).",
-        default=VARIANT_QC_FEATURES["snv"],
+        help=(
+            "SNP model features (stored as a global). Defaults to the --model-id"
+            " type's list: VQSR_FEATURES for vqsr models, else VARIANT_QC_FEATURES."
+        ),
+        default=None,
         type=str,
         nargs="+",
     )
     parser.add_argument(
         "--indel-features",
-        help="Indel model features (stored as a global).",
-        default=VARIANT_QC_FEATURES["indel"],
+        help=(
+            "Indel model features (stored as a global). Defaults to the --model-id"
+            " type's list: VQSR_FEATURES for vqsr models, else VARIANT_QC_FEATURES."
+        ),
+        default=None,
         type=str,
         nargs="+",
     )

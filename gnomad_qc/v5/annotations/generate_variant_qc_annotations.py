@@ -2347,11 +2347,17 @@ def main(args):
             # TODO: Check if AS_QUALapprox and AS_VarDP are needed for v5 (not used for v4) and if so need preceeded pipe.
             # Reformat AS_SB_TABLE to be a nested array of arrays for proper use
             # within the 'adjust_vcf_incompatible_types' function.
+            # Wrap each feature in a length-1 array so a missing value is written as
+            # '.' instead of the field being omitted. GATK's allele-specific tools read
+            # '.' as NaN, but VariantRecalibrator (VQSR, GATK 4.2.6.1) crashes with an
+            # IndexOutOfBoundsException when the field is absent; the isolation forest
+            # handles both the same way.
             info_ht = info_ht.annotate(
                 info=info_ht.info.annotate(
                     AS_SB_TABLE=hl.array(
                         [info_ht.info.AS_SB_TABLE[0:2], info_ht.info.AS_SB_TABLE[2:4]]
-                    )
+                    ),
+                    **{f: hl.array([info_ht.info[f]]) for f in INFO_FEATURES},
                 )
             )
             info_ht = adjust_vcf_incompatible_types(
@@ -2359,8 +2365,8 @@ def main(args):
             )
             # GATK's isolation forest infers allele-specific mode from Number=A in the
             # header (the explicit --use-allele-specific-annotations flag was replaced
-            # by this header check in GATK 4.5.0.0); these features are scalars here, so
-            # Hail would write Number=1. AS mode also forces
+            # by this header check in GATK 4.5.0.0); Hail would write Number=. for
+            # these arrays. AS mode also forces
             # START_POSITION_AND_MINIMAL_REPRESENTATION resource matching, so the header
             # matters even though the input is split.
             vcf_metadata = {
