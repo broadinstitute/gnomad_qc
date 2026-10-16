@@ -1,0 +1,929 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>gnomad_qc.v5.annotations.batch_fanout &mdash; gnomad_qc master documentation</title>
+      <link rel="stylesheet" href="../../../../_static/pygments.css" type="text/css" />
+      <link rel="stylesheet" href="../../../../_static/css/theme.css" type="text/css" />
+      <link rel="stylesheet" href="../../../../_static/theme_overrides.css" type="text/css" />
+  <!--[if lt IE 9]>
+    <script src="../../../../_static/js/html5shiv.min.js"></script>
+  <![endif]-->
+  
+        <script src="../../../../_static/jquery.js"></script>
+        <script src="../../../../_static/_sphinx_javascript_frameworks_compat.js"></script>
+        <script data-url_root="../../../../" id="documentation_options" src="../../../../_static/documentation_options.js"></script>
+        <script src="../../../../_static/doctools.js"></script>
+        <script src="../../../../_static/sphinx_highlight.js"></script>
+        <script src="https://unpkg.com/mermaid@10.2.0/dist/mermaid.min.js"></script>
+        <script>mermaid.initialize({startOnLoad:true});</script>
+    <script src="../../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../../index.html" class="icon icon-home">
+            gnomad_qc
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../../api_reference/index.html">API Reference</a></li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/broadinstitute/gnomad_qc/tags">Change Log</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../../index.html">gnomad_qc</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../../index.html">Module code</a></li>
+      <li class="breadcrumb-item active">gnomad_qc.v5.annotations.batch_fanout</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for gnomad_qc.v5.annotations.batch_fanout</h1><div class="highlight"><pre>
+<span></span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">Hail Batch relay fan-out for the v5 annotation scripts.</span>
+
+<span class="sd">A Query-on-Batch run has one driver, and a driver crash loses everything it was</span>
+<span class="sd">computing. The scripts therefore cut the genome into chunks and run each chunk from</span>
+<span class="sd">its own small, non-spot Batch job (a &quot;relay&quot;) that starts a QoB driver inside its</span>
+<span class="sd">container. A crash then costs one chunk, and a rerun skips the chunks that already</span>
+<span class="sd">have a ``_SUCCESS`` marker. The orchestrator that submits the relays never starts</span>
+<span class="sd">Hail.</span>
+
+<span class="sd">Chunk outputs are stored under a hash of the chunk layout. The layout is sampled</span>
+<span class="sd">without a fixed seed, so each regeneration moves the cut points, and a chunk left</span>
+<span class="sd">behind by an older layout must not be taken for a finished chunk of the new one.</span>
+<span class="sd">&quot;&quot;&quot;</span>
+
+<span class="kn">import</span> <span class="nn">hashlib</span>
+<span class="kn">import</span> <span class="nn">json</span>
+<span class="kn">import</span> <span class="nn">logging</span>
+<span class="kn">import</span> <span class="nn">os</span>
+<span class="kn">import</span> <span class="nn">re</span>
+<span class="kn">import</span> <span class="nn">subprocess</span>
+<span class="kn">from</span> <span class="nn">datetime</span> <span class="kn">import</span> <span class="n">datetime</span><span class="p">,</span> <span class="n">timezone</span>
+<span class="kn">from</span> <span class="nn">typing</span> <span class="kn">import</span> <span class="n">Any</span><span class="p">,</span> <span class="n">Callable</span><span class="p">,</span> <span class="n">Dict</span><span class="p">,</span> <span class="n">List</span><span class="p">,</span> <span class="n">NamedTuple</span><span class="p">,</span> <span class="n">Optional</span><span class="p">,</span> <span class="n">Sequence</span><span class="p">,</span> <span class="n">Set</span><span class="p">,</span> <span class="n">Tuple</span>
+
+<span class="kn">import</span> <span class="nn">hail</span> <span class="k">as</span> <span class="nn">hl</span>
+<span class="kn">import</span> <span class="nn">hailtop.batch</span> <span class="k">as</span> <span class="nn">hb</span>
+<span class="kn">import</span> <span class="nn">hailtop.fs</span> <span class="k">as</span> <span class="nn">hfs</span>
+<span class="kn">from</span> <span class="nn">gnomad.utils.file_utils</span> <span class="kn">import</span> <span class="n">file_exists</span>
+
+<span class="kn">from</span> <span class="nn">gnomad_qc.v5.resources.constants</span> <span class="kn">import</span> <span class="n">BATCH_REGIONS</span><span class="p">,</span> <span class="n">BATCH_TMP_BUCKET</span>
+
+<span class="n">logger</span> <span class="o">=</span> <span class="n">logging</span><span class="o">.</span><span class="n">getLogger</span><span class="p">(</span><span class="s2">&quot;v5_batch_fanout&quot;</span><span class="p">)</span>
+
+<span class="n">BATCH_REMOTE_TMPDIR</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;gs://</span><span class="si">{</span><span class="n">BATCH_TMP_BUCKET</span><span class="si">}</span><span class="s2">&quot;</span>
+
+
+<div class="viewcode-block" id="RelayJobSpec"><a class="viewcode-back" href="../../../../api_reference/v5/annotations/batch_fanout.html#gnomad_qc.v5.annotations.batch_fanout.RelayJobSpec">[docs]</a><span class="k">class</span> <span class="nc">RelayJobSpec</span><span class="p">(</span><span class="n">NamedTuple</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;One relay job for :func:`submit_relay_batch`.&quot;&quot;&quot;</span>
+
+    <span class="n">name</span><span class="p">:</span> <span class="nb">str</span>
+    <span class="n">cpu</span><span class="p">:</span> <span class="nb">float</span>
+    <span class="n">memory</span><span class="p">:</span> <span class="nb">str</span>
+    <span class="n">storage</span><span class="p">:</span> <span class="nb">str</span>
+    <span class="n">attempts</span><span class="p">:</span> <span class="nb">int</span>
+    <span class="n">command</span><span class="p">:</span> <span class="nb">str</span></div>
+
+
+<span class="c1"># ---------------------------------------------------------------------------</span>
+<span class="c1"># Relay containers</span>
+<span class="c1"># ---------------------------------------------------------------------------</span>
+
+
+<div class="viewcode-block" id="resolve_commit"><a class="viewcode-back" href="../../../../api_reference/v5/annotations/batch_fanout.html#gnomad_qc.v5.annotations.batch_fanout.resolve_commit">[docs]</a><span class="k">def</span> <span class="nf">resolve_commit</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Return the gnomad_qc commit the relay containers should check out.</span>
+
+<span class="sd">    The ``GNOMAD_QC_COMMIT`` environment variable takes precedence so an orchestrator</span>
+<span class="sd">    that itself runs inside a Batch job, where the checkout is a tarball with no</span>
+<span class="sd">    ``.git`` directory, can still pin the relays.</span>
+
+<span class="sd">    :return: Full commit hash.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">return</span> <span class="n">os</span><span class="o">.</span><span class="n">getenv</span><span class="p">(</span><span class="s2">&quot;GNOMAD_QC_COMMIT&quot;</span><span class="p">)</span> <span class="ow">or</span> <span class="p">(</span>
+        <span class="n">subprocess</span><span class="o">.</span><span class="n">check_output</span><span class="p">([</span><span class="s2">&quot;git&quot;</span><span class="p">,</span> <span class="s2">&quot;rev-parse&quot;</span><span class="p">,</span> <span class="s2">&quot;HEAD&quot;</span><span class="p">])</span><span class="o">.</span><span class="n">decode</span><span class="p">()</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span>
+    <span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="build_setup_command"><a class="viewcode-back" href="../../../../api_reference/v5/annotations/batch_fanout.html#gnomad_qc.v5.annotations.batch_fanout.build_setup_command">[docs]</a><span class="k">def</span> <span class="nf">build_setup_command</span><span class="p">(</span>
+    <span class="n">commit</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="n">gcp_billing_project</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;broad-mpg-gnomad&quot;</span><span class="p">,</span>
+    <span class="n">methods_branch</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;main&quot;</span><span class="p">,</span>
+    <span class="n">hail_version</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Return the shell prefix every relay runs before the script.</span>
+
+<span class="sd">    Both repos change faster than the image, so the relay downloads them at the</span>
+<span class="sd">    pinned commit and branch when it starts. The Hail config file sets the Batch</span>
+<span class="sd">    billing project and scratch directory for the nested QoB driver, and together</span>
+<span class="sd">    with the ``quota_project_id`` patch gives Hail&#39;s GCS client a requester-pays</span>
+<span class="sd">    project, which a bare container has no gcloud config to supply.</span>
+
+<span class="sd">    :param commit: gnomad_qc commit to check out.</span>
+<span class="sd">    :param gcp_billing_project: Requester-pays project.</span>
+<span class="sd">    :param methods_branch: gnomad_methods branch or commit to check out.</span>
+<span class="sd">    :param hail_version: If set, reinstall this Hail version in the container;</span>
+<span class="sd">        otherwise the image&#39;s Hail is used. The relay&#39;s Python Hail sets the QoB</span>
+<span class="sd">        JAR, so this pins everything. WARNING: the pin is also a floor for every</span>
+<span class="sd">        HT the pipeline reads. Hail&#39;s table format is not backward compatible,</span>
+<span class="sd">        so lowering the pin without rewriting the input HTs breaks the fan-out.</span>
+<span class="sd">    :return: Shell command string ending in a newline.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">qc_tarball</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;https://github.com/broadinstitute/gnomad_qc/archive/</span><span class="si">{</span><span class="n">commit</span><span class="si">}</span><span class="s2">.tar.gz&quot;</span>
+    <span class="n">methods_tarball</span> <span class="o">=</span> <span class="p">(</span>
+        <span class="s2">&quot;https://github.com/broadinstitute/gnomad_methods/archive/&quot;</span>
+        <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">methods_branch</span><span class="si">}</span><span class="s2">.tar.gz&quot;</span>
+    <span class="p">)</span>
+    <span class="n">methods_dir_suffix</span> <span class="o">=</span> <span class="n">methods_branch</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="s2">&quot;/&quot;</span><span class="p">,</span> <span class="s2">&quot;-&quot;</span><span class="p">)</span>
+    <span class="n">config_body</span> <span class="o">=</span> <span class="p">(</span>
+        <span class="s2">&quot;[batch]</span><span class="se">\n</span><span class="s2">&quot;</span>
+        <span class="s2">&quot;billing_project = gnomad-production</span><span class="se">\n</span><span class="s2">&quot;</span>
+        <span class="sa">f</span><span class="s2">&quot;remote_tmpdir = </span><span class="si">{</span><span class="n">BATCH_REMOTE_TMPDIR</span><span class="si">}</span><span class="se">\n</span><span class="s2">&quot;</span>
+        <span class="s2">&quot;[gcs_requester_pays]</span><span class="se">\n</span><span class="s2">&quot;</span>
+        <span class="sa">f</span><span class="s2">&quot;project = </span><span class="si">{</span><span class="n">gcp_billing_project</span><span class="si">}</span><span class="se">\n</span><span class="s2">&quot;</span>
+    <span class="p">)</span>
+    <span class="n">pin</span> <span class="o">=</span> <span class="p">(</span>
+        <span class="s2">&quot;/opt/venv/bin/pip install --quiet --upgrade --force-reinstall --no-deps&quot;</span>
+        <span class="sa">f</span><span class="s2">&quot; hail==</span><span class="si">{</span><span class="n">hail_version</span><span class="si">}</span><span class="se">\n</span><span class="s2">&quot;</span>
+        <span class="k">if</span> <span class="n">hail_version</span>
+        <span class="k">else</span> <span class="s2">&quot;&quot;</span>
+    <span class="p">)</span>
+    <span class="k">return</span> <span class="p">(</span>
+        <span class="s2">&quot;set -euxo pipefail</span><span class="se">\n</span><span class="s2">&quot;</span>
+        <span class="s2">&quot;mkdir -p ~/.config/hail</span><span class="se">\n</span><span class="s2">&quot;</span>
+        <span class="s2">&quot;cat &gt; ~/.config/hail/config.ini &lt;&lt;&#39;HAILCFG&#39;</span><span class="se">\n</span><span class="s2">&quot;</span>
+        <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">config_body</span><span class="si">}</span><span class="s2">&quot;</span>
+        <span class="s2">&quot;HAILCFG</span><span class="se">\n</span><span class="s2">&quot;</span>
+        <span class="c1"># TODO: drop this GSA-key patch once Hail propagates</span>
+        <span class="c1"># gcs_requester_pays_configuration to the QoB driver pod.</span>
+        <span class="sa">f</span><span class="s2">&quot;python3 -c </span><span class="se">\&quot;</span><span class="s2">import json, os; p=&#39;/gsa-key/key.json&#39;;&quot;</span>
+        <span class="sa">f</span><span class="s2">&quot; d=json.load(open(p)); d[&#39;quota_project_id&#39;]=&#39;</span><span class="si">{</span><span class="n">gcp_billing_project</span><span class="si">}</span><span class="s2">&#39;;&quot;</span>
+        <span class="sa">f</span><span class="s2">&quot; json.dump(d, open(p+&#39;.new&#39;,&#39;w&#39;)); os.replace(p+&#39;.new&#39;, p)</span><span class="se">\&quot;\n</span><span class="s2">&quot;</span>
+        <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">pin</span><span class="si">}</span><span class="s2">&quot;</span>
+        <span class="sa">f</span><span class="s2">&quot;curl -sSL </span><span class="si">{</span><span class="n">methods_tarball</span><span class="si">}</span><span class="s2"> | tar xz -C /tmp</span><span class="se">\n</span><span class="s2">&quot;</span>
+        <span class="sa">f</span><span class="s2">&quot;mv /tmp/gnomad_methods-</span><span class="si">{</span><span class="n">methods_dir_suffix</span><span class="si">}</span><span class="s2"> /tmp/gnomad_methods</span><span class="se">\n</span><span class="s2">&quot;</span>
+        <span class="sa">f</span><span class="s2">&quot;curl -sSL </span><span class="si">{</span><span class="n">qc_tarball</span><span class="si">}</span><span class="s2"> | tar xz -C /tmp</span><span class="se">\n</span><span class="s2">&quot;</span>
+        <span class="sa">f</span><span class="s2">&quot;mv /tmp/gnomad_qc-</span><span class="si">{</span><span class="n">commit</span><span class="si">}</span><span class="s2"> /tmp/gnomad_qc</span><span class="se">\n</span><span class="s2">&quot;</span>
+        <span class="s2">&quot;export PYTHONPATH=/tmp/gnomad_qc:/tmp/gnomad_methods:$</span><span class="si">{PYTHONPATH:-}</span><span class="se">\n</span><span class="s2">&quot;</span>
+    <span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="relay_context"><a class="viewcode-back" href="../../../../api_reference/v5/annotations/batch_fanout.html#gnomad_qc.v5.annotations.batch_fanout.relay_context">[docs]</a><span class="k">def</span> <span class="nf">relay_context</span><span class="p">(</span>
+    <span class="n">commit</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="n">methods_branch</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="n">batch_billing_project</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="n">batch_remote_tmpdir</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">],</span>
+    <span class="n">script_name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="n">gcp_billing_project</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;broad-mpg-gnomad&quot;</span><span class="p">,</span>
+    <span class="n">hail_version</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">str</span><span class="p">],</span> <span class="nb">str</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Return what every relay submission needs: setup command, backend kwargs, script.</span>
+
+<span class="sd">    Bundles the three values from one caller-supplied commit so every relay an</span>
+<span class="sd">    orchestrator submits checks out the same code. The fan-out and the merge are</span>
+<span class="sd">    separate orchestrator runs and each resolves its own commit.</span>
+
+<span class="sd">    :param commit: gnomad_qc commit the relays check out.</span>
+<span class="sd">    :param methods_branch: gnomad_methods branch or commit the relays check out.</span>
+<span class="sd">    :param batch_billing_project: Hail Batch billing project for the relay jobs.</span>
+<span class="sd">    :param batch_remote_tmpdir: ``hb.ServiceBackend`` scratch, or None for Hail&#39;s</span>
+<span class="sd">        configured one.</span>
+<span class="sd">    :param script_name: Script file name under ``gnomad_qc/v5/annotations``.</span>
+<span class="sd">    :param gcp_billing_project: Requester-pays project for the relays.</span>
+<span class="sd">    :param hail_version: Optional Hail pin for :func:`build_setup_command`.</span>
+<span class="sd">    :return: ``(setup_cmd, backend_kwargs, script_command)``.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">setup_cmd</span> <span class="o">=</span> <span class="n">build_setup_command</span><span class="p">(</span>
+        <span class="n">commit</span><span class="p">,</span> <span class="n">gcp_billing_project</span><span class="p">,</span> <span class="n">methods_branch</span><span class="p">,</span> <span class="n">hail_version</span>
+    <span class="p">)</span>
+    <span class="n">backend_kwargs</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;billing_project&quot;</span><span class="p">:</span> <span class="n">batch_billing_project</span><span class="p">}</span>
+    <span class="k">if</span> <span class="n">batch_remote_tmpdir</span><span class="p">:</span>
+        <span class="n">backend_kwargs</span><span class="p">[</span><span class="s2">&quot;remote_tmpdir&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">batch_remote_tmpdir</span>
+    <span class="n">script</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;python3 /tmp/gnomad_qc/gnomad_qc/v5/annotations/</span><span class="si">{</span><span class="n">script_name</span><span class="si">}</span><span class="s2">&quot;</span>
+    <span class="k">return</span> <span class="n">setup_cmd</span><span class="p">,</span> <span class="n">backend_kwargs</span><span class="p">,</span> <span class="n">script</span></div>
+
+
+<div class="viewcode-block" id="submit_relay_batch"><a class="viewcode-back" href="../../../../api_reference/v5/annotations/batch_fanout.html#gnomad_qc.v5.annotations.batch_fanout.submit_relay_batch">[docs]</a><span class="k">def</span> <span class="nf">submit_relay_batch</span><span class="p">(</span>
+    <span class="n">batch_image</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="n">backend_kwargs</span><span class="p">:</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">str</span><span class="p">],</span>
+    <span class="n">batch_name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="n">job_specs</span><span class="p">:</span> <span class="n">Sequence</span><span class="p">[</span><span class="n">RelayJobSpec</span><span class="p">],</span>
+    <span class="n">log_label</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="o">*</span><span class="p">,</span>
+    <span class="n">dry_run</span><span class="p">:</span> <span class="nb">bool</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">int</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Submit one Hail Batch of relay jobs and wait for it.</span>
+
+<span class="sd">    Relays are non-spot because a preempted relay leaves the QoB batch it was</span>
+<span class="sd">    waiting on running with nobody to collect it. For the same reason callers</span>
+<span class="sd">    normally ask for one attempt: a Batch retry cannot cancel that orphaned batch</span>
+<span class="sd">    and would run alongside it.</span>
+
+<span class="sd">    :param batch_image: Docker image for the relay containers.</span>
+<span class="sd">    :param backend_kwargs: kwargs for ``hb.ServiceBackend``.</span>
+<span class="sd">    :param batch_name: Hail Batch name.</span>
+<span class="sd">    :param job_specs: Jobs to submit; nothing is submitted when empty.</span>
+<span class="sd">    :param log_label: Noun for log messages (&quot;chunk&quot;, &quot;merge&quot;).</span>
+<span class="sd">    :param dry_run: Validate the batch without running it.</span>
+<span class="sd">    :return: Batch id, or None when nothing ran.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">job_specs</span><span class="p">:</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span>
+            <span class="s2">&quot;No pending </span><span class="si">%s</span><span class="s2"> jobs for </span><span class="si">%s</span><span class="s2">; nothing submitted.&quot;</span><span class="p">,</span> <span class="n">log_label</span><span class="p">,</span> <span class="n">batch_name</span>
+        <span class="p">)</span>
+        <span class="k">return</span> <span class="kc">None</span>
+    <span class="n">backend</span> <span class="o">=</span> <span class="n">hb</span><span class="o">.</span><span class="n">ServiceBackend</span><span class="p">(</span><span class="o">**</span><span class="n">backend_kwargs</span><span class="p">)</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="n">batch</span> <span class="o">=</span> <span class="n">hb</span><span class="o">.</span><span class="n">Batch</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="n">batch_name</span><span class="p">,</span> <span class="n">backend</span><span class="o">=</span><span class="n">backend</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">spec</span> <span class="ow">in</span> <span class="n">job_specs</span><span class="p">:</span>
+            <span class="n">j</span> <span class="o">=</span> <span class="n">batch</span><span class="o">.</span><span class="n">new_job</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="n">spec</span><span class="o">.</span><span class="n">name</span><span class="p">)</span>
+            <span class="n">j</span><span class="o">.</span><span class="n">image</span><span class="p">(</span><span class="n">batch_image</span><span class="p">)</span>
+            <span class="n">j</span><span class="o">.</span><span class="n">cpu</span><span class="p">(</span><span class="n">spec</span><span class="o">.</span><span class="n">cpu</span><span class="p">)</span>
+            <span class="n">j</span><span class="o">.</span><span class="n">memory</span><span class="p">(</span><span class="n">spec</span><span class="o">.</span><span class="n">memory</span><span class="p">)</span>
+            <span class="n">j</span><span class="o">.</span><span class="n">storage</span><span class="p">(</span><span class="n">spec</span><span class="o">.</span><span class="n">storage</span><span class="p">)</span>
+            <span class="n">j</span><span class="o">.</span><span class="n">regions</span><span class="p">(</span><span class="n">BATCH_REGIONS</span><span class="p">)</span>
+            <span class="n">j</span><span class="o">.</span><span class="n">spot</span><span class="p">(</span><span class="kc">False</span><span class="p">)</span>
+            <span class="n">j</span><span class="o">.</span><span class="n">n_max_attempts</span><span class="p">(</span><span class="n">spec</span><span class="o">.</span><span class="n">attempts</span><span class="p">)</span>
+            <span class="n">j</span><span class="o">.</span><span class="n">command</span><span class="p">(</span><span class="n">spec</span><span class="o">.</span><span class="n">command</span><span class="p">)</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span>
+            <span class="s2">&quot;Submitting Hail Batch &#39;</span><span class="si">%s</span><span class="s2">&#39;: </span><span class="si">%d</span><span class="s2"> </span><span class="si">%s</span><span class="s2"> jobs (dry_run=</span><span class="si">%s</span><span class="s2">)&quot;</span><span class="p">,</span>
+            <span class="n">batch_name</span><span class="p">,</span>
+            <span class="nb">len</span><span class="p">(</span><span class="n">job_specs</span><span class="p">),</span>
+            <span class="n">log_label</span><span class="p">,</span>
+            <span class="n">dry_run</span><span class="p">,</span>
+        <span class="p">)</span>
+        <span class="n">submitted</span> <span class="o">=</span> <span class="n">batch</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">dry_run</span><span class="o">=</span><span class="n">dry_run</span><span class="p">)</span>
+        <span class="k">return</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">submitted</span><span class="p">,</span> <span class="s2">&quot;id&quot;</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
+    <span class="k">finally</span><span class="p">:</span>
+        <span class="n">backend</span><span class="o">.</span><span class="n">close</span><span class="p">()</span></div>
+
+
+<span class="c1"># ---------------------------------------------------------------------------</span>
+<span class="c1"># Chunk layout and intervals</span>
+<span class="c1"># ---------------------------------------------------------------------------</span>
+
+
+<div class="viewcode-block" id="chunk_intervals_hash"><a class="viewcode-back" href="../../../../api_reference/v5/annotations/batch_fanout.html#gnomad_qc.v5.annotations.batch_fanout.chunk_intervals_hash">[docs]</a><span class="k">def</span> <span class="nf">chunk_intervals_hash</span><span class="p">(</span><span class="n">data</span><span class="p">:</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Return a 16-hex-char content hash of a chunk layout.</span>
+
+<span class="sd">    Every regeneration of the layout moves the cut points, and keying outputs by</span>
+<span class="sd">    this hash keeps each layout&#39;s chunks apart. An embedded ``intervals_hash`` key</span>
+<span class="sd">    is dropped before hashing, so a JSON that carries its own hash re-hashes to the</span>
+<span class="sd">    same value.</span>
+
+<span class="sd">    :param data: Parsed chunk-intervals JSON.</span>
+<span class="sd">    :return: First 16 hex chars of the SHA-256 of its canonical serialization.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">payload</span> <span class="o">=</span> <span class="p">{</span><span class="n">k</span><span class="p">:</span> <span class="n">v</span> <span class="k">for</span> <span class="n">k</span><span class="p">,</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">data</span><span class="o">.</span><span class="n">items</span><span class="p">()</span> <span class="k">if</span> <span class="n">k</span> <span class="o">!=</span> <span class="s2">&quot;intervals_hash&quot;</span><span class="p">}</span>
+    <span class="n">canonical</span> <span class="o">=</span> <span class="n">json</span><span class="o">.</span><span class="n">dumps</span><span class="p">(</span><span class="n">payload</span><span class="p">,</span> <span class="n">sort_keys</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">separators</span><span class="o">=</span><span class="p">(</span><span class="s2">&quot;,&quot;</span><span class="p">,</span> <span class="s2">&quot;:&quot;</span><span class="p">))</span>
+    <span class="k">return</span> <span class="n">hashlib</span><span class="o">.</span><span class="n">sha256</span><span class="p">(</span><span class="n">canonical</span><span class="o">.</span><span class="n">encode</span><span class="p">())</span><span class="o">.</span><span class="n">hexdigest</span><span class="p">()[:</span><span class="mi">16</span><span class="p">]</span></div>
+
+
+<div class="viewcode-block" id="test_region_hash"><a class="viewcode-back" href="../../../../api_reference/v5/annotations/batch_fanout.html#gnomad_qc.v5.annotations.batch_fanout.test_region_hash">[docs]</a><span class="k">def</span> <span class="nf">test_region_hash</span><span class="p">(</span><span class="n">test_region</span><span class="p">:</span> <span class="n">Sequence</span><span class="p">[</span><span class="nb">str</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Return the layout hash of a ``--test-region`` run, which has no layout JSON.</span>
+
+<span class="sd">    Hashing the region strings keeps two region tests under the same output path</span>
+<span class="sd">    from seeing each other&#39;s chunk as already present. The sub-interval count is</span>
+<span class="sd">    deliberately left out: the merge and validate steps do not pass it, and it does</span>
+<span class="sd">    not change the chunk&#39;s contents.</span>
+
+<span class="sd">    :param test_region: Region strings as passed on the command line.</span>
+<span class="sd">    :return: ``test_region_`` plus a 16-hex-char hash.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">return</span> <span class="sa">f</span><span class="s2">&quot;test_region_</span><span class="si">{</span><span class="n">chunk_intervals_hash</span><span class="p">({</span><span class="s1">&#39;test_region&#39;</span><span class="p">:</span><span class="w"> </span><span class="nb">list</span><span class="p">(</span><span class="n">test_region</span><span class="p">)})</span><span class="si">}</span><span class="s2">&quot;</span></div>
+
+
+<div class="viewcode-block" id="interval_to_list"><a class="viewcode-back" href="../../../../api_reference/v5/annotations/batch_fanout.html#gnomad_qc.v5.annotations.batch_fanout.interval_to_list">[docs]</a><span class="k">def</span> <span class="nf">interval_to_list</span><span class="p">(</span><span class="n">iv</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">utils</span><span class="o">.</span><span class="n">Interval</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Serialize a locus interval for the chunk-intervals JSON.</span>
+
+<span class="sd">    :param iv: Locus interval.</span>
+<span class="sd">    :return: ``[start_contig, start_pos, end_contig, end_pos, includes_start,</span>
+<span class="sd">        includes_end]``.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">return</span> <span class="p">[</span>
+        <span class="n">iv</span><span class="o">.</span><span class="n">start</span><span class="o">.</span><span class="n">contig</span><span class="p">,</span>
+        <span class="n">iv</span><span class="o">.</span><span class="n">start</span><span class="o">.</span><span class="n">position</span><span class="p">,</span>
+        <span class="n">iv</span><span class="o">.</span><span class="n">end</span><span class="o">.</span><span class="n">contig</span><span class="p">,</span>
+        <span class="n">iv</span><span class="o">.</span><span class="n">end</span><span class="o">.</span><span class="n">position</span><span class="p">,</span>
+        <span class="n">iv</span><span class="o">.</span><span class="n">includes_start</span><span class="p">,</span>
+        <span class="n">iv</span><span class="o">.</span><span class="n">includes_end</span><span class="p">,</span>
+    <span class="p">]</span></div>
+
+
+<div class="viewcode-block" id="interval_from_list"><a class="viewcode-back" href="../../../../api_reference/v5/annotations/batch_fanout.html#gnomad_qc.v5.annotations.batch_fanout.interval_from_list">[docs]</a><span class="k">def</span> <span class="nf">interval_from_list</span><span class="p">(</span><span class="n">t</span><span class="p">:</span> <span class="n">Sequence</span><span class="p">,</span> <span class="n">reference_genome</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">hl</span><span class="o">.</span><span class="n">utils</span><span class="o">.</span><span class="n">Interval</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Rebuild a locus interval from its chunk-intervals JSON form.</span>
+
+<span class="sd">    :param t: Output of :func:`interval_to_list`.</span>
+<span class="sd">    :param reference_genome: Reference genome name.</span>
+<span class="sd">    :return: Locus interval.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">sc</span><span class="p">,</span> <span class="n">sp</span><span class="p">,</span> <span class="n">ec</span><span class="p">,</span> <span class="n">ep</span><span class="p">,</span> <span class="n">incs</span><span class="p">,</span> <span class="n">ince</span> <span class="o">=</span> <span class="n">t</span>
+    <span class="k">return</span> <span class="n">hl</span><span class="o">.</span><span class="n">Interval</span><span class="p">(</span>
+        <span class="n">hl</span><span class="o">.</span><span class="n">Locus</span><span class="p">(</span><span class="n">sc</span><span class="p">,</span> <span class="n">sp</span><span class="p">,</span> <span class="n">reference_genome</span><span class="o">=</span><span class="n">reference_genome</span><span class="p">),</span>
+        <span class="n">hl</span><span class="o">.</span><span class="n">Locus</span><span class="p">(</span><span class="n">ec</span><span class="p">,</span> <span class="n">ep</span><span class="p">,</span> <span class="n">reference_genome</span><span class="o">=</span><span class="n">reference_genome</span><span class="p">),</span>
+        <span class="n">includes_start</span><span class="o">=</span><span class="n">incs</span><span class="p">,</span>
+        <span class="n">includes_end</span><span class="o">=</span><span class="n">ince</span><span class="p">,</span>
+    <span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="parse_region_interval"><a class="viewcode-back" href="../../../../api_reference/v5/annotations/batch_fanout.html#gnomad_qc.v5.annotations.batch_fanout.parse_region_interval">[docs]</a><span class="k">def</span> <span class="nf">parse_region_interval</span><span class="p">(</span>
+    <span class="n">interval_s</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">reference_genome</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;GRCh38&quot;</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">hl</span><span class="o">.</span><span class="n">utils</span><span class="o">.</span><span class="n">Interval</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Parse ``contig:start-end`` into a half-open locus interval.</span>
+
+<span class="sd">    Half-open so adjacent regions never share a locus.</span>
+
+<span class="sd">    :param interval_s: Interval string; commas in positions are allowed.</span>
+<span class="sd">    :param reference_genome: Reference genome name.</span>
+<span class="sd">    :return: ``[start, end)`` locus interval.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">contig</span><span class="p">,</span> <span class="n">span</span> <span class="o">=</span> <span class="n">interval_s</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s2">&quot;:&quot;</span><span class="p">)</span>
+    <span class="n">start_pos</span><span class="p">,</span> <span class="n">end_pos</span> <span class="o">=</span> <span class="p">(</span><span class="nb">int</span><span class="p">(</span><span class="n">p</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="s2">&quot;,&quot;</span><span class="p">,</span> <span class="s2">&quot;&quot;</span><span class="p">))</span> <span class="k">for</span> <span class="n">p</span> <span class="ow">in</span> <span class="n">span</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s2">&quot;-&quot;</span><span class="p">))</span>
+    <span class="k">return</span> <span class="n">hl</span><span class="o">.</span><span class="n">Interval</span><span class="p">(</span>
+        <span class="n">hl</span><span class="o">.</span><span class="n">Locus</span><span class="p">(</span><span class="n">contig</span><span class="p">,</span> <span class="n">start_pos</span><span class="p">,</span> <span class="n">reference_genome</span><span class="o">=</span><span class="n">reference_genome</span><span class="p">),</span>
+        <span class="n">hl</span><span class="o">.</span><span class="n">Locus</span><span class="p">(</span><span class="n">contig</span><span class="p">,</span> <span class="n">end_pos</span><span class="p">,</span> <span class="n">reference_genome</span><span class="o">=</span><span class="n">reference_genome</span><span class="p">),</span>
+        <span class="n">includes_start</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+        <span class="n">includes_end</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+    <span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="spans_sex_chromosome"><a class="viewcode-back" href="../../../../api_reference/v5/annotations/batch_fanout.html#gnomad_qc.v5.annotations.batch_fanout.spans_sex_chromosome">[docs]</a><span class="k">def</span> <span class="nf">spans_sex_chromosome</span><span class="p">(</span>
+    <span class="n">intervals</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Sequence</span><span class="p">[</span><span class="n">hl</span><span class="o">.</span><span class="n">utils</span><span class="o">.</span><span class="n">Interval</span><span class="p">]],</span> <span class="n">chrom</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Return whether a read scope can include chrX or chrY.</span>
+
+<span class="sd">    The sex-ploidy adjustment changes nothing on autosomes, so a scope that cannot</span>
+<span class="sd">    touch chrX or chrY may skip it. A read with no scope counts as spanning.</span>
+
+<span class="sd">    :param intervals: Read intervals, or None. When given, they decide the answer</span>
+<span class="sd">        and ``chrom`` is ignored.</span>
+<span class="sd">    :param chrom: Single contig, or None. Used only when ``intervals`` is empty;</span>
+<span class="sd">        this path assumes GRCh38 contig names.</span>
+<span class="sd">    :return: True unless the scope is known to exclude both sex contigs.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="n">intervals</span><span class="p">:</span>
+        <span class="n">rg</span> <span class="o">=</span> <span class="n">intervals</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">start</span><span class="o">.</span><span class="n">reference_genome</span>
+        <span class="n">sex</span> <span class="o">=</span> <span class="nb">set</span><span class="p">(</span><span class="n">rg</span><span class="o">.</span><span class="n">x_contigs</span><span class="p">)</span> <span class="o">|</span> <span class="nb">set</span><span class="p">(</span><span class="n">rg</span><span class="o">.</span><span class="n">y_contigs</span><span class="p">)</span>
+        <span class="n">order</span> <span class="o">=</span> <span class="p">{</span><span class="n">c</span><span class="p">:</span> <span class="n">k</span> <span class="k">for</span> <span class="n">k</span><span class="p">,</span> <span class="n">c</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">rg</span><span class="o">.</span><span class="n">contigs</span><span class="p">)}</span>
+        <span class="c1"># An interval may span several contigs (partition bounds are not</span>
+        <span class="c1"># contig-aligned), so take every contig from its start to its end.</span>
+        <span class="n">contigs</span><span class="p">:</span> <span class="n">Set</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="nb">set</span><span class="p">()</span>
+        <span class="k">for</span> <span class="n">iv</span> <span class="ow">in</span> <span class="n">intervals</span><span class="p">:</span>
+            <span class="n">contigs</span><span class="o">.</span><span class="n">update</span><span class="p">(</span>
+                <span class="n">rg</span><span class="o">.</span><span class="n">contigs</span><span class="p">[</span><span class="n">order</span><span class="p">[</span><span class="n">iv</span><span class="o">.</span><span class="n">start</span><span class="o">.</span><span class="n">contig</span><span class="p">]</span> <span class="p">:</span> <span class="n">order</span><span class="p">[</span><span class="n">iv</span><span class="o">.</span><span class="n">end</span><span class="o">.</span><span class="n">contig</span><span class="p">]</span> <span class="o">+</span> <span class="mi">1</span><span class="p">]</span>
+            <span class="p">)</span>
+        <span class="k">return</span> <span class="nb">bool</span><span class="p">(</span><span class="n">contigs</span> <span class="o">&amp;</span> <span class="n">sex</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">chrom</span><span class="p">:</span>
+        <span class="n">rg</span> <span class="o">=</span> <span class="n">hl</span><span class="o">.</span><span class="n">get_reference</span><span class="p">(</span><span class="s2">&quot;GRCh38&quot;</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">chrom</span> <span class="ow">in</span> <span class="nb">set</span><span class="p">(</span><span class="n">rg</span><span class="o">.</span><span class="n">x_contigs</span><span class="p">)</span> <span class="o">|</span> <span class="nb">set</span><span class="p">(</span><span class="n">rg</span><span class="o">.</span><span class="n">y_contigs</span><span class="p">)</span>
+    <span class="k">return</span> <span class="kc">True</span></div>
+
+
+<div class="viewcode-block" id="select_chunks_for_contig"><a class="viewcode-back" href="../../../../api_reference/v5/annotations/batch_fanout.html#gnomad_qc.v5.annotations.batch_fanout.select_chunks_for_contig">[docs]</a><span class="k">def</span> <span class="nf">select_chunks_for_contig</span><span class="p">(</span>
+    <span class="n">chunk_contigs</span><span class="p">:</span> <span class="n">Sequence</span><span class="p">[</span><span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]],</span> <span class="n">chrom</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">List</span><span class="p">[</span><span class="nb">int</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Return the chunk indices on ``chrom``, or every index when ``chrom`` is None.</span>
+
+<span class="sd">    :param chunk_contigs: Contig of each chunk, by index.</span>
+<span class="sd">    :param chrom: Contig to keep, or None.</span>
+<span class="sd">    :return: Eligible chunk indices.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">chrom</span><span class="p">:</span>
+        <span class="k">return</span> <span class="nb">list</span><span class="p">(</span><span class="nb">range</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">chunk_contigs</span><span class="p">)))</span>
+    <span class="n">eligible</span> <span class="o">=</span> <span class="p">[</span><span class="n">i</span> <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">c</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">chunk_contigs</span><span class="p">)</span> <span class="k">if</span> <span class="n">c</span> <span class="o">==</span> <span class="n">chrom</span><span class="p">]</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">eligible</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+            <span class="sa">f</span><span class="s2">&quot;No chunks on --chrom </span><span class="si">{</span><span class="n">chrom</span><span class="si">}</span><span class="s2">; the layout covers&quot;</span>
+            <span class="sa">f</span><span class="s2">&quot; </span><span class="si">{</span><span class="nb">sorted</span><span class="p">(</span><span class="n">c</span><span class="w"> </span><span class="k">for</span><span class="w"> </span><span class="n">c</span><span class="w"> </span><span class="ow">in</span><span class="w"> </span><span class="nb">set</span><span class="p">(</span><span class="n">chunk_contigs</span><span class="p">)</span><span class="w"> </span><span class="k">if</span><span class="w"> </span><span class="n">c</span><span class="p">)</span><span class="si">}</span><span class="s2">.&quot;</span>
+        <span class="p">)</span>
+    <span class="k">return</span> <span class="n">eligible</span></div>
+
+
+<span class="c1"># ---------------------------------------------------------------------------</span>
+<span class="c1"># Paths</span>
+<span class="c1"># ---------------------------------------------------------------------------</span>
+
+
+<div class="viewcode-block" id="apply_path_suffix"><a class="viewcode-back" href="../../../../api_reference/v5/annotations/batch_fanout.html#gnomad_qc.v5.annotations.batch_fanout.apply_path_suffix">[docs]</a><span class="k">def</span> <span class="nf">apply_path_suffix</span><span class="p">(</span><span class="n">path</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">suffix</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Insert ``_&lt;suffix&gt;`` before the ``.ht`` extension; unchanged when ``suffix`` is empty.</span>
+
+<span class="sd">    :param path: HT path ending in ``.ht``.</span>
+<span class="sd">    :param suffix: Suffix without the leading underscore.</span>
+<span class="sd">    :return: Suffixed path.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">suffix</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">path</span>
+    <span class="k">return</span> <span class="n">path</span><span class="o">.</span><span class="n">rstrip</span><span class="p">(</span><span class="s2">&quot;/&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">removesuffix</span><span class="p">(</span><span class="s2">&quot;.ht&quot;</span><span class="p">)</span> <span class="o">+</span> <span class="sa">f</span><span class="s2">&quot;_</span><span class="si">{</span><span class="n">suffix</span><span class="si">}</span><span class="s2">.ht&quot;</span></div>
+
+
+<div class="viewcode-block" id="combine_suffix"><a class="viewcode-back" href="../../../../api_reference/v5/annotations/batch_fanout.html#gnomad_qc.v5.annotations.batch_fanout.combine_suffix">[docs]</a><span class="k">def</span> <span class="nf">combine_suffix</span><span class="p">(</span><span class="o">*</span><span class="n">parts</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Join the non-empty parts with underscores, so each scope writes its own path.</span>
+
+<span class="sd">    :param parts: Suffix fragments; empty ones are skipped.</span>
+<span class="sd">    :return: Joined suffix, or None when every part is empty.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">kept</span> <span class="o">=</span> <span class="p">[</span><span class="n">p</span> <span class="k">for</span> <span class="n">p</span> <span class="ow">in</span> <span class="n">parts</span> <span class="k">if</span> <span class="n">p</span><span class="p">]</span>
+    <span class="k">return</span> <span class="s2">&quot;_&quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">kept</span><span class="p">)</span> <span class="k">if</span> <span class="n">kept</span> <span class="k">else</span> <span class="kc">None</span></div>
+
+
+<span class="k">def</span> <span class="nf">_base</span><span class="p">(</span><span class="n">ht_path</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+    <span class="k">return</span> <span class="n">ht_path</span><span class="o">.</span><span class="n">rstrip</span><span class="p">(</span><span class="s2">&quot;/&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">removesuffix</span><span class="p">(</span><span class="s2">&quot;.ht&quot;</span><span class="p">)</span>
+
+
+<div class="viewcode-block" id="chunk_path"><a class="viewcode-back" href="../../../../api_reference/v5/annotations/batch_fanout.html#gnomad_qc.v5.annotations.batch_fanout.chunk_path">[docs]</a><span class="k">def</span> <span class="nf">chunk_path</span><span class="p">(</span><span class="n">ht_path</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">idx</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span> <span class="n">intervals_hash</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Return the per-chunk HT path beside the final HT.</span>
+
+<span class="sd">    :param ht_path: Final HT path the chunks will be merged into.</span>
+<span class="sd">    :param idx: Chunk index.</span>
+<span class="sd">    :param intervals_hash: Layout hash namespacing the chunk directory.</span>
+<span class="sd">    :return: ``&lt;ht&gt;_chunks/&lt;hash&gt;/&lt;idx:08d&gt;.chunk.ht``.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">return</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">_base</span><span class="p">(</span><span class="n">ht_path</span><span class="p">)</span><span class="si">}</span><span class="s2">_chunks/</span><span class="si">{</span><span class="n">intervals_hash</span><span class="si">}</span><span class="s2">/</span><span class="si">{</span><span class="n">idx</span><span class="si">:</span><span class="s2">08d</span><span class="si">}</span><span class="s2">.chunk.ht&quot;</span></div>
+
+
+<div class="viewcode-block" id="group_path"><a class="viewcode-back" href="../../../../api_reference/v5/annotations/batch_fanout.html#gnomad_qc.v5.annotations.batch_fanout.group_path">[docs]</a><span class="k">def</span> <span class="nf">group_path</span><span class="p">(</span>
+    <span class="n">ht_path</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">level</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span> <span class="n">group_idx</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span> <span class="n">tree_tag</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">intervals_hash</span><span class="p">:</span> <span class="nb">str</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Return a merge-tree intermediate HT path.</span>
+
+<span class="sd">    Level, tree shape and layout hash are all in the directory so a rerun with a</span>
+<span class="sd">    different tree or layout writes fresh instead of reusing stale groups.</span>
+
+<span class="sd">    :param ht_path: Final HT path.</span>
+<span class="sd">    :param level: Merge-tree level, 1-indexed.</span>
+<span class="sd">    :param group_idx: Group index within the level.</span>
+<span class="sd">    :param tree_tag: Tree-shape tag the caller builds from its own tree parameters,</span>
+<span class="sd">        e.g. coverage passes ``pp3_gs500`` (partitions per chunk, group size).</span>
+<span class="sd">        Two consumers may use different tags; each must keep its own tag stable</span>
+<span class="sd">        or its finished groups stop being found.</span>
+<span class="sd">    :param intervals_hash: Layout hash.</span>
+<span class="sd">    :return: ``&lt;ht&gt;_merge_groups_&lt;tag&gt;/&lt;hash&gt;/L&lt;level&gt;_&lt;group&gt;.ht``.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">return</span> <span class="p">(</span>
+        <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">_base</span><span class="p">(</span><span class="n">ht_path</span><span class="p">)</span><span class="si">}</span><span class="s2">_merge_groups_</span><span class="si">{</span><span class="n">tree_tag</span><span class="si">}</span><span class="s2">/</span><span class="si">{</span><span class="n">intervals_hash</span><span class="si">}</span><span class="s2">/&quot;</span>
+        <span class="sa">f</span><span class="s2">&quot;L</span><span class="si">{</span><span class="n">level</span><span class="si">:</span><span class="s2">02d</span><span class="si">}</span><span class="s2">_</span><span class="si">{</span><span class="n">group_idx</span><span class="si">:</span><span class="s2">08d</span><span class="si">}</span><span class="s2">.ht&quot;</span>
+    <span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="failed_chunks_path"><a class="viewcode-back" href="../../../../api_reference/v5/annotations/batch_fanout.html#gnomad_qc.v5.annotations.batch_fanout.failed_chunks_path">[docs]</a><span class="k">def</span> <span class="nf">failed_chunks_path</span><span class="p">(</span><span class="n">ht_path</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">intervals_hash</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Return the failed-chunk manifest path for one layout.</span>
+
+<span class="sd">    :param ht_path: Final HT path.</span>
+<span class="sd">    :param intervals_hash: Layout hash.</span>
+<span class="sd">    :return: ``&lt;ht&gt;_chunks/&lt;hash&gt;/_failed_chunks.json``.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">return</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">_base</span><span class="p">(</span><span class="n">ht_path</span><span class="p">)</span><span class="si">}</span><span class="s2">_chunks/</span><span class="si">{</span><span class="n">intervals_hash</span><span class="si">}</span><span class="s2">/_failed_chunks.json&quot;</span></div>
+
+
+<div class="viewcode-block" id="list_present_chunk_indices"><a class="viewcode-back" href="../../../../api_reference/v5/annotations/batch_fanout.html#gnomad_qc.v5.annotations.batch_fanout.list_present_chunk_indices">[docs]</a><span class="k">def</span> <span class="nf">list_present_chunk_indices</span><span class="p">(</span><span class="n">ht_path</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">intervals_hash</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Set</span><span class="p">[</span><span class="nb">int</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Return the chunk indices that have a ``_SUCCESS`` marker.</span>
+
+<span class="sd">    One listing is cheaper than one GCS stat per chunk, and looking for ``_SUCCESS``</span>
+<span class="sd">    rather than the chunk directory means a half-written chunk is rerun. A missing</span>
+<span class="sd">    directory lists as empty.</span>
+
+<span class="sd">    :param ht_path: Final HT path.</span>
+<span class="sd">    :param intervals_hash: Layout hash.</span>
+<span class="sd">    :return: Completed chunk indices.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">present</span><span class="p">:</span> <span class="n">Set</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="nb">set</span><span class="p">()</span>
+    <span class="k">for</span> <span class="n">entry</span> <span class="ow">in</span> <span class="n">hfs</span><span class="o">.</span><span class="n">ls</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">_base</span><span class="p">(</span><span class="n">ht_path</span><span class="p">)</span><span class="si">}</span><span class="s2">_chunks/</span><span class="si">{</span><span class="n">intervals_hash</span><span class="si">}</span><span class="s2">/*/_SUCCESS&quot;</span><span class="p">):</span>
+        <span class="n">m</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">search</span><span class="p">(</span><span class="sa">r</span><span class="s2">&quot;/(\d+)\.chunk\.ht/_SUCCESS$&quot;</span><span class="p">,</span> <span class="n">entry</span><span class="o">.</span><span class="n">path</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">m</span><span class="p">:</span>
+            <span class="n">present</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="nb">int</span><span class="p">(</span><span class="n">m</span><span class="o">.</span><span class="n">group</span><span class="p">(</span><span class="mi">1</span><span class="p">)))</span>
+    <span class="k">return</span> <span class="n">present</span></div>
+
+
+<div class="viewcode-block" id="new_run_id"><a class="viewcode-back" href="../../../../api_reference/v5/annotations/batch_fanout.html#gnomad_qc.v5.annotations.batch_fanout.new_run_id">[docs]</a><span class="k">def</span> <span class="nf">new_run_id</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Return a UTC timestamp id for one orchestrator run.</span>
+
+<span class="sd">    :return: ``run-YYYYmmddTHHMMSSZ``.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">return</span> <span class="s2">&quot;run-&quot;</span> <span class="o">+</span> <span class="n">datetime</span><span class="o">.</span><span class="n">now</span><span class="p">(</span><span class="n">timezone</span><span class="o">.</span><span class="n">utc</span><span class="p">)</span><span class="o">.</span><span class="n">strftime</span><span class="p">(</span><span class="s2">&quot;%Y%m</span><span class="si">%d</span><span class="s2">T%H%M%SZ&quot;</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="write_failed_chunks_manifest"><a class="viewcode-back" href="../../../../api_reference/v5/annotations/batch_fanout.html#gnomad_qc.v5.annotations.batch_fanout.write_failed_chunks_manifest">[docs]</a><span class="k">def</span> <span class="nf">write_failed_chunks_manifest</span><span class="p">(</span>
+    <span class="n">ht_path</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="n">intervals_hash</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="n">failed</span><span class="p">:</span> <span class="n">Sequence</span><span class="p">[</span><span class="nb">int</span><span class="p">],</span>
+    <span class="n">n_dispatched</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
+    <span class="n">run_id</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="n">commit</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="n">app_name</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">],</span>
+    <span class="n">waves</span><span class="p">:</span> <span class="n">Sequence</span><span class="p">[</span><span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]],</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Record which dispatched chunks did not land.</span>
+
+<span class="sd">    A rerun of the fan-out resumes from the missing chunks on its own. The manifest</span>
+<span class="sd">    is a durable record of what ran and what failed, which the logs are not, so it</span>
+<span class="sd">    is written even when every chunk landed (``n_failed`` 0 with the run id and</span>
+<span class="sd">    batch ids). Successive runs on one layout overwrite the same file.</span>
+
+<span class="sd">    :param ht_path: Final HT path.</span>
+<span class="sd">    :param intervals_hash: Layout hash.</span>
+<span class="sd">    :param failed: Dispatched chunk indices with no ``_SUCCESS``.</span>
+<span class="sd">    :param n_dispatched: Chunks dispatched by this run.</span>
+<span class="sd">    :param run_id: This orchestrator run&#39;s id.</span>
+<span class="sd">    :param commit: gnomad_qc commit the relays ran.</span>
+<span class="sd">    :param app_name: ``--app-name`` the relays used.</span>
+<span class="sd">    :param waves: Per-wave records: wave number, batch id, chunks dispatched and</span>
+<span class="sd">        chunks that failed.</span>
+<span class="sd">    :return: Manifest path.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">path</span> <span class="o">=</span> <span class="n">failed_chunks_path</span><span class="p">(</span><span class="n">ht_path</span><span class="p">,</span> <span class="n">intervals_hash</span><span class="p">)</span>
+    <span class="n">payload</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="s2">&quot;run_id&quot;</span><span class="p">:</span> <span class="n">run_id</span><span class="p">,</span>
+        <span class="s2">&quot;written_at&quot;</span><span class="p">:</span> <span class="n">datetime</span><span class="o">.</span><span class="n">now</span><span class="p">(</span><span class="n">timezone</span><span class="o">.</span><span class="n">utc</span><span class="p">)</span><span class="o">.</span><span class="n">isoformat</span><span class="p">(</span><span class="n">timespec</span><span class="o">=</span><span class="s2">&quot;seconds&quot;</span><span class="p">),</span>
+        <span class="s2">&quot;commit&quot;</span><span class="p">:</span> <span class="n">commit</span><span class="p">,</span>
+        <span class="s2">&quot;app_name&quot;</span><span class="p">:</span> <span class="n">app_name</span><span class="p">,</span>
+        <span class="s2">&quot;intervals_hash&quot;</span><span class="p">:</span> <span class="n">intervals_hash</span><span class="p">,</span>
+        <span class="s2">&quot;n_dispatched&quot;</span><span class="p">:</span> <span class="n">n_dispatched</span><span class="p">,</span>
+        <span class="s2">&quot;n_failed&quot;</span><span class="p">:</span> <span class="nb">len</span><span class="p">(</span><span class="n">failed</span><span class="p">),</span>
+        <span class="s2">&quot;failed_chunk_indices&quot;</span><span class="p">:</span> <span class="nb">sorted</span><span class="p">(</span><span class="n">failed</span><span class="p">),</span>
+        <span class="s2">&quot;waves&quot;</span><span class="p">:</span> <span class="nb">list</span><span class="p">(</span><span class="n">waves</span><span class="p">),</span>
+    <span class="p">}</span>
+    <span class="k">with</span> <span class="n">hfs</span><span class="o">.</span><span class="n">open</span><span class="p">(</span><span class="n">path</span><span class="p">,</span> <span class="s2">&quot;w&quot;</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
+        <span class="n">f</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">json</span><span class="o">.</span><span class="n">dumps</span><span class="p">(</span><span class="n">payload</span><span class="p">,</span> <span class="n">indent</span><span class="o">=</span><span class="mi">2</span><span class="p">)</span> <span class="o">+</span> <span class="s2">&quot;</span><span class="se">\n</span><span class="s2">&quot;</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">path</span></div>
+
+
+<span class="c1"># ---------------------------------------------------------------------------</span>
+<span class="c1"># Orchestration</span>
+<span class="c1"># ---------------------------------------------------------------------------</span>
+
+
+<div class="viewcode-block" id="dispatch_in_waves"><a class="viewcode-back" href="../../../../api_reference/v5/annotations/batch_fanout.html#gnomad_qc.v5.annotations.batch_fanout.dispatch_in_waves">[docs]</a><span class="k">def</span> <span class="nf">dispatch_in_waves</span><span class="p">(</span>
+    <span class="n">pending</span><span class="p">:</span> <span class="n">Sequence</span><span class="p">[</span><span class="nb">int</span><span class="p">],</span>
+    <span class="n">wave_size</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
+    <span class="n">submit_wave</span><span class="p">:</span> <span class="n">Callable</span><span class="p">[[</span><span class="n">List</span><span class="p">[</span><span class="nb">int</span><span class="p">],</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]],</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">int</span><span class="p">]],</span>
+    <span class="n">present_indices</span><span class="p">:</span> <span class="n">Callable</span><span class="p">[[],</span> <span class="n">Set</span><span class="p">[</span><span class="nb">int</span><span class="p">]],</span>
+    <span class="o">*</span><span class="p">,</span>
+    <span class="n">dry_run</span><span class="p">:</span> <span class="nb">bool</span><span class="p">,</span>
+    <span class="n">on_wave_complete</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span>
+        <span class="n">Callable</span><span class="p">[[</span><span class="n">List</span><span class="p">[</span><span class="nb">int</span><span class="p">],</span> <span class="n">List</span><span class="p">[</span><span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]]],</span> <span class="kc">None</span><span class="p">]</span>
+    <span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">retry_passes</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">0</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Tuple</span><span class="p">[</span><span class="n">List</span><span class="p">[</span><span class="nb">int</span><span class="p">],</span> <span class="n">List</span><span class="p">[</span><span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]]]:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Submit pending chunks in sequential waves and report the ones that did not land.</span>
+
+<span class="sd">    Waves cap how many relays, and so how many nested QoB drivers, run at once. A</span>
+<span class="sd">    batch run does not raise when a job fails, so the chunk directory is listed</span>
+<span class="sd">    again after each wave to find the chunks that did not land.</span>
+
+<span class="sd">    After the last wave, the chunks still missing are re-dispatched up to</span>
+<span class="sd">    ``retry_passes`` times. This is safe where Batch-level attempts are not: by the</span>
+<span class="sd">    time a pass runs, every relay from the previous dispatch has exited, so a</span>
+<span class="sd">    re-dispatch cannot race a live relay&#39;s inner QoB batch.</span>
+
+<span class="sd">    :param pending: Chunk indices to dispatch.</span>
+<span class="sd">    :param wave_size: Chunks per wave; ``&lt;= 0`` means one wave.</span>
+<span class="sd">    :param submit_wave: Submits one wave and returns its batch id. It must honor</span>
+<span class="sd">        the dry run itself (pass ``dry_run`` on to :func:`submit_relay_batch`);</span>
+<span class="sd">        this function only stops after the first wave. Retry passes get the</span>
+<span class="sd">        labels ``retry1``, ``retry2``, ...</span>
+<span class="sd">    :param present_indices: Lists the chunk indices with ``_SUCCESS``.</span>
+<span class="sd">    :param dry_run: Stop after the first wave without checking its outputs.</span>
+<span class="sd">    :param on_wave_complete: Called after each wave and each retry pass with the</span>
+<span class="sd">        failed indices and wave records so far, e.g. to rewrite the failed-chunk</span>
+<span class="sd">        manifest so it survives an orchestrator death. Not called on a dry run.</span>
+<span class="sd">        The lists are this function&#39;s live accumulators: read them, do not keep</span>
+<span class="sd">        or change them.</span>
+<span class="sd">    :param retry_passes: Re-dispatch passes for missing chunks after the waves.</span>
+<span class="sd">    :return: ``(failed indices, wave records)``; the failed list is what is still</span>
+<span class="sd">        missing after the last retry pass. Both are empty when nothing was pending</span>
+<span class="sd">        and on a dry run, so a caller must check ``dry_run`` before treating an</span>
+<span class="sd">        empty failed list as &quot;every chunk landed&quot;.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">pending</span><span class="p">:</span>
+        <span class="k">return</span> <span class="p">[],</span> <span class="p">[]</span>
+    <span class="k">if</span> <span class="n">wave_size</span> <span class="o">&lt;=</span> <span class="mi">0</span> <span class="ow">or</span> <span class="n">wave_size</span> <span class="o">&gt;=</span> <span class="nb">len</span><span class="p">(</span><span class="n">pending</span><span class="p">):</span>
+        <span class="n">waves</span> <span class="o">=</span> <span class="p">[</span><span class="nb">list</span><span class="p">(</span><span class="n">pending</span><span class="p">)]</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">waves</span> <span class="o">=</span> <span class="p">[</span>
+            <span class="nb">list</span><span class="p">(</span><span class="n">pending</span><span class="p">[</span><span class="n">i</span> <span class="p">:</span> <span class="n">i</span> <span class="o">+</span> <span class="n">wave_size</span><span class="p">])</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">pending</span><span class="p">),</span> <span class="n">wave_size</span><span class="p">)</span>
+        <span class="p">]</span>
+    <span class="n">n_waves</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">waves</span><span class="p">)</span>
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span>
+        <span class="s2">&quot;Dispatching </span><span class="si">%d</span><span class="s2"> pending chunks in </span><span class="si">%d</span><span class="s2"> sequential wave(s).&quot;</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">pending</span><span class="p">),</span> <span class="n">n_waves</span>
+    <span class="p">)</span>
+    <span class="n">failed</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="n">records</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]]</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">for</span> <span class="n">wi</span><span class="p">,</span> <span class="n">wave</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">waves</span><span class="p">,</span> <span class="n">start</span><span class="o">=</span><span class="mi">1</span><span class="p">):</span>
+        <span class="n">label</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;w</span><span class="si">{</span><span class="n">wi</span><span class="si">:</span><span class="s2">03d</span><span class="si">}</span><span class="s2">of</span><span class="si">{</span><span class="n">n_waves</span><span class="si">:</span><span class="s2">03d</span><span class="si">}</span><span class="s2">&quot;</span> <span class="k">if</span> <span class="n">n_waves</span> <span class="o">&gt;</span> <span class="mi">1</span> <span class="k">else</span> <span class="kc">None</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span>
+            <span class="s2">&quot;Wave </span><span class="si">%d</span><span class="s2">/</span><span class="si">%d</span><span class="s2">: submitting </span><span class="si">%d</span><span class="s2"> chunks (indices </span><span class="si">%d</span><span class="s2">..</span><span class="si">%d</span><span class="s2">).&quot;</span><span class="p">,</span>
+            <span class="n">wi</span><span class="p">,</span>
+            <span class="n">n_waves</span><span class="p">,</span>
+            <span class="nb">len</span><span class="p">(</span><span class="n">wave</span><span class="p">),</span>
+            <span class="n">wave</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span>
+            <span class="n">wave</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">],</span>
+        <span class="p">)</span>
+        <span class="n">batch_id</span> <span class="o">=</span> <span class="n">submit_wave</span><span class="p">(</span><span class="n">wave</span><span class="p">,</span> <span class="n">label</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">dry_run</span><span class="p">:</span>
+            <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Dry run: stopping after wave 1 of </span><span class="si">%d</span><span class="s2">.&quot;</span><span class="p">,</span> <span class="n">n_waves</span><span class="p">)</span>
+            <span class="k">return</span> <span class="p">[],</span> <span class="p">[]</span>
+        <span class="n">present</span> <span class="o">=</span> <span class="n">present_indices</span><span class="p">()</span>
+        <span class="n">wave_failed</span> <span class="o">=</span> <span class="p">[</span><span class="n">i</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="n">wave</span> <span class="k">if</span> <span class="n">i</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">present</span><span class="p">]</span>
+        <span class="n">failed</span><span class="o">.</span><span class="n">extend</span><span class="p">(</span><span class="n">wave_failed</span><span class="p">)</span>
+        <span class="n">records</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
+            <span class="p">{</span>
+                <span class="s2">&quot;wave&quot;</span><span class="p">:</span> <span class="n">wi</span><span class="p">,</span>
+                <span class="s2">&quot;batch_id&quot;</span><span class="p">:</span> <span class="n">batch_id</span><span class="p">,</span>
+                <span class="s2">&quot;n_dispatched&quot;</span><span class="p">:</span> <span class="nb">len</span><span class="p">(</span><span class="n">wave</span><span class="p">),</span>
+                <span class="s2">&quot;failed_chunk_indices&quot;</span><span class="p">:</span> <span class="n">wave_failed</span><span class="p">,</span>
+            <span class="p">}</span>
+        <span class="p">)</span>
+        <span class="k">if</span> <span class="n">wave_failed</span><span class="p">:</span>
+            <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span>
+                <span class="s2">&quot;Wave </span><span class="si">%d</span><span class="s2">/</span><span class="si">%d</span><span class="s2"> complete but </span><span class="si">%d</span><span class="s2">/</span><span class="si">%d</span><span class="s2"> chunk(s) MISSING after run: </span><span class="si">%s%s</span><span class="s2">&quot;</span><span class="p">,</span>
+                <span class="n">wi</span><span class="p">,</span>
+                <span class="n">n_waves</span><span class="p">,</span>
+                <span class="nb">len</span><span class="p">(</span><span class="n">wave_failed</span><span class="p">),</span>
+                <span class="nb">len</span><span class="p">(</span><span class="n">wave</span><span class="p">),</span>
+                <span class="n">wave_failed</span><span class="p">[:</span><span class="mi">25</span><span class="p">],</span>
+                <span class="s2">&quot; ...&quot;</span> <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">wave_failed</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">25</span> <span class="k">else</span> <span class="s2">&quot;&quot;</span><span class="p">,</span>
+            <span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span>
+                <span class="s2">&quot;Wave </span><span class="si">%d</span><span class="s2">/</span><span class="si">%d</span><span class="s2"> complete; all </span><span class="si">%d</span><span class="s2"> chunks present.&quot;</span><span class="p">,</span> <span class="n">wi</span><span class="p">,</span> <span class="n">n_waves</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">wave</span><span class="p">)</span>
+            <span class="p">)</span>
+        <span class="k">if</span> <span class="n">on_wave_complete</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">on_wave_complete</span><span class="p">(</span><span class="n">failed</span><span class="p">,</span> <span class="n">records</span><span class="p">)</span>
+
+    <span class="k">for</span> <span class="n">pass_no</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="nb">max</span><span class="p">(</span><span class="n">retry_passes</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span> <span class="o">+</span> <span class="mi">1</span><span class="p">):</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">failed</span><span class="p">:</span>
+            <span class="k">break</span>
+        <span class="n">retry</span> <span class="o">=</span> <span class="nb">sorted</span><span class="p">(</span><span class="nb">set</span><span class="p">(</span><span class="n">failed</span><span class="p">))</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span>
+            <span class="s2">&quot;Retry pass </span><span class="si">%d</span><span class="s2">/</span><span class="si">%d</span><span class="s2">: re-dispatching </span><span class="si">%d</span><span class="s2"> missing chunk(s): </span><span class="si">%s%s</span><span class="s2">&quot;</span><span class="p">,</span>
+            <span class="n">pass_no</span><span class="p">,</span>
+            <span class="n">retry_passes</span><span class="p">,</span>
+            <span class="nb">len</span><span class="p">(</span><span class="n">retry</span><span class="p">),</span>
+            <span class="n">retry</span><span class="p">[:</span><span class="mi">25</span><span class="p">],</span>
+            <span class="s2">&quot; ...&quot;</span> <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">retry</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">25</span> <span class="k">else</span> <span class="s2">&quot;&quot;</span><span class="p">,</span>
+        <span class="p">)</span>
+        <span class="n">batch_id</span> <span class="o">=</span> <span class="n">submit_wave</span><span class="p">(</span><span class="n">retry</span><span class="p">,</span> <span class="sa">f</span><span class="s2">&quot;retry</span><span class="si">{</span><span class="n">pass_no</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+        <span class="n">present</span> <span class="o">=</span> <span class="n">present_indices</span><span class="p">()</span>
+        <span class="n">still_missing</span> <span class="o">=</span> <span class="p">[</span><span class="n">i</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="n">retry</span> <span class="k">if</span> <span class="n">i</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">present</span><span class="p">]</span>
+        <span class="n">failed</span><span class="p">[:]</span> <span class="o">=</span> <span class="n">still_missing</span>
+        <span class="n">records</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
+            <span class="p">{</span>
+                <span class="s2">&quot;wave&quot;</span><span class="p">:</span> <span class="sa">f</span><span class="s2">&quot;retry</span><span class="si">{</span><span class="n">pass_no</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">,</span>
+                <span class="s2">&quot;batch_id&quot;</span><span class="p">:</span> <span class="n">batch_id</span><span class="p">,</span>
+                <span class="s2">&quot;n_dispatched&quot;</span><span class="p">:</span> <span class="nb">len</span><span class="p">(</span><span class="n">retry</span><span class="p">),</span>
+                <span class="s2">&quot;failed_chunk_indices&quot;</span><span class="p">:</span> <span class="n">still_missing</span><span class="p">,</span>
+            <span class="p">}</span>
+        <span class="p">)</span>
+        <span class="k">if</span> <span class="n">still_missing</span><span class="p">:</span>
+            <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span>
+                <span class="s2">&quot;Retry pass </span><span class="si">%d</span><span class="s2">/</span><span class="si">%d</span><span class="s2"> complete; </span><span class="si">%d</span><span class="s2"> chunk(s) STILL missing: </span><span class="si">%s%s</span><span class="s2">&quot;</span><span class="p">,</span>
+                <span class="n">pass_no</span><span class="p">,</span>
+                <span class="n">retry_passes</span><span class="p">,</span>
+                <span class="nb">len</span><span class="p">(</span><span class="n">still_missing</span><span class="p">),</span>
+                <span class="n">still_missing</span><span class="p">[:</span><span class="mi">25</span><span class="p">],</span>
+                <span class="s2">&quot; ...&quot;</span> <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">still_missing</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">25</span> <span class="k">else</span> <span class="s2">&quot;&quot;</span><span class="p">,</span>
+            <span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span>
+                <span class="s2">&quot;Retry pass </span><span class="si">%d</span><span class="s2">/</span><span class="si">%d</span><span class="s2"> complete; all chunks present.&quot;</span><span class="p">,</span> <span class="n">pass_no</span><span class="p">,</span> <span class="n">retry_passes</span>
+            <span class="p">)</span>
+        <span class="k">if</span> <span class="n">on_wave_complete</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">on_wave_complete</span><span class="p">(</span><span class="n">failed</span><span class="p">,</span> <span class="n">records</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">failed</span><span class="p">,</span> <span class="n">records</span></div>
+
+
+<div class="viewcode-block" id="orchestrate_tree_merge"><a class="viewcode-back" href="../../../../api_reference/v5/annotations/batch_fanout.html#gnomad_qc.v5.annotations.batch_fanout.orchestrate_tree_merge">[docs]</a><span class="k">def</span> <span class="nf">orchestrate_tree_merge</span><span class="p">(</span>
+    <span class="n">inputs</span><span class="p">:</span> <span class="n">Sequence</span><span class="p">[</span><span class="nb">str</span><span class="p">],</span>
+    <span class="n">final_output_path</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="n">group_path_fn</span><span class="p">:</span> <span class="n">Callable</span><span class="p">[[</span><span class="nb">int</span><span class="p">,</span> <span class="nb">int</span><span class="p">],</span> <span class="nb">str</span><span class="p">],</span>
+    <span class="n">merge_group_size</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
+    <span class="n">overwrite</span><span class="p">:</span> <span class="nb">bool</span><span class="p">,</span>
+    <span class="n">final_coalesce_to</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">int</span><span class="p">],</span>
+    <span class="n">batch_prefix</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="n">job_prefix</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="n">setup_cmd</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="n">script</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="n">common_flags</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="n">merge_cpu</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span>
+    <span class="n">merge_memory</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="n">merge_storage</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="n">final_merge_storage</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="n">submit</span><span class="p">:</span> <span class="n">Callable</span><span class="p">[[</span><span class="nb">str</span><span class="p">,</span> <span class="n">List</span><span class="p">[</span><span class="n">RelayJobSpec</span><span class="p">],</span> <span class="nb">str</span><span class="p">],</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">int</span><span class="p">]],</span>
+    <span class="n">attempts</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">1</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Union ``inputs`` into ``final_output_path`` with a tree of relay merge jobs.</span>
+
+<span class="sd">    With thousands of chunks, one job that unions everything would need a huge</span>
+<span class="sd">    input list and too much memory, so the merge is a tree. Each level groups its</span>
+<span class="sd">    inputs ``merge_group_size`` at a time and submits one ``--run-merge`` job per</span>
+<span class="sd">    group; a group whose HT already exists is skipped unless ``overwrite`` is set.</span>
+<span class="sd">    The last level is a single job that writes the final HT, and it always runs and</span>
+<span class="sd">    overwrites, so a caller that wants to keep an existing final HT checks for it</span>
+<span class="sd">    before calling.</span>
+
+<span class="sd">    :param inputs: Chunk HT paths, in order.</span>
+<span class="sd">    :param final_output_path: Final HT path.</span>
+<span class="sd">    :param group_path_fn: ``(level, group_idx) -&gt; intermediate HT path``.</span>
+<span class="sd">    :param merge_group_size: Inputs per merge job.</span>
+<span class="sd">    :param overwrite: Recompute intermediate groups that already exist.</span>
+<span class="sd">    :param final_coalesce_to: ``--merge-coalesce-to`` for the final job, or None.</span>
+<span class="sd">    :param batch_prefix: Batch name prefix; level and ``final`` are appended.</span>
+<span class="sd">    :param job_prefix: Job name prefix.</span>
+<span class="sd">    :param setup_cmd: Relay shell prefix from :func:`build_setup_command`.</span>
+<span class="sd">    :param script: Script command inside the relay container.</span>
+<span class="sd">    :param common_flags: Flags appended to every ``--run-merge`` command.</span>
+<span class="sd">    :param merge_cpu: CPU per merge job.</span>
+<span class="sd">    :param merge_memory: Memory class per merge job.</span>
+<span class="sd">    :param merge_storage: Storage per intermediate merge job.</span>
+<span class="sd">    :param final_merge_storage: Storage for the final merge job.</span>
+<span class="sd">    :param submit: ``(batch_name, job_specs, log_label) -&gt; batch id``.</span>
+<span class="sd">    :param attempts: Batch attempts per merge job. Default 1.</span>
+<span class="sd">    :return: None.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">inputs</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;orchestrate_tree_merge: no inputs to merge.&quot;</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">merge_group_size</span> <span class="o">&lt;</span> <span class="mi">2</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+            <span class="sa">f</span><span class="s2">&quot;merge_group_size must be at least 2, got </span><span class="si">{</span><span class="n">merge_group_size</span><span class="si">}</span><span class="s2">; a smaller&quot;</span>
+            <span class="s2">&quot; tree never converges.&quot;</span>
+        <span class="p">)</span>
+    <span class="n">gs</span> <span class="o">=</span> <span class="n">merge_group_size</span>
+    <span class="n">shape</span> <span class="o">=</span> <span class="p">[</span><span class="nb">len</span><span class="p">(</span><span class="n">inputs</span><span class="p">)]</span>
+    <span class="k">while</span> <span class="n">shape</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="o">&gt;</span> <span class="n">gs</span><span class="p">:</span>
+        <span class="n">shape</span><span class="o">.</span><span class="n">append</span><span class="p">((</span><span class="n">shape</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="o">+</span> <span class="n">gs</span> <span class="o">-</span> <span class="mi">1</span><span class="p">)</span> <span class="o">//</span> <span class="n">gs</span><span class="p">)</span>
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span>
+        <span class="s2">&quot;Merge tree (group_size=</span><span class="si">%d</span><span class="s2">): </span><span class="si">%s</span><span class="s2"> -&gt; 1 final HT (</span><span class="si">%d</span><span class="s2"> intermediate level(s))&quot;</span><span class="p">,</span>
+        <span class="n">gs</span><span class="p">,</span>
+        <span class="s2">&quot; -&gt; &quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="n">n</span><span class="p">)</span> <span class="k">for</span> <span class="n">n</span> <span class="ow">in</span> <span class="n">shape</span><span class="p">),</span>
+        <span class="nb">len</span><span class="p">(</span><span class="n">shape</span><span class="p">)</span> <span class="o">-</span> <span class="mi">1</span><span class="p">,</span>
+    <span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">merge_job</span><span class="p">(</span>
+        <span class="n">name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">output</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">group_inputs</span><span class="p">:</span> <span class="n">Sequence</span><span class="p">[</span><span class="nb">str</span><span class="p">],</span> <span class="n">coalesce</span><span class="p">,</span> <span class="n">storage</span>
+    <span class="p">):</span>
+        <span class="n">coalesce_flag</span> <span class="o">=</span> <span class="p">(</span>
+            <span class="sa">f</span><span class="s2">&quot; --merge-coalesce-to </span><span class="si">{</span><span class="n">coalesce</span><span class="si">}</span><span class="s2">&quot;</span> <span class="k">if</span> <span class="n">coalesce</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="s2">&quot;&quot;</span>
+        <span class="p">)</span>
+        <span class="k">return</span> <span class="n">RelayJobSpec</span><span class="p">(</span>
+            <span class="n">name</span><span class="o">=</span><span class="n">name</span><span class="p">,</span>
+            <span class="n">cpu</span><span class="o">=</span><span class="n">merge_cpu</span><span class="p">,</span>
+            <span class="n">memory</span><span class="o">=</span><span class="n">merge_memory</span><span class="p">,</span>
+            <span class="n">storage</span><span class="o">=</span><span class="n">storage</span><span class="p">,</span>
+            <span class="n">attempts</span><span class="o">=</span><span class="n">attempts</span><span class="p">,</span>
+            <span class="n">command</span><span class="o">=</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">setup_cmd</span><span class="si">}{</span><span class="n">script</span><span class="si">}</span><span class="s2"> --run-merge --merge-output </span><span class="si">{</span><span class="n">output</span><span class="si">}{</span><span class="n">coalesce_flag</span><span class="si">}</span><span class="s2">&quot;</span>
+                <span class="sa">f</span><span class="s2">&quot; --merge-inputs </span><span class="si">{</span><span class="s1">&#39; &#39;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">group_inputs</span><span class="p">)</span><span class="si">}</span><span class="s2"> </span><span class="si">{</span><span class="n">common_flags</span><span class="si">}</span><span class="s2">&quot;</span>
+            <span class="p">),</span>
+        <span class="p">)</span>
+
+    <span class="n">inputs</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">inputs</span><span class="p">)</span>
+    <span class="n">level</span> <span class="o">=</span> <span class="mi">1</span>
+    <span class="k">while</span> <span class="nb">len</span><span class="p">(</span><span class="n">inputs</span><span class="p">)</span> <span class="o">&gt;</span> <span class="n">gs</span><span class="p">:</span>
+        <span class="n">groups</span> <span class="o">=</span> <span class="p">[</span><span class="n">inputs</span><span class="p">[</span><span class="n">i</span> <span class="p">:</span> <span class="n">i</span> <span class="o">+</span> <span class="n">gs</span><span class="p">]</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">inputs</span><span class="p">),</span> <span class="n">gs</span><span class="p">)]</span>
+        <span class="n">out_paths</span> <span class="o">=</span> <span class="p">[</span><span class="n">group_path_fn</span><span class="p">(</span><span class="n">level</span><span class="p">,</span> <span class="n">idx</span><span class="p">)</span> <span class="k">for</span> <span class="n">idx</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">groups</span><span class="p">))]</span>
+        <span class="n">pending</span> <span class="o">=</span> <span class="p">[</span>
+            <span class="n">idx</span>
+            <span class="k">for</span> <span class="n">idx</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">groups</span><span class="p">))</span>
+            <span class="k">if</span> <span class="n">overwrite</span> <span class="ow">or</span> <span class="ow">not</span> <span class="n">file_exists</span><span class="p">(</span><span class="n">out_paths</span><span class="p">[</span><span class="n">idx</span><span class="p">])</span>
+        <span class="p">]</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span>
+            <span class="s2">&quot;Level </span><span class="si">%d</span><span class="s2">: </span><span class="si">%d</span><span class="s2"> groups, </span><span class="si">%d</span><span class="s2"> pending, </span><span class="si">%d</span><span class="s2"> already complete (</span><span class="si">%d</span><span class="s2"> -&gt; </span><span class="si">%d</span><span class="s2"> inputs)&quot;</span><span class="p">,</span>
+            <span class="n">level</span><span class="p">,</span>
+            <span class="nb">len</span><span class="p">(</span><span class="n">groups</span><span class="p">),</span>
+            <span class="nb">len</span><span class="p">(</span><span class="n">pending</span><span class="p">),</span>
+            <span class="nb">len</span><span class="p">(</span><span class="n">groups</span><span class="p">)</span> <span class="o">-</span> <span class="nb">len</span><span class="p">(</span><span class="n">pending</span><span class="p">),</span>
+            <span class="nb">len</span><span class="p">(</span><span class="n">inputs</span><span class="p">),</span>
+            <span class="nb">len</span><span class="p">(</span><span class="n">groups</span><span class="p">),</span>
+        <span class="p">)</span>
+        <span class="n">specs</span> <span class="o">=</span> <span class="p">[</span>
+            <span class="n">merge_job</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">job_prefix</span><span class="si">}</span><span class="s2">_L</span><span class="si">{</span><span class="n">level</span><span class="si">:</span><span class="s2">02d</span><span class="si">}</span><span class="s2">_</span><span class="si">{</span><span class="n">idx</span><span class="si">:</span><span class="s2">06d</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">,</span>
+                <span class="n">out_paths</span><span class="p">[</span><span class="n">idx</span><span class="p">],</span>
+                <span class="n">groups</span><span class="p">[</span><span class="n">idx</span><span class="p">],</span>
+                <span class="nb">len</span><span class="p">(</span><span class="n">groups</span><span class="p">[</span><span class="n">idx</span><span class="p">]),</span>
+                <span class="n">merge_storage</span><span class="p">,</span>
+            <span class="p">)</span>
+            <span class="k">for</span> <span class="n">idx</span> <span class="ow">in</span> <span class="n">pending</span>
+        <span class="p">]</span>
+        <span class="n">submit</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">batch_prefix</span><span class="si">}</span><span class="s2">_L</span><span class="si">{</span><span class="n">level</span><span class="si">:</span><span class="s2">02d</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">specs</span><span class="p">,</span> <span class="s2">&quot;merge&quot;</span><span class="p">)</span>
+        <span class="n">inputs</span> <span class="o">=</span> <span class="n">out_paths</span>
+        <span class="n">level</span> <span class="o">+=</span> <span class="mi">1</span>
+
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Final merge: </span><span class="si">%d</span><span class="s2"> inputs -&gt; </span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">inputs</span><span class="p">),</span> <span class="n">final_output_path</span><span class="p">)</span>
+    <span class="n">final</span> <span class="o">=</span> <span class="n">merge_job</span><span class="p">(</span>
+        <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">job_prefix</span><span class="si">}</span><span class="s2">_final&quot;</span><span class="p">,</span>
+        <span class="n">final_output_path</span><span class="p">,</span>
+        <span class="n">inputs</span><span class="p">,</span>
+        <span class="n">final_coalesce_to</span><span class="p">,</span>
+        <span class="n">final_merge_storage</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">submit</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">batch_prefix</span><span class="si">}</span><span class="s2">_final&quot;</span><span class="p">,</span> <span class="p">[</span><span class="n">final</span><span class="p">],</span> <span class="s2">&quot;final-merge&quot;</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="union_and_write_hts"><a class="viewcode-back" href="../../../../api_reference/v5/annotations/batch_fanout.html#gnomad_qc.v5.annotations.batch_fanout.union_and_write_hts">[docs]</a><span class="k">def</span> <span class="nf">union_and_write_hts</span><span class="p">(</span>
+    <span class="n">input_paths</span><span class="p">:</span> <span class="n">Sequence</span><span class="p">[</span><span class="nb">str</span><span class="p">],</span> <span class="n">output_path</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">coalesce_to</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Union HTs that share a schema and globals, and write the result.</span>
+
+<span class="sd">    Needs a running Hail context. ``Table.union`` keeps the globals of the first</span>
+<span class="sd">    input, which loses nothing because every chunk was built from the same inputs</span>
+<span class="sd">    and carries the same globals.</span>
+
+<span class="sd">    :param input_paths: HT paths to union.</span>
+<span class="sd">    :param output_path: Destination path, overwritten.</span>
+<span class="sd">    :param coalesce_to: ``naive_coalesce`` target before writing, or None.</span>
+<span class="sd">    :return: None.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span>
+        <span class="s2">&quot;Merging </span><span class="si">%d</span><span class="s2"> HTs -&gt; </span><span class="si">%s</span><span class="s2"> (coalesce_to=</span><span class="si">%s</span><span class="s2">)&quot;</span><span class="p">,</span>
+        <span class="nb">len</span><span class="p">(</span><span class="n">input_paths</span><span class="p">),</span>
+        <span class="n">output_path</span><span class="p">,</span>
+        <span class="n">coalesce_to</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">merged</span> <span class="o">=</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="o">.</span><span class="n">union</span><span class="p">(</span><span class="o">*</span><span class="p">[</span><span class="n">hl</span><span class="o">.</span><span class="n">read_table</span><span class="p">(</span><span class="n">p</span><span class="p">)</span> <span class="k">for</span> <span class="n">p</span> <span class="ow">in</span> <span class="n">input_paths</span><span class="p">])</span>
+    <span class="k">if</span> <span class="n">coalesce_to</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">merged</span> <span class="o">=</span> <span class="n">merged</span><span class="o">.</span><span class="n">naive_coalesce</span><span class="p">(</span><span class="n">coalesce_to</span><span class="p">)</span>
+    <span class="n">merged</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">output_path</span><span class="p">,</span> <span class="n">overwrite</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Wrote merged HT to </span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">output_path</span><span class="p">)</span></div>
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p></p>
+  </div>
+
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

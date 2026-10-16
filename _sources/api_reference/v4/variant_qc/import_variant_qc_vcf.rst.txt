@@ -1,0 +1,21 @@
+gnomad_qc.v4.variant_qc.import_variant_qc_vcf
+=============================================
+
+Script to load variant QC result VCF into a Hail Table.
+
+
+
+
+.. argparse::
+   :ref: gnomad_qc.v4.variant_qc.import_variant_qc_vcf.get_script_argument_parser
+   :prog: gnomad_qc.v4.variant_qc.import_variant_qc_vcf.py
+
+
+
+Module Functions
+****************
+
+.. gnomad_automodulesummary:: gnomad_qc.v4.variant_qc.import_variant_qc_vcf
+
+.. automodule:: gnomad_qc.v4.variant_qc.import_variant_qc_vcf
+    :exclude-members: get_script_argument_parser

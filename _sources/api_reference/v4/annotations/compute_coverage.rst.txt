@@ -1,0 +1,27 @@
+gnomad_qc.v4.annotations.compute_coverage
+=========================================
+
+
+Script to compute coverage statistics on gnomAD v4 exomes.
+
+Provenance: the published v4.1 exome AN was produced with gnomad_methods before commit
+0e38c42e (adj read the reference depth for phased alt-first hets; fixed in 0.9.1) and
+Hail 0.2.122. See v4/README.md.
+
+
+
+
+
+.. argparse::
+   :ref: gnomad_qc.v4.annotations.compute_coverage.get_script_argument_parser
+   :prog: gnomad_qc.v4.annotations.compute_coverage.py
+
+
+
+Module Functions
+****************
+
+.. gnomad_automodulesummary:: gnomad_qc.v4.annotations.compute_coverage
+
+.. automodule:: gnomad_qc.v4.annotations.compute_coverage
+    :exclude-members: get_script_argument_parser

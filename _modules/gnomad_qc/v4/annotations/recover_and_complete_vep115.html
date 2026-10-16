@@ -1,0 +1,1303 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>gnomad_qc.v4.annotations.recover_and_complete_vep115 &mdash; gnomad_qc master documentation</title>
+      <link rel="stylesheet" href="../../../../_static/pygments.css" type="text/css" />
+      <link rel="stylesheet" href="../../../../_static/css/theme.css" type="text/css" />
+      <link rel="stylesheet" href="../../../../_static/theme_overrides.css" type="text/css" />
+  <!--[if lt IE 9]>
+    <script src="../../../../_static/js/html5shiv.min.js"></script>
+  <![endif]-->
+  
+        <script src="../../../../_static/jquery.js"></script>
+        <script src="../../../../_static/_sphinx_javascript_frameworks_compat.js"></script>
+        <script data-url_root="../../../../" id="documentation_options" src="../../../../_static/documentation_options.js"></script>
+        <script src="../../../../_static/doctools.js"></script>
+        <script src="../../../../_static/sphinx_highlight.js"></script>
+        <script src="https://unpkg.com/mermaid@10.2.0/dist/mermaid.min.js"></script>
+        <script>mermaid.initialize({startOnLoad:true});</script>
+    <script src="../../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../../index.html" class="icon icon-home">
+            gnomad_qc
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../../api_reference/index.html">API Reference</a></li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/broadinstitute/gnomad_qc/tags">Change Log</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../../index.html">gnomad_qc</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../../index.html">Module code</a></li>
+      <li class="breadcrumb-item active">gnomad_qc.v4.annotations.recover_and_complete_vep115</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for gnomad_qc.v4.annotations.recover_and_complete_vep115</h1><div class="highlight"><pre>
+<span></span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">Complete VEP annotation for gnomAD context HT.</span>
+
+<span class="sd">Background:</span>
+
+<span class="sd">    This script was created to recover from a VEP 115 run that failed after processing</span>
+<span class="sd">    ~99% (37797/38029 partitions) of the gnomAD context HT (all possible SNVs). The job</span>
+<span class="sd">    ran for an extended period before failing at task 32305 due to a VEP JSON parsing</span>
+<span class="sd">    error. The error was caused by variant chr18:16770181 A&gt;C, where VEP annotated the</span>
+<span class="sd">    context field with &#39;-nan&#39;, resulting in:</span>
+
+<span class="sd">        com.fasterxml.jackson.core.JsonParseException: Unexpected character (&#39;n&#39; (code</span>
+<span class="sd">        110)) in numeric value: expected digit (0-9) to follow minus sign</span>
+
+<span class="sd">    After filtering that variant, another variant in the same region also failed with</span>
+<span class="sd">    the same error. To ensure successful completion, the entire chr18 centromere region</span>
+<span class="sd">    (chr18:15460900-20861207) is now excluded from VEP processing.</span>
+
+<span class="sd">    Rather than rerun VEP on the entire context HT, this script:</span>
+
+<span class="sd">        - Reconstructs the partially written HT by updating metadata files.</span>
+<span class="sd">        - Identifies which variants still need VEP annotation.</span>
+<span class="sd">        - Filters out the chr18 centromere region to prevent crashes.</span>
+<span class="sd">        - Runs VEP only on the remaining unannotated variants.</span>
+<span class="sd">        - Combines all results into a complete VEP-annotated context HT.</span>
+
+<span class="sd">    Note: Variants in the chr18 centromere will have missing VEP annotations and</span>
+<span class="sd">    should be investigated separately.</span>
+
+<span class="sd">Pipeline Steps:</span>
+
+<span class="sd">    Step 1: Copy partial HT to temp location.</span>
+<span class="sd">    Step 2: Extract partition metadata from index files and vep_context HT.</span>
+<span class="sd">    Step 3: Reconstruct partial HT by updating metadata files.</span>
+<span class="sd">    Step 4: Filter context HT to variants missing VEP (excluding chr18 centromere).</span>
+<span class="sd">    Step 5: Run VEP on remaining variants (excludes chr18 centromere).</span>
+<span class="sd">    Step 6: Run VEP on chr18 centromere variants with modified config.</span>
+<span class="sd">    Step 7: Combine all VEP results and add metadata to final HT.</span>
+<span class="sd">&quot;&quot;&quot;</span>
+
+<span class="kn">import</span> <span class="nn">argparse</span>
+<span class="kn">import</span> <span class="nn">gzip</span>
+<span class="kn">import</span> <span class="nn">json</span>
+<span class="kn">import</span> <span class="nn">logging</span>
+<span class="kn">import</span> <span class="nn">subprocess</span>
+<span class="kn">from</span> <span class="nn">pathlib</span> <span class="kn">import</span> <span class="n">Path</span>
+
+<span class="kn">import</span> <span class="nn">hail</span> <span class="k">as</span> <span class="nn">hl</span>
+<span class="kn">from</span> <span class="nn">gnomad.resources.grch38.reference_data</span> <span class="kn">import</span> <span class="n">vep_context</span>
+<span class="kn">from</span> <span class="nn">gnomad.utils.vep</span> <span class="kn">import</span> <span class="n">VEP_CONFIG_PATH</span><span class="p">,</span> <span class="n">get_vep_help</span>
+
+<span class="n">logging</span><span class="o">.</span><span class="n">basicConfig</span><span class="p">(</span>
+    <span class="nb">format</span><span class="o">=</span><span class="s2">&quot;</span><span class="si">%(asctime)s</span><span class="s2"> (</span><span class="si">%(name)s</span><span class="s2"> </span><span class="si">%(lineno)s</span><span class="s2">): </span><span class="si">%(message)s</span><span class="s2">&quot;</span><span class="p">,</span>
+    <span class="n">datefmt</span><span class="o">=</span><span class="s2">&quot;%m/</span><span class="si">%d</span><span class="s2">/%Y %I:%M:%S %p&quot;</span><span class="p">,</span>
+<span class="p">)</span>
+<span class="n">logger</span> <span class="o">=</span> <span class="n">logging</span><span class="o">.</span><span class="n">getLogger</span><span class="p">(</span><span class="s2">&quot;complete_vep_annotation&quot;</span><span class="p">)</span>
+<span class="n">logger</span><span class="o">.</span><span class="n">setLevel</span><span class="p">(</span><span class="n">logging</span><span class="o">.</span><span class="n">INFO</span><span class="p">)</span>
+
+
+<span class="n">LOGGER_HEADER_TEMPLATE</span> <span class="o">=</span> <span class="s2">&quot;&quot;&quot;</span>
+
+<span class="s2">===============================================================================</span>
+<span class="si">{message}</span>
+<span class="s2">===============================================================================</span>
+
+<span class="s2">&quot;&quot;&quot;</span>
+
+<span class="c1"># ==============================================================================</span>
+<span class="c1"># Path Constants</span>
+<span class="c1"># ==============================================================================</span>
+
+<span class="n">PARTIAL_HT_PATH</span> <span class="o">=</span> <span class="s2">&quot;gs://gnomad-tmp-30day/persist_TableJX3FbwpfyF&quot;</span>
+
+<span class="c1"># Schema reference HT was created by running VEP 115 on a small region of the context HT</span>
+<span class="c1"># to get the correct schema and metadata structure:</span>
+<span class="c1">#</span>
+<span class="c1">#   from gnomad.resources.grch38.reference_data import vep_context</span>
+<span class="c1">#   from gnomad.utils.vep import VEP_CONFIG_PATH, get_vep_help</span>
+<span class="c1">#</span>
+<span class="c1">#   ht = vep_context.versions[&quot;101&quot;].ht()</span>
+<span class="c1">#   ht = hl.filter_intervals(</span>
+<span class="c1">#       ht, [hl.parse_locus_interval(&quot;chr1:55039447-55064852&quot;, reference_genome=&quot;GRCh38&quot;)]</span>
+<span class="c1">#   )</span>
+<span class="c1">#</span>
+<span class="c1">#   # Drop old VEP annotations</span>
+<span class="c1">#   if &quot;vep_proc_id&quot; in list(ht.row):</span>
+<span class="c1">#       ht = ht.drop(&quot;vep&quot;, &quot;vep_proc_id&quot;)</span>
+<span class="c1">#   else:</span>
+<span class="c1">#       ht = ht.drop(&quot;vep&quot;)</span>
+<span class="c1">#</span>
+<span class="c1">#   ht = hl.vep(ht, VEP_CONFIG_PATH)</span>
+<span class="c1">#</span>
+<span class="c1">#   vep_help = get_vep_help(VEP_CONFIG_PATH)</span>
+<span class="c1">#   with hl.hadoop_open(VEP_CONFIG_PATH) as vep_config_file:</span>
+<span class="c1">#       vep_config = vep_config_file.read()</span>
+<span class="c1">#</span>
+<span class="c1">#   ht = ht.annotate_globals(</span>
+<span class="c1">#       version=f&quot;v115&quot;, vep_help=vep_help, vep_config=vep_config</span>
+<span class="c1">#   )</span>
+<span class="c1">#</span>
+<span class="c1">#   ht = ht.checkpoint(&quot;gs://gnomad-julia/vep115/pcsk9.ht&quot;)</span>
+<span class="c1">#</span>
+<span class="n">SCHEMA_REF_HT_PATH</span> <span class="o">=</span> <span class="s2">&quot;gs://gnomad-julia/vep115/pcsk9.ht&quot;</span>
+
+<span class="n">TEMP_PARTIAL_HT_PATH</span> <span class="o">=</span> <span class="s2">&quot;gs://gnomad-tmp-30day/reconstructed_partial_vep.ht&quot;</span>
+<span class="n">FINAL_HT_PATH</span> <span class="o">=</span> <span class="s2">&quot;gs://gnomad-tmp-30day/completed_vep_context.ht&quot;</span>
+<span class="n">REVEP_NEEDED_HT_PATH</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">FINAL_HT_PATH</span><span class="si">}</span><span class="s2">_revep_needed&quot;</span>
+<span class="n">REVEP_DONE_HT_PATH</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">FINAL_HT_PATH</span><span class="si">}</span><span class="s2">_revep_done&quot;</span>
+<span class="n">CENTROMERE_REVEP_DONE_HT_PATH</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">FINAL_HT_PATH</span><span class="si">}</span><span class="s2">_centromere_revep_done&quot;</span>
+
+<span class="c1"># ==============================================================================</span>
+<span class="c1"># VEP Version Constants</span>
+<span class="c1"># ==============================================================================</span>
+
+<span class="n">VEP_VERSION</span> <span class="o">=</span> <span class="s2">&quot;v115&quot;</span>
+<span class="n">VEP_CONTEXT_VERSION</span> <span class="o">=</span> <span class="s2">&quot;101&quot;</span>
+<span class="n">VEP_PROC_ID_FIELD</span> <span class="o">=</span> <span class="s2">&quot;vep_proc_id&quot;</span>
+
+<span class="c1"># ==============================================================================</span>
+<span class="c1"># Problematic Region Constants</span>
+<span class="c1"># ==============================================================================</span>
+
+<span class="c1"># Problematic region: chr18 centromere that causes VEP to return &#39;-nan&#39; in context</span>
+<span class="c1"># field. Variants in this region cause JSON parsing errors and must be excluded from</span>
+<span class="c1"># VEP processing. This region will be investigated separately.</span>
+<span class="n">PROBLEMATIC_REGION</span> <span class="o">=</span> <span class="s2">&quot;chr18:15460900-20861207&quot;</span>
+
+
+<span class="c1"># ==============================================================================</span>
+<span class="c1"># Helper Functions - General Utilities</span>
+<span class="c1"># ==============================================================================</span>
+
+
+<div class="viewcode-block" id="copy_partial_ht"><a class="viewcode-back" href="../../../../api_reference/v4/annotations/recover_and_complete_vep115.html#gnomad_qc.v4.annotations.recover_and_complete_vep115.copy_partial_ht">[docs]</a><span class="k">def</span> <span class="nf">copy_partial_ht</span><span class="p">(</span><span class="n">partial_path</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">output_path</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Copy entire partial HT directory to output location.</span>
+
+<span class="sd">    :param partial_path: Source path of partial HT.</span>
+<span class="sd">    :param output_path: Destination path for copied HT.</span>
+<span class="sd">    :return: None</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Copying entire partial HT directory...&quot;</span><span class="p">)</span>
+
+    <span class="c1"># Copy everything from partial HT to output using gsutil -m cp -r.</span>
+    <span class="n">subprocess</span><span class="o">.</span><span class="n">run</span><span class="p">(</span>
+        <span class="p">[</span><span class="s2">&quot;gsutil&quot;</span><span class="p">,</span> <span class="s2">&quot;-m&quot;</span><span class="p">,</span> <span class="s2">&quot;cp&quot;</span><span class="p">,</span> <span class="s2">&quot;-r&quot;</span><span class="p">,</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">partial_path</span><span class="si">}</span><span class="s2">/*&quot;</span><span class="p">,</span> <span class="n">output_path</span><span class="p">],</span>
+        <span class="n">check</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;✓ Partial HT copied&quot;</span><span class="p">)</span></div>
+
+
+<span class="k">def</span> <span class="nf">_read_schema_metadata</span><span class="p">(</span><span class="n">schema_ref_path</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Read schema metadata from reference HT.</span>
+
+<span class="sd">    :param schema_ref_path: Path to schema reference HT.</span>
+<span class="sd">    :return: Dictionary containing the schema rows metadata.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Reading schema reference metadata...&quot;</span><span class="p">)</span>
+    <span class="n">schema_rows_meta_path</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">schema_ref_path</span><span class="si">}</span><span class="s2">/rows/metadata.json.gz&quot;</span>
+    <span class="n">schema_rows_meta</span> <span class="o">=</span> <span class="n">_read_json_metadata</span><span class="p">(</span><span class="n">schema_rows_meta_path</span><span class="p">)</span>
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;✓ Schema metadata loaded&quot;</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">schema_rows_meta</span>
+
+
+<span class="k">def</span> <span class="nf">_get_context_ht_path</span><span class="p">(</span><span class="n">version</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="n">VEP_CONTEXT_VERSION</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Get the vep_context HT path for a specific version.</span>
+
+<span class="sd">    :param version: Version of the context HT (default: VEP_CONTEXT_VERSION).</span>
+<span class="sd">    :return: Path to the context HT.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">return</span> <span class="n">vep_context</span><span class="o">.</span><span class="n">versions</span><span class="p">[</span><span class="n">version</span><span class="p">]</span><span class="o">.</span><span class="n">path</span>
+
+
+<span class="k">def</span> <span class="nf">_read_json_metadata</span><span class="p">(</span><span class="n">file_path</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Read and parse a JSON metadata file (handles both gzipped and plain JSON).</span>
+
+<span class="sd">    :param file_path: Path to metadata file.</span>
+<span class="sd">    :return: Parsed JSON as dict.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">with</span> <span class="n">hl</span><span class="o">.</span><span class="n">hadoop_open</span><span class="p">(</span><span class="n">file_path</span><span class="p">,</span> <span class="s2">&quot;rb&quot;</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">json</span><span class="o">.</span><span class="n">loads</span><span class="p">(</span><span class="n">f</span><span class="o">.</span><span class="n">read</span><span class="p">()</span><span class="o">.</span><span class="n">decode</span><span class="p">())</span>
+
+
+<span class="k">def</span> <span class="nf">_get_sorted_partition_indices</span><span class="p">(</span><span class="n">index_to_filename</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="nb">str</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="nb">int</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Get sorted list of partition indices from index-to-filename mapping.</span>
+
+<span class="sd">    :param index_to_filename: Dict mapping partition index to filename.</span>
+<span class="sd">    :return: Sorted list of partition indices.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">return</span> <span class="nb">sorted</span><span class="p">(</span><span class="n">index_to_filename</span><span class="o">.</span><span class="n">keys</span><span class="p">())</span>
+
+
+<span class="k">def</span> <span class="nf">_drop_vep_proc_id_if_present</span><span class="p">(</span><span class="n">ht</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Drop vep_proc_id field if present in table.</span>
+
+<span class="sd">    :param ht: Hail Table.</span>
+<span class="sd">    :return: Table with vep_proc_id dropped (if it was present).</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="n">VEP_PROC_ID_FIELD</span> <span class="ow">in</span> <span class="nb">list</span><span class="p">(</span><span class="n">ht</span><span class="o">.</span><span class="n">row</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">ht</span><span class="o">.</span><span class="n">drop</span><span class="p">(</span><span class="n">VEP_PROC_ID_FIELD</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">ht</span>
+
+
+<span class="c1"># ==============================================================================</span>
+<span class="c1"># vep_context HT Operations - Bounds and Counts</span>
+<span class="c1"># ==============================================================================</span>
+
+
+<div class="viewcode-block" id="get_context_ht_partition_counts"><a class="viewcode-back" href="../../../../api_reference/v4/annotations/recover_and_complete_vep115.html#gnomad_qc.v4.annotations.recover_and_complete_vep115.get_context_ht_partition_counts">[docs]</a><span class="k">def</span> <span class="nf">get_context_ht_partition_counts</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="nb">int</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Get all partition counts from vep_context HT.</span>
+
+<span class="sd">    :return: List of partition counts for all partitions in vep_context HT.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Reading partition counts from vep_context HT metadata...&quot;</span><span class="p">)</span>
+
+    <span class="n">meta</span> <span class="o">=</span> <span class="n">_read_json_metadata</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">_get_context_ht_path</span><span class="p">()</span><span class="si">}</span><span class="s2">/metadata.json.gz&quot;</span><span class="p">)</span>
+
+    <span class="c1"># Extract partition counts for the specific indices.</span>
+    <span class="k">if</span> <span class="s2">&quot;components&quot;</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">meta</span> <span class="ow">or</span> <span class="s2">&quot;partition_counts&quot;</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">meta</span><span class="p">[</span><span class="s2">&quot;components&quot;</span><span class="p">]:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;vep_context HT metadata has no partition_counts field&quot;</span><span class="p">)</span>
+
+    <span class="n">all_counts</span> <span class="o">=</span> <span class="n">meta</span><span class="p">[</span><span class="s2">&quot;components&quot;</span><span class="p">][</span><span class="s2">&quot;partition_counts&quot;</span><span class="p">][</span><span class="s2">&quot;counts&quot;</span><span class="p">]</span>
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;    ✓ Extracted </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">all_counts</span><span class="p">)</span><span class="si">}</span><span class="s2"> partition counts in vep_context HT&quot;</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">all_counts</span></div>
+
+
+<div class="viewcode-block" id="get_context_ht_bounds"><a class="viewcode-back" href="../../../../api_reference/v4/annotations/recover_and_complete_vep115.html#gnomad_qc.v4.annotations.recover_and_complete_vep115.get_context_ht_bounds">[docs]</a><span class="k">def</span> <span class="nf">get_context_ht_bounds</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="nb">dict</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Get range bounds from vep_context HT.</span>
+
+<span class="sd">    :return: List of bounds where bounds[i] = bound for partition i.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Reading partition bounds from vep_context HT...&quot;</span><span class="p">)</span>
+
+    <span class="n">meta</span> <span class="o">=</span> <span class="n">_read_json_metadata</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">_get_context_ht_path</span><span class="p">()</span><span class="si">}</span><span class="s2">/rows/metadata.json.gz&quot;</span><span class="p">)</span>
+
+    <span class="c1"># Extract bounds for the specific partition indices.</span>
+    <span class="k">if</span> <span class="s2">&quot;_jRangeBounds&quot;</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">meta</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;vep_context HT metadata has no _jRangeBounds field&quot;</span><span class="p">)</span>
+
+    <span class="n">all_bounds</span> <span class="o">=</span> <span class="n">meta</span><span class="p">[</span><span class="s2">&quot;_jRangeBounds&quot;</span><span class="p">]</span>
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;    ✓ Extracted range bounds for </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">all_bounds</span><span class="p">)</span><span class="si">}</span><span class="s2"> partitions&quot;</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">all_bounds</span></div>
+
+
+<span class="c1"># ==============================================================================</span>
+<span class="c1"># Partition File Operations</span>
+<span class="c1"># ==============================================================================</span>
+
+
+<span class="k">def</span> <span class="nf">_get_index_directories</span><span class="p">(</span><span class="n">ht_path</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="nb">str</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Create mapping from partition index to index directory path for the given HT.</span>
+
+<span class="sd">    :param ht_path: Path to HT.</span>
+<span class="sd">    :return: Dictionary mapping partition index to directory path.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">index_dir</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">ht_path</span><span class="si">}</span><span class="s2">/index&quot;</span>
+    <span class="n">idx_paths</span> <span class="o">=</span> <span class="p">[</span>
+        <span class="n">f</span><span class="p">[</span><span class="s2">&quot;path&quot;</span><span class="p">]</span>
+        <span class="k">for</span> <span class="n">f</span> <span class="ow">in</span> <span class="n">hl</span><span class="o">.</span><span class="n">hadoop_ls</span><span class="p">(</span><span class="n">index_dir</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">f</span><span class="p">[</span><span class="s2">&quot;path&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">endswith</span><span class="p">(</span><span class="s2">&quot;.idx&quot;</span><span class="p">)</span> <span class="ow">and</span> <span class="n">f</span><span class="p">[</span><span class="s2">&quot;is_dir&quot;</span><span class="p">]</span>
+    <span class="p">]</span>
+
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">idx_paths</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;No .idx directories found in </span><span class="si">{</span><span class="n">index_dir</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;    Found </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">idx_paths</span><span class="p">)</span><span class="si">}</span><span class="s2"> index directories to process&quot;</span><span class="p">)</span>
+
+    <span class="c1"># Extract partition indices and create mapping from index to directory name.</span>
+    <span class="n">idx_to_filename</span> <span class="o">=</span> <span class="p">{}</span>
+    <span class="k">for</span> <span class="n">idx_path</span> <span class="ow">in</span> <span class="n">idx_paths</span><span class="p">:</span>
+        <span class="n">fname</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="n">idx_path</span><span class="p">)</span><span class="o">.</span><span class="n">name</span>
+        <span class="k">if</span> <span class="n">fname</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s2">&quot;part-&quot;</span><span class="p">):</span>
+            <span class="n">idx</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">fname</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s2">&quot;-&quot;</span><span class="p">)[</span><span class="mi">1</span><span class="p">])</span>
+            <span class="n">idx_to_filename</span><span class="p">[</span><span class="n">idx</span><span class="p">]</span> <span class="o">=</span> <span class="n">idx_path</span>
+
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span>
+        <span class="sa">f</span><span class="s2">&quot;    Partition index range: </span><span class="si">{</span><span class="nb">min</span><span class="p">(</span><span class="n">idx_to_filename</span><span class="o">.</span><span class="n">keys</span><span class="p">())</span><span class="si">}</span><span class="s2"> to &quot;</span>
+        <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="nb">max</span><span class="p">(</span><span class="n">idx_to_filename</span><span class="o">.</span><span class="n">keys</span><span class="p">())</span><span class="si">}</span><span class="s2">&quot;</span>
+    <span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">idx_to_filename</span>
+
+
+<span class="k">def</span> <span class="nf">_validate_partition_count</span><span class="p">(</span>
+    <span class="n">partition_idx</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
+    <span class="n">actual_count</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
+    <span class="n">expected_counts</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">int</span><span class="p">],</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Validate a partition&#39;s row count against expected count from vep_context.</span>
+
+<span class="sd">    :param partition_idx: Partition index.</span>
+<span class="sd">    :param actual_count: Actual count from index metadata.</span>
+<span class="sd">    :param expected_counts: List of expected counts from vep_context, indexed by partition index.</span>
+<span class="sd">    :raises ValueError: If count doesn&#39;t match expected.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="n">partition_idx</span> <span class="o">&gt;=</span> <span class="nb">len</span><span class="p">(</span><span class="n">expected_counts</span><span class="p">):</span>
+        <span class="k">return</span>
+
+    <span class="n">expected_count</span> <span class="o">=</span> <span class="n">expected_counts</span><span class="p">[</span><span class="n">partition_idx</span><span class="p">]</span>
+    <span class="k">if</span> <span class="n">actual_count</span> <span class="o">!=</span> <span class="n">expected_count</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+            <span class="sa">f</span><span class="s2">&quot;Partition </span><span class="si">{</span><span class="n">partition_idx</span><span class="si">}</span><span class="s2"> count mismatch: &quot;</span>
+            <span class="sa">f</span><span class="s2">&quot;expected </span><span class="si">{</span><span class="n">expected_count</span><span class="si">:</span><span class="s2">,</span><span class="si">}</span><span class="s2"> rows from vep_context, &quot;</span>
+            <span class="sa">f</span><span class="s2">&quot;but found </span><span class="si">{</span><span class="n">actual_count</span><span class="si">:</span><span class="s2">,</span><span class="si">}</span><span class="s2"> rows in index &quot;</span>
+            <span class="sa">f</span><span class="s2">&quot;(diff: </span><span class="si">{</span><span class="n">actual_count</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="n">expected_count</span><span class="si">:</span><span class="s2">+,</span><span class="si">}</span><span class="s2">)&quot;</span>
+        <span class="p">)</span>
+
+
+<span class="k">def</span> <span class="nf">_read_partition_counts</span><span class="p">(</span>
+    <span class="n">idx_dir_map</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="nb">str</span><span class="p">],</span>
+    <span class="n">expected_counts</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">int</span><span class="p">],</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="nb">int</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Read row counts from all partition index metadata files.</span>
+
+<span class="sd">    :param idx_dir_map: Dict mapping partition index to directory path.</span>
+<span class="sd">    :param expected_counts: List of expected counts for validation.</span>
+<span class="sd">    :return: Dict mapping partition index to row count.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;    Reading partition counts from index metadata...&quot;</span><span class="p">)</span>
+    <span class="n">total_partitions</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">idx_dir_map</span><span class="p">)</span>
+    <span class="n">progress_interval</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="n">total_partitions</span> <span class="o">//</span> <span class="mi">20</span><span class="p">)</span>  <span class="c1"># Report ~20 times.</span>
+
+    <span class="c1"># Iterate over partition indices and read counts from each .idx directory.</span>
+    <span class="n">partition_counts</span> <span class="o">=</span> <span class="p">{}</span>
+    <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="p">(</span><span class="n">partition_idx</span><span class="p">,</span> <span class="n">idx_path</span><span class="p">)</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">idx_dir_map</span><span class="o">.</span><span class="n">items</span><span class="p">(),</span> <span class="mi">1</span><span class="p">):</span>
+
+        <span class="c1"># Show progress periodically.</span>
+        <span class="k">if</span> <span class="n">i</span> <span class="o">%</span> <span class="n">progress_interval</span> <span class="o">==</span> <span class="mi">0</span> <span class="ow">or</span> <span class="n">i</span> <span class="o">==</span> <span class="mi">1</span> <span class="ow">or</span> <span class="n">i</span> <span class="o">==</span> <span class="n">total_partitions</span><span class="p">:</span>
+            <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s2">&quot;      Processing partition </span><span class="si">{</span><span class="n">i</span><span class="si">}</span><span class="s2">/</span><span class="si">{</span><span class="n">total_partitions</span><span class="si">}</span><span class="s2"> &quot;</span>
+                <span class="sa">f</span><span class="s2">&quot;(</span><span class="si">{</span><span class="mi">100</span><span class="o">*</span><span class="n">i</span><span class="o">//</span><span class="n">total_partitions</span><span class="si">}</span><span class="s2">%)...&quot;</span>
+            <span class="p">)</span>
+
+        <span class="c1"># Read the metadata from this .idx directory.</span>
+        <span class="n">index_meta</span> <span class="o">=</span> <span class="n">_read_json_metadata</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">idx_path</span><span class="si">}</span><span class="s2">/metadata.json.gz&quot;</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="s2">&quot;nKeys&quot;</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">index_meta</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s2">&quot;No nKeys found in partition </span><span class="si">{</span><span class="n">partition_idx</span><span class="si">}</span><span class="s2"> (</span><span class="si">{</span><span class="n">idx_path</span><span class="si">}</span><span class="s2">)&quot;</span>
+            <span class="p">)</span>
+
+        <span class="n">actual_count</span> <span class="o">=</span> <span class="n">index_meta</span><span class="p">[</span><span class="s2">&quot;nKeys&quot;</span><span class="p">]</span>
+        <span class="n">partition_counts</span><span class="p">[</span><span class="n">partition_idx</span><span class="p">]</span> <span class="o">=</span> <span class="n">actual_count</span>
+
+        <span class="c1"># Validate against expected count - fail immediately on mismatch.</span>
+        <span class="n">_validate_partition_count</span><span class="p">(</span><span class="n">partition_idx</span><span class="p">,</span> <span class="n">actual_count</span><span class="p">,</span> <span class="n">expected_counts</span><span class="p">)</span>
+
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;    ✓ All partition counts match vep_context HT!&quot;</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">_convert_counts_to_list</span><span class="p">(</span><span class="n">partition_counts</span><span class="p">)</span>
+
+
+<span class="k">def</span> <span class="nf">_convert_counts_to_list</span><span class="p">(</span><span class="n">partition_counts</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="nb">int</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="nb">int</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Convert partition counts dict to ordered list and log summary.</span>
+
+<span class="sd">    :param partition_counts: Dict mapping partition index to row count.</span>
+<span class="sd">    :return: List of row counts, ordered by partition index.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="c1"># Convert to ordered list.</span>
+    <span class="n">partition_indices</span> <span class="o">=</span> <span class="n">_get_sorted_partition_indices</span><span class="p">(</span><span class="n">partition_counts</span><span class="p">)</span>
+    <span class="n">counts</span> <span class="o">=</span> <span class="p">[</span><span class="n">partition_counts</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="n">partition_indices</span><span class="p">]</span>
+
+    <span class="n">total_rows</span> <span class="o">=</span> <span class="nb">sum</span><span class="p">(</span><span class="n">counts</span><span class="p">)</span>
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;    ✓ Extracted counts for </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">counts</span><span class="p">)</span><span class="si">}</span><span class="s2"> partitions&quot;</span><span class="p">)</span>
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;    Total rows across all partitions: </span><span class="si">{</span><span class="n">total_rows</span><span class="si">:</span><span class="s2">,</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+
+    <span class="c1"># Show sample of counts (first 10 and last 10).</span>
+    <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">counts</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">20</span><span class="p">:</span>
+        <span class="n">sample_counts</span> <span class="o">=</span> <span class="n">counts</span><span class="p">[:</span><span class="mi">10</span><span class="p">]</span> <span class="o">+</span> <span class="p">[</span><span class="s2">&quot;...&quot;</span><span class="p">]</span> <span class="o">+</span> <span class="n">counts</span><span class="p">[</span><span class="o">-</span><span class="mi">10</span><span class="p">:]</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;    Sample counts: </span><span class="si">{</span><span class="n">sample_counts</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;    Counts: </span><span class="si">{</span><span class="n">counts</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">counts</span>
+
+
+<span class="c1"># ==============================================================================</span>
+<span class="c1"># Partition Info Persistence - Save/Load</span>
+<span class="c1"># ==============================================================================</span>
+
+
+<span class="k">def</span> <span class="nf">_save_partition_info</span><span class="p">(</span>
+    <span class="n">counts</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">int</span><span class="p">],</span>
+    <span class="n">bounds</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">dict</span><span class="p">],</span>
+    <span class="n">part_file_names</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">],</span>
+    <span class="n">output_path</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Save partition counts, range bounds, and partition file names to a JSON file.</span>
+
+<span class="sd">    :param counts: List of partition counts.</span>
+<span class="sd">    :param bounds: List of range bounds for each partition.</span>
+<span class="sd">    :param part_file_names: List of partition file names.</span>
+<span class="sd">    :param output_path: Path to save the info file.</span>
+<span class="sd">    :return: None</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">info_file</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">output_path</span><span class="si">}</span><span class="s2">/partition_info.json&quot;</span>
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Saving partition info to </span><span class="si">{</span><span class="n">info_file</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+
+    <span class="n">info_data</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="s2">&quot;partition_counts&quot;</span><span class="p">:</span> <span class="n">counts</span><span class="p">,</span>
+        <span class="s2">&quot;partition_bounds&quot;</span><span class="p">:</span> <span class="n">bounds</span><span class="p">,</span>
+        <span class="s2">&quot;partition_file_names&quot;</span><span class="p">:</span> <span class="n">part_file_names</span><span class="p">,</span>
+        <span class="s2">&quot;total_rows&quot;</span><span class="p">:</span> <span class="nb">sum</span><span class="p">(</span><span class="n">counts</span><span class="p">),</span>
+    <span class="p">}</span>
+
+    <span class="k">with</span> <span class="n">hl</span><span class="o">.</span><span class="n">hadoop_open</span><span class="p">(</span><span class="n">info_file</span><span class="p">,</span> <span class="s2">&quot;w&quot;</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
+        <span class="n">f</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">json</span><span class="o">.</span><span class="n">dumps</span><span class="p">(</span><span class="n">info_data</span><span class="p">,</span> <span class="n">indent</span><span class="o">=</span><span class="mi">2</span><span class="p">))</span>
+
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;✓ Partition info saved&quot;</span><span class="p">)</span>
+
+
+<div class="viewcode-block" id="load_partition_info"><a class="viewcode-back" href="../../../../api_reference/v4/annotations/recover_and_complete_vep115.html#gnomad_qc.v4.annotations.recover_and_complete_vep115.load_partition_info">[docs]</a><span class="k">def</span> <span class="nf">load_partition_info</span><span class="p">(</span>
+    <span class="n">output_path</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">list</span><span class="p">[</span><span class="nb">int</span><span class="p">],</span> <span class="nb">list</span><span class="p">[</span><span class="nb">dict</span><span class="p">],</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]]:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Load partition counts, range bounds, and partition file names from a JSON file.</span>
+
+<span class="sd">    :param output_path: Path to load the info file from.</span>
+<span class="sd">    :return: Tuple of (counts list, bounds list, partition file names list).</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">info_file</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">output_path</span><span class="si">}</span><span class="s2">/partition_info.json&quot;</span>
+
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">hl</span><span class="o">.</span><span class="n">hadoop_exists</span><span class="p">(</span><span class="n">info_file</span><span class="p">):</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Partition info file not found: </span><span class="si">{</span><span class="n">info_file</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Loading partition info from </span><span class="si">{</span><span class="n">info_file</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+
+    <span class="k">with</span> <span class="n">hl</span><span class="o">.</span><span class="n">hadoop_open</span><span class="p">(</span><span class="n">info_file</span><span class="p">,</span> <span class="s2">&quot;r&quot;</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
+        <span class="n">info_data</span> <span class="o">=</span> <span class="n">json</span><span class="o">.</span><span class="n">loads</span><span class="p">(</span><span class="n">f</span><span class="o">.</span><span class="n">read</span><span class="p">())</span>
+
+    <span class="n">counts</span> <span class="o">=</span> <span class="n">info_data</span><span class="p">[</span><span class="s2">&quot;partition_counts&quot;</span><span class="p">]</span>
+    <span class="n">bounds</span> <span class="o">=</span> <span class="n">info_data</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;partition_bounds&quot;</span><span class="p">,</span> <span class="p">[])</span>
+    <span class="n">part_file_names</span> <span class="o">=</span> <span class="n">info_data</span><span class="p">[</span><span class="s2">&quot;partition_file_names&quot;</span><span class="p">]</span>
+    <span class="n">total_rows</span> <span class="o">=</span> <span class="n">info_data</span><span class="p">[</span><span class="s2">&quot;total_rows&quot;</span><span class="p">]</span>
+
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span>
+        <span class="sa">f</span><span class="s2">&quot;✓ Loaded partition info: </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">counts</span><span class="p">)</span><span class="si">}</span><span class="s2"> partitions, </span><span class="si">{</span><span class="n">total_rows</span><span class="si">:</span><span class="s2">,</span><span class="si">}</span><span class="s2"> total rows&quot;</span>
+    <span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">counts</span><span class="p">,</span> <span class="n">bounds</span><span class="p">,</span> <span class="n">part_file_names</span></div>
+
+
+<div class="viewcode-block" id="extract_partition_metadata_and_save"><a class="viewcode-back" href="../../../../api_reference/v4/annotations/recover_and_complete_vep115.html#gnomad_qc.v4.annotations.recover_and_complete_vep115.extract_partition_metadata_and_save">[docs]</a><span class="k">def</span> <span class="nf">extract_partition_metadata_and_save</span><span class="p">(</span>
+    <span class="n">ht_path</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">list</span><span class="p">[</span><span class="nb">int</span><span class="p">],</span> <span class="nb">list</span><span class="p">[</span><span class="nb">dict</span><span class="p">],</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]]:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Extract partition metadata from index files and vep_context HT, then save for later reuse.</span>
+
+<span class="sd">    This function:</span>
+
+<span class="sd">        - Reads partition counts from index metadata files (validated against</span>
+<span class="sd">          vep_context).</span>
+<span class="sd">        - Gets partition bounds from vep_context HT.</span>
+<span class="sd">        - Derives partition file names from index directory names.</span>
+<span class="sd">        - Saves all metadata to partition_info.json.</span>
+
+<span class="sd">    :param ht_path: Path to HT.</span>
+<span class="sd">    :return: Tuple of (counts list, bounds list, partition file names list).</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="c1"># Get expected counts from vep_context for validation.</span>
+    <span class="n">expected_counts</span> <span class="o">=</span> <span class="n">get_context_ht_partition_counts</span><span class="p">()</span>
+
+    <span class="c1"># Read counts from index (validates against vep_context).</span>
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Reading partition counts from index metadata...&quot;</span><span class="p">)</span>
+    <span class="n">idx_dir_map</span> <span class="o">=</span> <span class="n">_get_index_directories</span><span class="p">(</span><span class="n">ht_path</span><span class="p">)</span>
+    <span class="n">partition_counts</span> <span class="o">=</span> <span class="n">_read_partition_counts</span><span class="p">(</span><span class="n">idx_dir_map</span><span class="p">,</span> <span class="n">expected_counts</span><span class="p">)</span>
+    <span class="n">partition_indices</span> <span class="o">=</span> <span class="n">_get_sorted_partition_indices</span><span class="p">(</span><span class="n">idx_dir_map</span><span class="p">)</span>
+
+    <span class="c1"># Get bounds from vep_context HT and filter to only include partitions in the</span>
+    <span class="c1"># partial HT.</span>
+    <span class="n">partition_bounds</span> <span class="o">=</span> <span class="n">get_context_ht_bounds</span><span class="p">()</span>
+    <span class="n">partition_bounds</span> <span class="o">=</span> <span class="p">[</span><span class="n">partition_bounds</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="n">partition_indices</span><span class="p">]</span>
+
+    <span class="c1"># Derive partition file names from index directory names.</span>
+    <span class="c1"># Index dirs have format &quot;part-NNNNN-UUID.idx&quot;, partition files are</span>
+    <span class="c1"># &quot;part-NNNNN-UUID&quot;</span>
+    <span class="n">part_file_names</span> <span class="o">=</span> <span class="p">[</span>
+        <span class="n">Path</span><span class="p">(</span><span class="n">idx_dir_map</span><span class="p">[</span><span class="n">i</span><span class="p">])</span><span class="o">.</span><span class="n">name</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="s2">&quot;.idx&quot;</span><span class="p">,</span> <span class="s2">&quot;&quot;</span><span class="p">)</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="n">partition_indices</span>
+    <span class="p">]</span>
+
+    <span class="c1"># Save for later reuse.</span>
+    <span class="n">_save_partition_info</span><span class="p">(</span><span class="n">partition_counts</span><span class="p">,</span> <span class="n">partition_bounds</span><span class="p">,</span> <span class="n">part_file_names</span><span class="p">,</span> <span class="n">ht_path</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">partition_counts</span><span class="p">,</span> <span class="n">partition_bounds</span><span class="p">,</span> <span class="n">part_file_names</span></div>
+
+
+<span class="c1"># ==============================================================================</span>
+<span class="c1"># Metadata Operations - Update and Copy</span>
+<span class="c1"># ==============================================================================</span>
+
+
+<span class="k">def</span> <span class="nf">_update_and_copy_metadata_files</span><span class="p">(</span>
+    <span class="n">schema_ref_path</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="n">output_path</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="n">schema_rows_meta</span><span class="p">:</span> <span class="nb">dict</span><span class="p">,</span>
+    <span class="n">part_file_names</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">],</span>
+    <span class="n">partition_counts</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">partition_bounds</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">dict</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Update metadata files using schema from reference HT and write to output HT.</span>
+
+<span class="sd">    Reads main metadata from schema reference, updates it with partition counts and</span>
+<span class="sd">    bounds, and writes both main and rows metadata to output HT using atomic writes.</span>
+
+<span class="sd">    :param schema_ref_path: Path to schema reference HT.</span>
+<span class="sd">    :param output_path: Path to output HT where metadata will be written.</span>
+<span class="sd">    :param schema_rows_meta: Schema rows metadata dictionary to be updated and written.</span>
+<span class="sd">    :param part_file_names: List of partition file names.</span>
+<span class="sd">    :param partition_counts: Optional list of per-partition row counts to update in</span>
+<span class="sd">        metadata.</span>
+<span class="sd">    :param partition_bounds: Optional list of per-partition range bounds to update in</span>
+<span class="sd">        metadata.</span>
+<span class="sd">    :return: None</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Copying metadata files from schema reference...&quot;</span><span class="p">)</span>
+
+    <span class="c1"># Update rows metadata with actual partition files.</span>
+    <span class="n">schema_rows_meta</span><span class="p">[</span><span class="s2">&quot;_partFiles&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">part_file_names</span>
+
+    <span class="c1"># Read and update main metadata with partition counts.</span>
+    <span class="n">schema_meta_path</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">schema_ref_path</span><span class="si">}</span><span class="s2">/metadata.json.gz&quot;</span>
+    <span class="n">main_meta</span> <span class="o">=</span> <span class="n">_read_json_metadata</span><span class="p">(</span><span class="n">schema_meta_path</span><span class="p">)</span>
+
+    <span class="c1"># Update partition counts if we have them.</span>
+    <span class="k">if</span> <span class="n">partition_counts</span><span class="p">:</span>
+        <span class="n">total_rows</span> <span class="o">=</span> <span class="nb">sum</span><span class="p">(</span><span class="n">partition_counts</span><span class="p">)</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span>
+            <span class="sa">f</span><span class="s2">&quot;  Updating partition counts for </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">partition_counts</span><span class="p">)</span><span class="si">}</span><span class="s2"> partitions&quot;</span>
+        <span class="p">)</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;  Total rows: </span><span class="si">{</span><span class="n">total_rows</span><span class="si">:</span><span class="s2">,</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="s2">&quot;components&quot;</span> <span class="ow">in</span> <span class="n">main_meta</span> <span class="ow">and</span> <span class="s2">&quot;partition_counts&quot;</span> <span class="ow">in</span> <span class="n">main_meta</span><span class="p">[</span><span class="s2">&quot;components&quot;</span><span class="p">]:</span>
+            <span class="n">main_meta</span><span class="p">[</span><span class="s2">&quot;components&quot;</span><span class="p">][</span><span class="s2">&quot;partition_counts&quot;</span><span class="p">][</span><span class="s2">&quot;counts&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">partition_counts</span>
+
+    <span class="c1"># Update range bounds if we have them.</span>
+    <span class="k">if</span> <span class="p">(</span>
+        <span class="n">partition_bounds</span>
+        <span class="ow">and</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">partition_bounds</span><span class="p">,</span> <span class="nb">list</span><span class="p">)</span>
+        <span class="ow">and</span> <span class="nb">len</span><span class="p">(</span><span class="n">partition_bounds</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">0</span>
+    <span class="p">):</span>
+        <span class="c1"># Filter out None values.</span>
+        <span class="n">valid_bounds</span> <span class="o">=</span> <span class="p">[</span><span class="n">b</span> <span class="k">for</span> <span class="n">b</span> <span class="ow">in</span> <span class="n">partition_bounds</span> <span class="k">if</span> <span class="n">b</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">]</span>
+        <span class="k">if</span> <span class="n">valid_bounds</span><span class="p">:</span>
+            <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;  Updating range bounds for </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">valid_bounds</span><span class="p">)</span><span class="si">}</span><span class="s2"> partitions&quot;</span><span class="p">)</span>
+            <span class="n">schema_rows_meta</span><span class="p">[</span><span class="s2">&quot;_jRangeBounds&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">valid_bounds</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;  No valid range bounds found, skipping bounds update&quot;</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;  No range bounds provided, skipping bounds update&quot;</span><span class="p">)</span>
+
+    <span class="c1"># Write updated main metadata to a temp file first.</span>
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;  Writing main metadata...&quot;</span><span class="p">)</span>
+    <span class="n">temp_main_meta</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">output_path</span><span class="si">}</span><span class="s2">/metadata.json.gz.tmp&quot;</span>
+
+    <span class="k">with</span> <span class="n">hl</span><span class="o">.</span><span class="n">hadoop_open</span><span class="p">(</span><span class="n">temp_main_meta</span><span class="p">,</span> <span class="s2">&quot;wb&quot;</span><span class="p">)</span> <span class="k">as</span> <span class="n">out_f</span><span class="p">:</span>
+        <span class="n">out_f</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">gzip</span><span class="o">.</span><span class="n">compress</span><span class="p">(</span><span class="n">json</span><span class="o">.</span><span class="n">dumps</span><span class="p">(</span><span class="n">main_meta</span><span class="p">)</span><span class="o">.</span><span class="n">encode</span><span class="p">()))</span>
+
+    <span class="c1"># Move temp file to final location (ensures atomic write).</span>
+    <span class="n">subprocess</span><span class="o">.</span><span class="n">run</span><span class="p">(</span>
+        <span class="p">[</span><span class="s2">&quot;gsutil&quot;</span><span class="p">,</span> <span class="s2">&quot;mv&quot;</span><span class="p">,</span> <span class="n">temp_main_meta</span><span class="p">,</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">output_path</span><span class="si">}</span><span class="s2">/metadata.json.gz&quot;</span><span class="p">],</span>
+        <span class="n">check</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;  ✓ Main metadata updated&quot;</span><span class="p">)</span>
+
+    <span class="c1"># Write updated rows metadata to a temp file first.</span>
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;  Writing rows metadata...&quot;</span><span class="p">)</span>
+    <span class="n">temp_rows_meta</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">output_path</span><span class="si">}</span><span class="s2">/rows/metadata.json.gz.tmp&quot;</span>
+
+    <span class="k">with</span> <span class="n">hl</span><span class="o">.</span><span class="n">hadoop_open</span><span class="p">(</span><span class="n">temp_rows_meta</span><span class="p">,</span> <span class="s2">&quot;wb&quot;</span><span class="p">)</span> <span class="k">as</span> <span class="n">out_f</span><span class="p">:</span>
+        <span class="n">out_f</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">gzip</span><span class="o">.</span><span class="n">compress</span><span class="p">(</span><span class="n">json</span><span class="o">.</span><span class="n">dumps</span><span class="p">(</span><span class="n">schema_rows_meta</span><span class="p">)</span><span class="o">.</span><span class="n">encode</span><span class="p">()))</span>
+
+    <span class="c1"># Move temp file to final location (ensures atomic write).</span>
+    <span class="n">subprocess</span><span class="o">.</span><span class="n">run</span><span class="p">(</span>
+        <span class="p">[</span><span class="s2">&quot;gsutil&quot;</span><span class="p">,</span> <span class="s2">&quot;mv&quot;</span><span class="p">,</span> <span class="n">temp_rows_meta</span><span class="p">,</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">output_path</span><span class="si">}</span><span class="s2">/rows/metadata.json.gz&quot;</span><span class="p">],</span>
+        <span class="n">check</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;  ✓ Rows metadata updated&quot;</span><span class="p">)</span>
+
+
+<span class="k">def</span> <span class="nf">_copy_globals_directory</span><span class="p">(</span><span class="n">schema_ref_path</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">output_path</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Copy globals directory from schema reference to output HT.</span>
+
+<span class="sd">    :param schema_ref_path: Path to schema reference HT.</span>
+<span class="sd">    :param output_path: Path to output HT.</span>
+<span class="sd">    :return: None</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="n">hl</span><span class="o">.</span><span class="n">hadoop_exists</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">schema_ref_path</span><span class="si">}</span><span class="s2">/globals&quot;</span><span class="p">):</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;  Replacing globals directory...&quot;</span><span class="p">)</span>
+        <span class="c1"># Remove existing globals if it exists.</span>
+        <span class="k">if</span> <span class="n">hl</span><span class="o">.</span><span class="n">hadoop_exists</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">output_path</span><span class="si">}</span><span class="s2">/globals&quot;</span><span class="p">):</span>
+            <span class="n">subprocess</span><span class="o">.</span><span class="n">run</span><span class="p">(</span>
+                <span class="p">[</span><span class="s2">&quot;gsutil&quot;</span><span class="p">,</span> <span class="s2">&quot;-m&quot;</span><span class="p">,</span> <span class="s2">&quot;rm&quot;</span><span class="p">,</span> <span class="s2">&quot;-r&quot;</span><span class="p">,</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">output_path</span><span class="si">}</span><span class="s2">/globals&quot;</span><span class="p">],</span>
+                <span class="n">check</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+            <span class="p">)</span>
+        <span class="c1"># Copy fresh globals directory.</span>
+        <span class="n">subprocess</span><span class="o">.</span><span class="n">run</span><span class="p">(</span>
+            <span class="p">[</span><span class="s2">&quot;gsutil&quot;</span><span class="p">,</span> <span class="s2">&quot;-m&quot;</span><span class="p">,</span> <span class="s2">&quot;cp&quot;</span><span class="p">,</span> <span class="s2">&quot;-r&quot;</span><span class="p">,</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">schema_ref_path</span><span class="si">}</span><span class="s2">/globals&quot;</span><span class="p">,</span> <span class="n">output_path</span><span class="p">],</span>
+            <span class="n">check</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+        <span class="p">)</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;  ✓ Globals directory replaced&quot;</span><span class="p">)</span>
+
+
+<span class="k">def</span> <span class="nf">_verify_reconstructed_table</span><span class="p">(</span><span class="n">output_path</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Verify that the reconstructed table can be read and return it.</span>
+
+<span class="sd">    :param output_path: Path to reconstructed HT.</span>
+<span class="sd">    :return: The reconstructed Hail Table.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Verifying reconstructed table...&quot;</span><span class="p">)</span>
+    <span class="n">reconstructed_ht</span> <span class="o">=</span> <span class="n">hl</span><span class="o">.</span><span class="n">read_table</span><span class="p">(</span><span class="n">output_path</span><span class="p">)</span>
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;✓ Successfully read reconstructed table&quot;</span><span class="p">)</span>
+
+    <span class="c1"># Print schema.</span>
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Reconstructed table verification:&quot;</span><span class="p">)</span>
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;    Partition count: </span><span class="si">{</span><span class="n">reconstructed_ht</span><span class="o">.</span><span class="n">n_partitions</span><span class="p">()</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+
+    <span class="n">reconstructed_ht</span><span class="o">.</span><span class="n">describe</span><span class="p">()</span>
+    <span class="n">reconstructed_ht</span><span class="o">.</span><span class="n">show</span><span class="p">(</span><span class="mi">5</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">reconstructed_ht</span>
+
+
+<span class="c1"># ==============================================================================</span>
+<span class="c1"># HT Reconstruction - Main Orchestration</span>
+<span class="c1"># ==============================================================================</span>
+
+
+<div class="viewcode-block" id="reconstruct_partial_ht"><a class="viewcode-back" href="../../../../api_reference/v4/annotations/recover_and_complete_vep115.html#gnomad_qc.v4.annotations.recover_and_complete_vep115.reconstruct_partial_ht">[docs]</a><span class="k">def</span> <span class="nf">reconstruct_partial_ht</span><span class="p">(</span>
+    <span class="n">schema_ref_path</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="n">output_path</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="n">partition_counts</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">int</span><span class="p">],</span>
+    <span class="n">partition_bounds</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">dict</span><span class="p">],</span>
+    <span class="n">part_file_names</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">],</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Reconstruct the partially written HT by updating metadata from schema reference.</span>
+
+<span class="sd">    Assumes the partial HT has already been copied to output_path and partition info</span>
+<span class="sd">    has been read.</span>
+
+<span class="sd">    :param schema_ref_path: Path to schema reference HT.</span>
+<span class="sd">    :param output_path: Path to copied partial HT (will update metadata in place).</span>
+<span class="sd">    :param partition_counts: List of per-partition row counts.</span>
+<span class="sd">    :param partition_bounds: List of per-partition range bounds.</span>
+<span class="sd">    :param part_file_names: List of partition file names.</span>
+<span class="sd">    :return: The reconstructed Hail Table.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="c1"># Read schema metadata from reference.</span>
+    <span class="n">schema_rows_meta</span> <span class="o">=</span> <span class="n">_read_schema_metadata</span><span class="p">(</span><span class="n">schema_ref_path</span><span class="p">)</span>
+
+    <span class="c1"># Update and copy metadata files.</span>
+    <span class="n">_update_and_copy_metadata_files</span><span class="p">(</span>
+        <span class="n">schema_ref_path</span><span class="p">,</span>
+        <span class="n">output_path</span><span class="p">,</span>
+        <span class="n">schema_rows_meta</span><span class="p">,</span>
+        <span class="n">part_file_names</span><span class="p">,</span>
+        <span class="n">partition_counts</span><span class="p">,</span>
+        <span class="n">partition_bounds</span><span class="p">,</span>
+    <span class="p">)</span>
+
+    <span class="c1"># Copy globals directory.</span>
+    <span class="n">_copy_globals_directory</span><span class="p">(</span><span class="n">schema_ref_path</span><span class="p">,</span> <span class="n">output_path</span><span class="p">)</span>
+
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;✓ Metadata and globals updated&quot;</span><span class="p">)</span>
+
+    <span class="c1"># Verify the reconstructed table.</span>
+    <span class="k">return</span> <span class="n">_verify_reconstructed_table</span><span class="p">(</span><span class="n">output_path</span><span class="p">)</span></div>
+
+
+<span class="c1"># ==============================================================================</span>
+<span class="c1"># VEP Annotation - Load, Prepare, Annotate, Combine</span>
+<span class="c1"># ==============================================================================</span>
+
+
+<div class="viewcode-block" id="load_context_ht"><a class="viewcode-back" href="../../../../api_reference/v4/annotations/recover_and_complete_vep115.html#gnomad_qc.v4.annotations.recover_and_complete_vep115.load_context_ht">[docs]</a><span class="k">def</span> <span class="nf">load_context_ht</span><span class="p">(</span><span class="n">version</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="n">VEP_CONTEXT_VERSION</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Load the gnomAD context HT.</span>
+
+<span class="sd">    :param version: Version of the context HT to load.</span>
+<span class="sd">    :return: Context Hail Table.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Loading context HT (vep_context version </span><span class="si">{</span><span class="n">version</span><span class="si">}</span><span class="s2">)...&quot;</span><span class="p">)</span>
+    <span class="n">context_ht</span> <span class="o">=</span> <span class="n">vep_context</span><span class="o">.</span><span class="n">versions</span><span class="p">[</span><span class="n">version</span><span class="p">]</span><span class="o">.</span><span class="n">ht</span><span class="p">()</span>
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Context HT loaded: </span><span class="si">{</span><span class="n">context_ht</span><span class="o">.</span><span class="n">count</span><span class="p">()</span><span class="si">:</span><span class="s2">,</span><span class="si">}</span><span class="s2"> variants&quot;</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">context_ht</span></div>
+
+
+<div class="viewcode-block" id="load_partial_vep_ht"><a class="viewcode-back" href="../../../../api_reference/v4/annotations/recover_and_complete_vep115.html#gnomad_qc.v4.annotations.recover_and_complete_vep115.load_partial_vep_ht">[docs]</a><span class="k">def</span> <span class="nf">load_partial_vep_ht</span><span class="p">(</span><span class="n">partial_vep_ht_path</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Load the partial VEP HT.</span>
+
+<span class="sd">    :param partial_vep_ht_path: Path to partial VEP HT.</span>
+<span class="sd">    :return: Partial VEP Hail Table.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Loading partial VEP HT from: </span><span class="si">{</span><span class="n">partial_vep_ht_path</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+    <span class="n">partial_vep_ht</span> <span class="o">=</span> <span class="n">hl</span><span class="o">.</span><span class="n">read_table</span><span class="p">(</span><span class="n">partial_vep_ht_path</span><span class="p">)</span>
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Partial VEP HT loaded: </span><span class="si">{</span><span class="n">partial_vep_ht</span><span class="o">.</span><span class="n">count</span><span class="p">()</span><span class="si">:</span><span class="s2">,</span><span class="si">}</span><span class="s2"> variants&quot;</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">partial_vep_ht</span></div>
+
+
+<div class="viewcode-block" id="prepare_context_ht"><a class="viewcode-back" href="../../../../api_reference/v4/annotations/recover_and_complete_vep115.html#gnomad_qc.v4.annotations.recover_and_complete_vep115.prepare_context_ht">[docs]</a><span class="k">def</span> <span class="nf">prepare_context_ht</span><span class="p">(</span><span class="n">ht</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Prepare context HT by dropping existing VEP annotations.</span>
+
+<span class="sd">    :param ht: Context Hail Table.</span>
+<span class="sd">    :return: Prepared context Hail Table.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Preparing context HT...&quot;</span><span class="p">)</span>
+    <span class="k">if</span> <span class="s2">&quot;vep&quot;</span> <span class="ow">in</span> <span class="nb">list</span><span class="p">(</span><span class="n">ht</span><span class="o">.</span><span class="n">row</span><span class="p">):</span>
+        <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">drop</span><span class="p">(</span><span class="s2">&quot;vep&quot;</span><span class="p">)</span>
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">_drop_vep_proc_id_if_present</span><span class="p">(</span><span class="n">ht</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">ht</span></div>
+
+
+<div class="viewcode-block" id="get_variants_that_need_vep"><a class="viewcode-back" href="../../../../api_reference/v4/annotations/recover_and_complete_vep115.html#gnomad_qc.v4.annotations.recover_and_complete_vep115.get_variants_that_need_vep">[docs]</a><span class="k">def</span> <span class="nf">get_variants_that_need_vep</span><span class="p">(</span>
+    <span class="n">context_ht</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">,</span> <span class="n">partial_vep_ht</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Get variants that need VEP.</span>
+
+<span class="sd">    :param context_ht: Prepared context Hail Table.</span>
+<span class="sd">    :param partial_vep_ht: Partial VEP Hail Table with VEP annotations on the context</span>
+<span class="sd">        HT key.</span>
+<span class="sd">    :return: Hail Table of variants needing VEP.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Identifying variants needing VEP...&quot;</span><span class="p">)</span>
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">context_ht</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">hl</span><span class="o">.</span><span class="n">is_missing</span><span class="p">(</span><span class="n">partial_vep_ht</span><span class="p">[</span><span class="n">context_ht</span><span class="o">.</span><span class="n">key</span><span class="p">]))</span>
+
+    <span class="k">return</span> <span class="n">ht</span></div>
+
+
+<div class="viewcode-block" id="filter_problematic_variants"><a class="viewcode-back" href="../../../../api_reference/v4/annotations/recover_and_complete_vep115.html#gnomad_qc.v4.annotations.recover_and_complete_vep115.filter_problematic_variants">[docs]</a><span class="k">def</span> <span class="nf">filter_problematic_variants</span><span class="p">(</span><span class="n">ht</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Filter out variants in regions that cause VEP to fail.</span>
+
+<span class="sd">    Specifically filters the chr18 centromere (chr18:15460900-20861207) which contains</span>
+<span class="sd">    variants that cause VEP to return &#39;-nan&#39; in the context field, leading to JSON</span>
+<span class="sd">    parsing errors. This region will be investigated separately.</span>
+
+<span class="sd">    :param ht: Hail Table to filter.</span>
+<span class="sd">    :return: Filtered Hail Table excluding chr18 centromere.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Filtering out chr18 centromere: </span><span class="si">{</span><span class="n">PROBLEMATIC_REGION</span><span class="si">}</span><span class="s2">...&quot;</span><span class="p">)</span>
+    <span class="n">problematic_interval</span> <span class="o">=</span> <span class="n">hl</span><span class="o">.</span><span class="n">parse_locus_interval</span><span class="p">(</span>
+        <span class="n">PROBLEMATIC_REGION</span><span class="p">,</span> <span class="n">reference_genome</span><span class="o">=</span><span class="s2">&quot;GRCh38&quot;</span>
+    <span class="p">)</span>
+
+    <span class="c1"># Count variants before filtering.</span>
+    <span class="n">count_before</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">count</span><span class="p">()</span>
+
+    <span class="c1"># Filter out variants in the problematic region.</span>
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="o">~</span><span class="n">problematic_interval</span><span class="o">.</span><span class="n">contains</span><span class="p">(</span><span class="n">ht</span><span class="o">.</span><span class="n">locus</span><span class="p">))</span>
+
+    <span class="c1"># Count variants after filtering.</span>
+    <span class="n">count_after</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">count</span><span class="p">()</span>
+    <span class="n">filtered_count</span> <span class="o">=</span> <span class="n">count_before</span> <span class="o">-</span> <span class="n">count_after</span>
+
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Filtered out </span><span class="si">{</span><span class="n">filtered_count</span><span class="si">:</span><span class="s2">,</span><span class="si">}</span><span class="s2"> variants in chr18 centromere&quot;</span><span class="p">)</span>
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Remaining variants to VEP: </span><span class="si">{</span><span class="n">count_after</span><span class="si">:</span><span class="s2">,</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">ht</span></div>
+
+
+<div class="viewcode-block" id="filter_to_centromere_variants"><a class="viewcode-back" href="../../../../api_reference/v4/annotations/recover_and_complete_vep115.html#gnomad_qc.v4.annotations.recover_and_complete_vep115.filter_to_centromere_variants">[docs]</a><span class="k">def</span> <span class="nf">filter_to_centromere_variants</span><span class="p">(</span><span class="n">ht</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Filter to ONLY variants in the chr18 centromere region.</span>
+
+<span class="sd">    This function is used to isolate centromere variants for VEP processing with</span>
+<span class="sd">    a modified configuration that excludes the context plugin (which causes &#39;-nan&#39;</span>
+<span class="sd">    errors).</span>
+
+<span class="sd">    :param ht: Hail Table to filter.</span>
+<span class="sd">    :return: Filtered Hail Table containing only chr18 centromere variants.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Filtering to chr18 centromere variants: </span><span class="si">{</span><span class="n">PROBLEMATIC_REGION</span><span class="si">}</span><span class="s2">...&quot;</span><span class="p">)</span>
+    <span class="n">centromere_interval</span> <span class="o">=</span> <span class="n">hl</span><span class="o">.</span><span class="n">parse_locus_interval</span><span class="p">(</span>
+        <span class="n">PROBLEMATIC_REGION</span><span class="p">,</span> <span class="n">reference_genome</span><span class="o">=</span><span class="s2">&quot;GRCh38&quot;</span>
+    <span class="p">)</span>
+
+    <span class="c1"># Filter to only centromere variants.</span>
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">centromere_interval</span><span class="o">.</span><span class="n">contains</span><span class="p">(</span><span class="n">ht</span><span class="o">.</span><span class="n">locus</span><span class="p">))</span>
+
+    <span class="n">count</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">count</span><span class="p">()</span>
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Found </span><span class="si">{</span><span class="n">count</span><span class="si">:</span><span class="s2">,</span><span class="si">}</span><span class="s2"> variants in chr18 centromere to VEP&quot;</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">ht</span></div>
+
+
+<div class="viewcode-block" id="run_vep_on_remaining"><a class="viewcode-back" href="../../../../api_reference/v4/annotations/recover_and_complete_vep115.html#gnomad_qc.v4.annotations.recover_and_complete_vep115.run_vep_on_remaining">[docs]</a><span class="k">def</span> <span class="nf">run_vep_on_remaining</span><span class="p">(</span>
+    <span class="n">ht</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">,</span> <span class="n">vep_config_path</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="n">VEP_CONFIG_PATH</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Run VEP on variants that need it.</span>
+
+<span class="sd">    :param ht: Hail Table of variants needing VEP.</span>
+<span class="sd">    :param vep_config_path: Path to VEP config file.</span>
+<span class="sd">    :return: Hail Table with VEP annotations (or original if revep_count is 0).</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Running VEP on remaining variants...&quot;</span><span class="p">)</span>
+    <span class="n">revep_ht</span> <span class="o">=</span> <span class="n">hl</span><span class="o">.</span><span class="n">vep</span><span class="p">(</span><span class="n">ht</span><span class="p">,</span> <span class="n">vep_config_path</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">revep_ht</span></div>
+
+
+<div class="viewcode-block" id="run_vep_on_centromere"><a class="viewcode-back" href="../../../../api_reference/v4/annotations/recover_and_complete_vep115.html#gnomad_qc.v4.annotations.recover_and_complete_vep115.run_vep_on_centromere">[docs]</a><span class="k">def</span> <span class="nf">run_vep_on_centromere</span><span class="p">(</span>
+    <span class="n">ht</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">,</span> <span class="n">vep_config_path</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="n">VEP_CONFIG_PATH</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Run VEP on chr18 centromere variants.</span>
+
+<span class="sd">    WARNING: This step requires using a VEP init script that does NOT include the</span>
+<span class="sd">    &#39;context&#39; plugin in the VEP command, as the context plugin causes &#39;-nan&#39; errors</span>
+<span class="sd">    for variants in centromeric regions.</span>
+
+<span class="sd">    :param ht: Hail Table of centromere variants needing VEP.</span>
+<span class="sd">    :param vep_config_path: Path to VEP config file.</span>
+<span class="sd">    :return: Hail Table with VEP annotations.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span>
+        <span class="s2">&quot;=&quot;</span> <span class="o">*</span> <span class="mi">80</span>
+        <span class="o">+</span> <span class="s2">&quot;</span><span class="se">\n</span><span class="s2">&quot;</span>
+        <span class="o">+</span> <span class="s2">&quot;WARNING: Running VEP on chr18 centromere variants!</span><span class="se">\n</span><span class="s2">&quot;</span>
+        <span class="o">+</span> <span class="s2">&quot;This step REQUIRES a VEP init script WITHOUT the &#39;context&#39; plugin.</span><span class="se">\n</span><span class="s2">&quot;</span>
+        <span class="o">+</span> <span class="s2">&quot;Using the standard VEP config will cause &#39;-nan&#39; errors.</span><span class="se">\n</span><span class="s2">&quot;</span>
+        <span class="o">+</span> <span class="s2">&quot;=&quot;</span> <span class="o">*</span> <span class="mi">80</span>
+    <span class="p">)</span>
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Running VEP on chr18 centromere variants...&quot;</span><span class="p">)</span>
+    <span class="n">revep_ht</span> <span class="o">=</span> <span class="n">hl</span><span class="o">.</span><span class="n">vep</span><span class="p">(</span><span class="n">ht</span><span class="p">,</span> <span class="n">vep_config_path</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">revep_ht</span></div>
+
+
+<div class="viewcode-block" id="add_vep_metadata"><a class="viewcode-back" href="../../../../api_reference/v4/annotations/recover_and_complete_vep115.html#gnomad_qc.v4.annotations.recover_and_complete_vep115.add_vep_metadata">[docs]</a><span class="k">def</span> <span class="nf">add_vep_metadata</span><span class="p">(</span><span class="n">ht</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">,</span> <span class="n">vep_config_path</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Add VEP metadata (version, help, config) to global annotations.</span>
+
+<span class="sd">    :param ht: Hail Table with VEP annotations.</span>
+<span class="sd">    :param vep_config_path: Path to VEP config file.</span>
+<span class="sd">    :return: Hail Table with metadata annotations.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Adding VEP metadata...&quot;</span><span class="p">)</span>
+
+    <span class="c1"># Get VEP metadata.</span>
+    <span class="n">vep_help</span> <span class="o">=</span> <span class="n">get_vep_help</span><span class="p">(</span><span class="n">vep_config_path</span><span class="p">)</span>
+    <span class="k">with</span> <span class="n">hl</span><span class="o">.</span><span class="n">hadoop_open</span><span class="p">(</span><span class="n">vep_config_path</span><span class="p">)</span> <span class="k">as</span> <span class="n">vep_config_file</span><span class="p">:</span>
+        <span class="n">vep_config</span> <span class="o">=</span> <span class="n">vep_config_file</span><span class="o">.</span><span class="n">read</span><span class="p">()</span>
+
+    <span class="c1"># Annotate globals.</span>
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">annotate_globals</span><span class="p">(</span>
+        <span class="n">version</span><span class="o">=</span><span class="n">VEP_VERSION</span><span class="p">,</span> <span class="n">vep_help</span><span class="o">=</span><span class="n">vep_help</span><span class="p">,</span> <span class="n">vep_config</span><span class="o">=</span><span class="n">vep_config</span>
+    <span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">ht</span></div>
+
+
+<div class="viewcode-block" id="combine_vep_results"><a class="viewcode-back" href="../../../../api_reference/v4/annotations/recover_and_complete_vep115.html#gnomad_qc.v4.annotations.recover_and_complete_vep115.combine_vep_results">[docs]</a><span class="k">def</span> <span class="nf">combine_vep_results</span><span class="p">(</span>
+    <span class="n">context_ht</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">,</span>
+    <span class="n">partial_vep_ht</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">,</span>
+    <span class="n">revep_ht</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">,</span>
+    <span class="n">centromere_revep_ht</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">,</span>
+    <span class="n">vep_config_path</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="n">VEP_CONFIG_PATH</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Combine VEP results from partial HT and newly VEPed variants.</span>
+
+<span class="sd">    Annotates context HT with VEP from multiple sources in priority order:</span>
+
+<span class="sd">        1. Partial VEP HT (from original run).</span>
+<span class="sd">        2. ReVEP HT (newly VEPed non-centromere variants).</span>
+<span class="sd">        3. Centromere ReVEP HT (VEPed centromere variants).</span>
+
+<span class="sd">    Variants not covered by any source will have missing VEP annotations.</span>
+
+<span class="sd">    :param context_ht: Context Hail Table.</span>
+<span class="sd">    :param partial_vep_ht: Partial VEP Hail Table with VEP annotations on the context</span>
+<span class="sd">        HT key.</span>
+<span class="sd">    :param revep_ht: Hail Table with newly VEPed variants (excluding centromere).</span>
+<span class="sd">    :param centromere_revep_ht: Hail Table with VEPed centromere variants.</span>
+<span class="sd">    :param vep_config_path: Path to VEP config file.</span>
+<span class="sd">    :return: Final combined Hail Table with VEP metadata.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Combining VEP results...&quot;</span><span class="p">)</span>
+
+    <span class="c1"># Start with partial VEP, then fill in with revep results.</span>
+    <span class="n">vep_expr</span> <span class="o">=</span> <span class="n">hl</span><span class="o">.</span><span class="n">coalesce</span><span class="p">(</span>
+        <span class="n">partial_vep_ht</span><span class="p">[</span><span class="n">context_ht</span><span class="o">.</span><span class="n">key</span><span class="p">]</span><span class="o">.</span><span class="n">vep</span><span class="p">,</span>
+        <span class="n">revep_ht</span><span class="p">[</span><span class="n">context_ht</span><span class="o">.</span><span class="n">key</span><span class="p">]</span><span class="o">.</span><span class="n">vep</span><span class="p">,</span>
+        <span class="n">centromere_revep_ht</span><span class="p">[</span><span class="n">context_ht</span><span class="o">.</span><span class="n">key</span><span class="p">]</span><span class="o">.</span><span class="n">vep</span><span class="p">,</span>
+    <span class="p">)</span>
+
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">context_ht</span><span class="o">.</span><span class="n">annotate</span><span class="p">(</span><span class="n">vep</span><span class="o">=</span><span class="n">vep_expr</span><span class="p">)</span>
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">add_vep_metadata</span><span class="p">(</span><span class="n">ht</span><span class="p">,</span> <span class="n">vep_config_path</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">ht</span></div>
+
+
+<span class="c1"># ==============================================================================</span>
+<span class="c1"># Main Pipeline Orchestration</span>
+<span class="c1"># ==============================================================================</span>
+
+
+<div class="viewcode-block" id="main"><a class="viewcode-back" href="../../../../api_reference/v4/annotations/recover_and_complete_vep115.html#gnomad_qc.v4.annotations.recover_and_complete_vep115.main">[docs]</a><span class="k">def</span> <span class="nf">main</span><span class="p">(</span><span class="n">args</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Run the complete VEP 115 recovery and completion annotation pipeline.&quot;&quot;&quot;</span>
+    <span class="c1"># Initialize Hail with tmp directory.</span>
+    <span class="n">hl</span><span class="o">.</span><span class="n">init</span><span class="p">(</span><span class="n">tmp_dir</span><span class="o">=</span><span class="s2">&quot;gs://gnomad-tmp-4day/hail-tmp-complete_vep_annotation/&quot;</span><span class="p">)</span>
+
+    <span class="c1"># Step 1: Copy partial HT.</span>
+    <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">copy_partial_ht</span><span class="p">:</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span>
+            <span class="n">LOGGER_HEADER_TEMPLATE</span><span class="o">.</span><span class="n">format</span><span class="p">(</span>
+                <span class="n">message</span><span class="o">=</span><span class="sa">f</span><span class="s2">&quot;&quot;&quot;</span>
+<span class="s2">                Step 1: Copying entire partial HT directory...</span>
+<span class="s2">                    Source: </span><span class="si">{</span><span class="n">args</span><span class="o">.</span><span class="n">partial_ht</span><span class="si">}</span>
+<span class="s2">                    Destination: </span><span class="si">{</span><span class="n">args</span><span class="o">.</span><span class="n">temp_partial_ht</span><span class="si">}</span>
+<span class="s2">                &quot;&quot;&quot;</span>
+            <span class="p">)</span>
+        <span class="p">)</span>
+        <span class="n">copy_partial_ht</span><span class="p">(</span><span class="n">args</span><span class="o">.</span><span class="n">partial_ht</span><span class="p">,</span> <span class="n">args</span><span class="o">.</span><span class="n">temp_partial_ht</span><span class="p">)</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span>
+            <span class="n">LOGGER_HEADER_TEMPLATE</span><span class="o">.</span><span class="n">format</span><span class="p">(</span>
+                <span class="n">message</span><span class="o">=</span><span class="s2">&quot;✓ Step 1 complete: Partial HT copied&quot;</span>
+            <span class="p">)</span>
+        <span class="p">)</span>
+
+    <span class="c1"># Step 2: Extract metadata info from index and vep_context.</span>
+    <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">extract_metadata_info</span><span class="p">:</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span>
+            <span class="n">LOGGER_HEADER_TEMPLATE</span><span class="o">.</span><span class="n">format</span><span class="p">(</span>
+                <span class="n">message</span><span class="o">=</span><span class="s2">&quot;Step 2: Extracting metadata info from index and vep_context...&quot;</span>
+            <span class="p">)</span>
+        <span class="p">)</span>
+        <span class="n">partition_counts</span><span class="p">,</span> <span class="n">partition_bounds</span><span class="p">,</span> <span class="n">part_file_names</span> <span class="o">=</span> <span class="p">(</span>
+            <span class="n">extract_partition_metadata_and_save</span><span class="p">(</span><span class="n">args</span><span class="o">.</span><span class="n">temp_partial_ht</span><span class="p">)</span>
+        <span class="p">)</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span>
+            <span class="n">LOGGER_HEADER_TEMPLATE</span><span class="o">.</span><span class="n">format</span><span class="p">(</span>
+                <span class="n">message</span><span class="o">=</span><span class="sa">f</span><span class="s2">&quot;&quot;&quot;</span>
+<span class="s2">                ✓ Step 2 complete: Metadata extracted</span>
+<span class="s2">                    Total variants: </span><span class="si">{</span><span class="nb">sum</span><span class="p">(</span><span class="n">partition_counts</span><span class="p">)</span><span class="si">}</span>
+<span class="s2">                    Total partitions: </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">partition_counts</span><span class="p">)</span><span class="si">}</span>
+<span class="s2">                    Output path: </span><span class="si">{</span><span class="n">args</span><span class="o">.</span><span class="n">temp_partial_ht</span><span class="si">}</span>
+<span class="s2">                &quot;&quot;&quot;</span>
+            <span class="p">)</span>
+        <span class="p">)</span>
+
+    <span class="c1"># Step 3: Reconstruct partial HT.</span>
+    <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">reconstruct_partial_ht</span><span class="p">:</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span>
+            <span class="n">LOGGER_HEADER_TEMPLATE</span><span class="o">.</span><span class="n">format</span><span class="p">(</span>
+                <span class="n">message</span><span class="o">=</span><span class="p">(</span>
+                    <span class="s2">&quot;Step 3: Reconstructing partial HT using schema reference:&quot;</span>
+                    <span class="sa">f</span><span class="s2">&quot; </span><span class="si">{</span><span class="n">args</span><span class="o">.</span><span class="n">schema_ref_ht</span><span class="si">}</span><span class="s2">...&quot;</span>
+                <span class="p">)</span>
+            <span class="p">)</span>
+        <span class="p">)</span>
+        <span class="n">partition_counts</span><span class="p">,</span> <span class="n">partition_bounds</span><span class="p">,</span> <span class="n">part_file_names</span> <span class="o">=</span> <span class="n">load_partition_info</span><span class="p">(</span>
+            <span class="n">args</span><span class="o">.</span><span class="n">temp_partial_ht</span>
+        <span class="p">)</span>
+        <span class="n">reconstruct_partial_ht</span><span class="p">(</span>
+            <span class="n">args</span><span class="o">.</span><span class="n">schema_ref_ht</span><span class="p">,</span>
+            <span class="n">args</span><span class="o">.</span><span class="n">temp_partial_ht</span><span class="p">,</span>
+            <span class="n">partition_counts</span><span class="p">,</span>
+            <span class="n">partition_bounds</span><span class="p">,</span>
+            <span class="n">part_file_names</span><span class="p">,</span>
+        <span class="p">)</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span>
+            <span class="n">LOGGER_HEADER_TEMPLATE</span><span class="o">.</span><span class="n">format</span><span class="p">(</span>
+                <span class="n">message</span><span class="o">=</span><span class="sa">f</span><span class="s2">&quot;&quot;&quot;</span>
+<span class="s2">                ✓ Step 3 complete: Partial HT reconstructed</span>
+<span class="s2">                    Total variants: </span><span class="si">{</span><span class="n">partition_counts</span><span class="si">}</span>
+<span class="s2">                    Output path: </span><span class="si">{</span><span class="n">args</span><span class="o">.</span><span class="n">temp_partial_ht</span><span class="si">}</span>
+<span class="s2">                &quot;&quot;&quot;</span>
+            <span class="p">)</span>
+        <span class="p">)</span>
+
+    <span class="c1"># Step 4: Filter context HT to variants missing VEP.</span>
+    <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">filter_context_ht_to_missing_vep</span><span class="p">:</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span>
+            <span class="n">LOGGER_HEADER_TEMPLATE</span><span class="o">.</span><span class="n">format</span><span class="p">(</span>
+                <span class="n">message</span><span class="o">=</span><span class="s2">&quot;Step 4: Filtering context HT to variants missing VEP...&quot;</span>
+            <span class="p">)</span>
+        <span class="p">)</span>
+        <span class="n">context_ht</span> <span class="o">=</span> <span class="n">prepare_context_ht</span><span class="p">(</span><span class="n">load_context_ht</span><span class="p">())</span>
+        <span class="n">partial_vep_ht</span> <span class="o">=</span> <span class="n">load_partial_vep_ht</span><span class="p">(</span><span class="n">args</span><span class="o">.</span><span class="n">temp_partial_ht</span><span class="p">)</span>
+        <span class="n">ht</span> <span class="o">=</span> <span class="n">get_variants_that_need_vep</span><span class="p">(</span><span class="n">context_ht</span><span class="p">,</span> <span class="n">partial_vep_ht</span><span class="p">)</span>
+        <span class="n">ht</span> <span class="o">=</span> <span class="n">filter_problematic_variants</span><span class="p">(</span><span class="n">ht</span><span class="p">)</span>
+        <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">checkpoint</span><span class="p">(</span><span class="n">args</span><span class="o">.</span><span class="n">revep_needed_ht</span><span class="p">,</span> <span class="n">overwrite</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">overwrite</span><span class="p">)</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span>
+            <span class="n">LOGGER_HEADER_TEMPLATE</span><span class="o">.</span><span class="n">format</span><span class="p">(</span>
+                <span class="n">message</span><span class="o">=</span><span class="sa">f</span><span class="s2">&quot;&quot;&quot;</span>
+<span class="s2">                ✓ Step 4 complete: Missing VEP variants identified</span>
+<span class="s2">                    Total variants: </span><span class="si">{</span><span class="n">ht</span><span class="o">.</span><span class="n">count</span><span class="p">()</span><span class="si">:</span><span class="s2">,</span><span class="si">}</span>
+<span class="s2">                    Output path: </span><span class="si">{</span><span class="n">args</span><span class="o">.</span><span class="n">revep_needed_ht</span><span class="si">}</span>
+<span class="s2">                &quot;&quot;&quot;</span>
+            <span class="p">)</span>
+        <span class="p">)</span>
+
+    <span class="c1"># Step 5: Run VEP on remaining variants.</span>
+    <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">run_vep_on_remaining</span><span class="p">:</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span>
+            <span class="n">LOGGER_HEADER_TEMPLATE</span><span class="o">.</span><span class="n">format</span><span class="p">(</span>
+                <span class="n">message</span><span class="o">=</span><span class="s2">&quot;Step 5: Running VEP on remaining variants...&quot;</span>
+            <span class="p">)</span>
+        <span class="p">)</span>
+        <span class="n">ht</span> <span class="o">=</span> <span class="p">(</span>
+            <span class="n">hl</span><span class="o">.</span><span class="n">read_table</span><span class="p">(</span><span class="n">args</span><span class="o">.</span><span class="n">revep_needed_ht</span><span class="p">)</span>
+            <span class="o">.</span><span class="n">naive_coalesce</span><span class="p">(</span><span class="mi">232</span><span class="p">)</span>
+            <span class="o">.</span><span class="n">checkpoint</span><span class="p">(</span>
+                <span class="s2">&quot;gs://gnomad-tmp-4day/revep_needed_coalesced.ht&quot;</span><span class="p">,</span> <span class="n">overwrite</span><span class="o">=</span><span class="kc">True</span>
+            <span class="p">)</span>
+        <span class="p">)</span>
+        <span class="n">ht</span> <span class="o">=</span> <span class="n">hl</span><span class="o">.</span><span class="n">read_table</span><span class="p">(</span>
+            <span class="s2">&quot;gs://gnomad-tmp-4day/revep_needed_coalesced.ht&quot;</span><span class="p">,</span>
+            <span class="n">_n_partitions</span><span class="o">=</span><span class="mi">2000</span><span class="p">,</span>
+        <span class="p">)</span>
+        <span class="n">ht</span> <span class="o">=</span> <span class="n">run_vep_on_remaining</span><span class="p">(</span><span class="n">ht</span><span class="p">)</span>
+        <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">checkpoint</span><span class="p">(</span><span class="n">args</span><span class="o">.</span><span class="n">revep_done_ht</span><span class="p">,</span> <span class="n">overwrite</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">overwrite</span><span class="p">)</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span>
+            <span class="n">LOGGER_HEADER_TEMPLATE</span><span class="o">.</span><span class="n">format</span><span class="p">(</span>
+                <span class="n">message</span><span class="o">=</span><span class="sa">f</span><span class="s2">&quot;&quot;&quot;</span>
+<span class="s2">                ✓ Step 5 complete: VEP run on remaining variants</span>
+<span class="s2">                    Total variants: </span><span class="si">{</span><span class="n">ht</span><span class="o">.</span><span class="n">count</span><span class="p">()</span><span class="si">:</span><span class="s2">,</span><span class="si">}</span>
+<span class="s2">                    Output path: </span><span class="si">{</span><span class="n">args</span><span class="o">.</span><span class="n">revep_done_ht</span><span class="si">}</span>
+<span class="s2">                &quot;&quot;&quot;</span>
+            <span class="p">)</span>
+        <span class="p">)</span>
+
+    <span class="c1"># Step 6: Run VEP on chr18 centromere variants.</span>
+    <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">run_vep_on_centromere</span><span class="p">:</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span>
+            <span class="n">LOGGER_HEADER_TEMPLATE</span><span class="o">.</span><span class="n">format</span><span class="p">(</span>
+                <span class="n">message</span><span class="o">=</span><span class="s2">&quot;Step 6: Running VEP on chr18 centromere variants...&quot;</span>
+            <span class="p">)</span>
+        <span class="p">)</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span>
+            <span class="s2">&quot;</span><span class="se">\n</span><span class="s2">&quot;</span> <span class="o">+</span> <span class="s2">&quot;=&quot;</span> <span class="o">*</span> <span class="mi">80</span> <span class="o">+</span> <span class="s2">&quot;</span><span class="se">\n</span><span class="s2">&quot;</span>
+            <span class="s2">&quot;IMPORTANT: This step requires a VEP init script WITHOUT the &#39;context&#39; plugin!</span><span class="se">\n</span><span class="s2">&quot;</span>
+            <span class="s2">&quot;Using the standard VEP configuration will cause &#39;-nan&#39; errors.</span><span class="se">\n</span><span class="s2">&quot;</span>
+            <span class="s2">&quot;Make sure your cluster was initialized with the appropriate VEP config.</span><span class="se">\n</span><span class="s2">&quot;</span>
+            <span class="o">+</span> <span class="s2">&quot;=&quot;</span> <span class="o">*</span> <span class="mi">80</span>
+            <span class="o">+</span> <span class="s2">&quot;</span><span class="se">\n</span><span class="s2">&quot;</span>
+        <span class="p">)</span>
+        <span class="n">context_ht</span> <span class="o">=</span> <span class="n">prepare_context_ht</span><span class="p">(</span><span class="n">load_context_ht</span><span class="p">())</span>
+        <span class="n">partial_vep_ht</span> <span class="o">=</span> <span class="n">load_partial_vep_ht</span><span class="p">(</span><span class="n">args</span><span class="o">.</span><span class="n">temp_partial_ht</span><span class="p">)</span>
+        <span class="n">ht</span> <span class="o">=</span> <span class="n">get_variants_that_need_vep</span><span class="p">(</span><span class="n">context_ht</span><span class="p">,</span> <span class="n">partial_vep_ht</span><span class="p">)</span>
+        <span class="n">ht</span> <span class="o">=</span> <span class="n">filter_to_centromere_variants</span><span class="p">(</span><span class="n">ht</span><span class="p">)</span><span class="o">.</span><span class="n">cache</span><span class="p">()</span><span class="o">.</span><span class="n">naive_coalesce</span><span class="p">(</span><span class="mi">10</span><span class="p">)</span>
+        <span class="n">ht</span> <span class="o">=</span> <span class="n">run_vep_on_centromere</span><span class="p">(</span><span class="n">ht</span><span class="p">)</span>
+        <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">checkpoint</span><span class="p">(</span><span class="n">args</span><span class="o">.</span><span class="n">centromere_revep_done_ht</span><span class="p">,</span> <span class="n">overwrite</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">overwrite</span><span class="p">)</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span>
+            <span class="n">LOGGER_HEADER_TEMPLATE</span><span class="o">.</span><span class="n">format</span><span class="p">(</span>
+                <span class="n">message</span><span class="o">=</span><span class="sa">f</span><span class="s2">&quot;&quot;&quot;</span>
+<span class="s2">                ✓ Step 6 complete: VEP run on chr18 centromere variants</span>
+<span class="s2">                    Total variants: </span><span class="si">{</span><span class="n">ht</span><span class="o">.</span><span class="n">count</span><span class="p">()</span><span class="si">:</span><span class="s2">,</span><span class="si">}</span>
+<span class="s2">                    Output path: </span><span class="si">{</span><span class="n">args</span><span class="o">.</span><span class="n">centromere_revep_done_ht</span><span class="si">}</span>
+<span class="s2">                &quot;&quot;&quot;</span>
+            <span class="p">)</span>
+        <span class="p">)</span>
+
+    <span class="c1"># Step 7: Write final HT.</span>
+    <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">write_final_ht</span><span class="p">:</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span>
+            <span class="n">LOGGER_HEADER_TEMPLATE</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">message</span><span class="o">=</span><span class="s2">&quot;Step 7: Writing final HT...&quot;</span><span class="p">)</span>
+        <span class="p">)</span>
+        <span class="n">context_ht</span> <span class="o">=</span> <span class="n">load_context_ht</span><span class="p">()</span>
+        <span class="n">partial_vep_ht</span> <span class="o">=</span> <span class="n">load_partial_vep_ht</span><span class="p">(</span><span class="n">args</span><span class="o">.</span><span class="n">temp_partial_ht</span><span class="p">)</span>
+        <span class="n">revep_ht</span> <span class="o">=</span> <span class="n">hl</span><span class="o">.</span><span class="n">read_table</span><span class="p">(</span><span class="n">args</span><span class="o">.</span><span class="n">revep_done_ht</span><span class="p">)</span>
+        <span class="n">centromere_revep_ht</span> <span class="o">=</span> <span class="n">hl</span><span class="o">.</span><span class="n">read_table</span><span class="p">(</span><span class="n">args</span><span class="o">.</span><span class="n">centromere_revep_done_ht</span><span class="p">)</span>
+
+        <span class="n">ht</span> <span class="o">=</span> <span class="n">combine_vep_results</span><span class="p">(</span>
+            <span class="n">context_ht</span><span class="p">,</span> <span class="n">partial_vep_ht</span><span class="p">,</span> <span class="n">revep_ht</span><span class="p">,</span> <span class="n">centromere_revep_ht</span>
+        <span class="p">)</span>
+        <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">checkpoint</span><span class="p">(</span><span class="n">args</span><span class="o">.</span><span class="n">output</span><span class="p">,</span> <span class="n">overwrite</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">overwrite</span><span class="p">)</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span>
+            <span class="n">LOGGER_HEADER_TEMPLATE</span><span class="o">.</span><span class="n">format</span><span class="p">(</span>
+                <span class="n">message</span><span class="o">=</span><span class="sa">f</span><span class="s2">&quot;&quot;&quot;</span>
+<span class="s2">                ✓ Step 7 complete: Final HT written:</span>
+<span class="s2">                    Total variants: </span><span class="si">{</span><span class="n">ht</span><span class="o">.</span><span class="n">count</span><span class="p">()</span><span class="si">:</span><span class="s2">,</span><span class="si">}</span>
+<span class="s2">                    Output path: </span><span class="si">{</span><span class="n">args</span><span class="o">.</span><span class="n">output</span><span class="si">}</span>
+<span class="s2">                &quot;&quot;&quot;</span>
+            <span class="p">)</span>
+        <span class="p">)</span>
+
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span>
+        <span class="n">LOGGER_HEADER_TEMPLATE</span><span class="o">.</span><span class="n">format</span><span class="p">(</span>
+            <span class="n">message</span><span class="o">=</span><span class="sa">f</span><span class="s2">&quot;✓ Pipeline steps completed successfully!&quot;</span>
+        <span class="p">)</span>
+    <span class="p">)</span></div>
+
+
+<span class="k">if</span> <span class="vm">__name__</span> <span class="o">==</span> <span class="s2">&quot;__main__&quot;</span><span class="p">:</span>
+    <span class="n">parser</span> <span class="o">=</span> <span class="n">argparse</span><span class="o">.</span><span class="n">ArgumentParser</span><span class="p">(</span>
+        <span class="n">description</span><span class="o">=</span><span class="s2">&quot;Complete VEP annotation for gnomAD context HT.&quot;</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--overwrite&quot;</span><span class="p">,</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Overwrite existing files when writing checkpoints.&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+
+    <span class="c1"># File path arguments.</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--partial-ht&quot;</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="n">PARTIAL_HT_PATH</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="sa">f</span><span class="s2">&quot;Path to partial HT (default: </span><span class="si">{</span><span class="n">PARTIAL_HT_PATH</span><span class="si">}</span><span class="s2">).&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--schema-ref-ht&quot;</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="n">SCHEMA_REF_HT_PATH</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="sa">f</span><span class="s2">&quot;Path to schema reference HT (default: </span><span class="si">{</span><span class="n">SCHEMA_REF_HT_PATH</span><span class="si">}</span><span class="s2">).&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--temp-partial-ht&quot;</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="n">TEMP_PARTIAL_HT_PATH</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="sa">f</span><span class="s2">&quot;Path for reconstructed partial HT (default: </span><span class="si">{</span><span class="n">TEMP_PARTIAL_HT_PATH</span><span class="si">}</span><span class="s2">).&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--output&quot;</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="n">FINAL_HT_PATH</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="sa">f</span><span class="s2">&quot;Path for final output HT (default: </span><span class="si">{</span><span class="n">FINAL_HT_PATH</span><span class="si">}</span><span class="s2">).&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--revep-needed-ht&quot;</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="n">REVEP_NEEDED_HT_PATH</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="sa">f</span><span class="s2">&quot;Path for variants needing VEP (default: </span><span class="si">{</span><span class="n">REVEP_NEEDED_HT_PATH</span><span class="si">}</span><span class="s2">).&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--revep-done-ht&quot;</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="n">REVEP_DONE_HT_PATH</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="sa">f</span><span class="s2">&quot;Path for VEPed variants (default: </span><span class="si">{</span><span class="n">REVEP_DONE_HT_PATH</span><span class="si">}</span><span class="s2">).&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--centromere-revep-done-ht&quot;</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="n">CENTROMERE_REVEP_DONE_HT_PATH</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="sa">f</span><span class="s2">&quot;Path for centromere VEPed variants (default: </span><span class="si">{</span><span class="n">CENTROMERE_REVEP_DONE_HT_PATH</span><span class="si">}</span><span class="s2">).&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+
+    <span class="c1"># Pipeline steps arguments.</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--copy-partial-ht&quot;</span><span class="p">,</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Copy the partial HT to the temp reconstructed HT location.&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--extract-metadata-info&quot;</span><span class="p">,</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="p">(</span>
+            <span class="s2">&quot;Extract metadata information from the index files and original context HT &quot;</span>
+            <span class="s2">&quot;and save to a JSON file.&quot;</span>
+        <span class="p">),</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--reconstruct-partial-ht&quot;</span><span class="p">,</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Reconstruct the partial HT from the metadata information.&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--filter-context-ht-to-missing-vep&quot;</span><span class="p">,</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Filter the context HT to only variants that are missing VEP annotations.&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--run-vep-on-remaining&quot;</span><span class="p">,</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Run VEP on the remaining variants (excludes chr18 centromere).&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--run-vep-on-centromere&quot;</span><span class="p">,</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="p">(</span>
+            <span class="s2">&quot;Run VEP on chr18 centromere variants. &quot;</span>
+            <span class="s2">&quot;WARNING: Requires VEP init script WITHOUT &#39;context&#39; plugin.&quot;</span>
+        <span class="p">),</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--write-final-ht&quot;</span><span class="p">,</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Write the final HT.&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+
+    <span class="n">main</span><span class="p">(</span><span class="n">parser</span><span class="o">.</span><span class="n">parse_args</span><span class="p">())</span>
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p></p>
+  </div>
+
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

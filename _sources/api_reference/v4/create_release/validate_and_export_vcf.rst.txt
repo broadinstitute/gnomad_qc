@@ -1,0 +1,21 @@
+gnomad_qc.v4.create_release.validate_and_export_vcf
+===================================================
+
+Script to validate and export gnomAD VCFs.
+
+
+
+
+.. argparse::
+   :ref: gnomad_qc.v4.create_release.validate_and_export_vcf.get_script_argument_parser
+   :prog: gnomad_qc.v4.create_release.validate_and_export_vcf.py
+
+
+
+Module Functions
+****************
+
+.. gnomad_automodulesummary:: gnomad_qc.v4.create_release.validate_and_export_vcf
+
+.. automodule:: gnomad_qc.v4.create_release.validate_and_export_vcf
+    :exclude-members: get_script_argument_parser

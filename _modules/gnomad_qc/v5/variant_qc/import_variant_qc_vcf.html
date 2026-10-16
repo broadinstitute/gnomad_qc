@@ -1,0 +1,394 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>gnomad_qc.v5.variant_qc.import_variant_qc_vcf &mdash; gnomad_qc master documentation</title>
+      <link rel="stylesheet" href="../../../../_static/pygments.css" type="text/css" />
+      <link rel="stylesheet" href="../../../../_static/css/theme.css" type="text/css" />
+      <link rel="stylesheet" href="../../../../_static/theme_overrides.css" type="text/css" />
+  <!--[if lt IE 9]>
+    <script src="../../../../_static/js/html5shiv.min.js"></script>
+  <![endif]-->
+  
+        <script src="../../../../_static/jquery.js"></script>
+        <script src="../../../../_static/_sphinx_javascript_frameworks_compat.js"></script>
+        <script data-url_root="../../../../" id="documentation_options" src="../../../../_static/documentation_options.js"></script>
+        <script src="../../../../_static/doctools.js"></script>
+        <script src="../../../../_static/sphinx_highlight.js"></script>
+        <script src="https://unpkg.com/mermaid@10.2.0/dist/mermaid.min.js"></script>
+        <script>mermaid.initialize({startOnLoad:true});</script>
+    <script src="../../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../../index.html" class="icon icon-home">
+            gnomad_qc
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../../api_reference/index.html">API Reference</a></li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/broadinstitute/gnomad_qc/tags">Change Log</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../../index.html">gnomad_qc</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../../index.html">Module code</a></li>
+      <li class="breadcrumb-item active">gnomad_qc.v5.variant_qc.import_variant_qc_vcf</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for gnomad_qc.v5.variant_qc.import_variant_qc_vcf</h1><div class="highlight"><pre>
+<span></span><span class="sd">&quot;&quot;&quot;Script to load variant QC result VCF into a Hail Table.&quot;&quot;&quot;</span>
+
+<span class="kn">import</span> <span class="nn">argparse</span>
+<span class="kn">import</span> <span class="nn">logging</span>
+<span class="kn">from</span> <span class="nn">typing</span> <span class="kn">import</span> <span class="n">List</span><span class="p">,</span> <span class="n">Optional</span><span class="p">,</span> <span class="n">Tuple</span><span class="p">,</span> <span class="n">Union</span>
+
+<span class="kn">import</span> <span class="nn">hail</span> <span class="k">as</span> <span class="nn">hl</span>
+<span class="kn">from</span> <span class="nn">gnomad.utils.sparse_mt</span> <span class="kn">import</span> <span class="n">split_info_annotation</span>
+
+<span class="kn">from</span> <span class="nn">gnomad_qc.v5.resources.basics</span> <span class="kn">import</span> <span class="p">(</span>
+    <span class="n">_check_resource_existence</span><span class="p">,</span>
+    <span class="n">_get_batch_resource_kwargs</span><span class="p">,</span>
+    <span class="n">_init_hail</span><span class="p">,</span>
+<span class="p">)</span>
+<span class="kn">from</span> <span class="nn">gnomad_qc.v5.resources.variant_qc</span> <span class="kn">import</span> <span class="p">(</span>
+    <span class="n">VARIANT_QC_FEATURES</span><span class="p">,</span>
+    <span class="n">_validate_model_id</span><span class="p">,</span>
+    <span class="n">get_variant_qc_result</span><span class="p">,</span>
+<span class="p">)</span>
+
+<span class="n">logging</span><span class="o">.</span><span class="n">basicConfig</span><span class="p">(</span><span class="nb">format</span><span class="o">=</span><span class="s2">&quot;</span><span class="si">%(levelname)s</span><span class="s2"> (</span><span class="si">%(name)s</span><span class="s2"> </span><span class="si">%(lineno)s</span><span class="s2">): </span><span class="si">%(message)s</span><span class="s2">&quot;</span><span class="p">)</span>
+<span class="n">logger</span> <span class="o">=</span> <span class="n">logging</span><span class="o">.</span><span class="n">getLogger</span><span class="p">(</span><span class="s2">&quot;import_variant_qc_vcf&quot;</span><span class="p">)</span>
+<span class="n">logger</span><span class="o">.</span><span class="n">setLevel</span><span class="p">(</span><span class="n">logging</span><span class="o">.</span><span class="n">INFO</span><span class="p">)</span>
+
+
+<div class="viewcode-block" id="import_variant_qc_vcf"><a class="viewcode-back" href="../../../../api_reference/v5/variant_qc/import_variant_qc_vcf.html#gnomad_qc.v5.variant_qc.import_variant_qc_vcf.import_variant_qc_vcf">[docs]</a><span class="k">def</span> <span class="nf">import_variant_qc_vcf</span><span class="p">(</span>
+    <span class="n">vcf_path</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">]],</span>
+    <span class="n">model_id</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="n">num_partitions</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">5000</span><span class="p">,</span>
+    <span class="n">import_header_path</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">array_elements_required</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+    <span class="n">is_split</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+    <span class="n">deduplicate_check</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Union</span><span class="p">[</span><span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">,</span> <span class="n">Tuple</span><span class="p">[</span><span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">,</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">]]:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Import variant QC result sites VCF into a HT.</span>
+
+<span class="sd">    :param vcf_path: Path(s) to variant QC result sites VCF(s). Can be a Hadoop glob</span>
+<span class="sd">        pattern or a list of paths.</span>
+<span class="sd">    :param model_id: Model ID. Must start with ``rf_``, ``vqsr_``, or ``if_``.</span>
+<span class="sd">    :param num_partitions: Number of partitions for the output HT.</span>
+<span class="sd">    :param import_header_path: Optional header file to use for import.</span>
+<span class="sd">    :param array_elements_required: Value passed to hl.import_vcf.</span>
+<span class="sd">    :param is_split: Whether the VCF is already split.</span>
+<span class="sd">    :param deduplicate_check: Whether to remove duplicate variants.</span>
+<span class="sd">    :return: HT (or split, unsplit HTs) containing variant QC results.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">model_type</span> <span class="o">=</span> <span class="n">_validate_model_id</span><span class="p">(</span><span class="n">model_id</span><span class="p">)</span>
+
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span>
+        <span class="s2">&quot;Importing variant QC annotations for model </span><span class="si">%s</span><span class="s2"> (array_elements_required=</span><span class="si">%s</span><span class="s2">)...&quot;</span><span class="p">,</span>
+        <span class="n">model_id</span><span class="p">,</span>
+        <span class="n">array_elements_required</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">hl</span><span class="o">.</span><span class="n">import_vcf</span><span class="p">(</span>
+        <span class="n">vcf_path</span><span class="p">,</span>
+        <span class="n">force_bgz</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+        <span class="n">reference_genome</span><span class="o">=</span><span class="s2">&quot;GRCh38&quot;</span><span class="p">,</span>
+        <span class="n">array_elements_required</span><span class="o">=</span><span class="n">array_elements_required</span><span class="p">,</span>
+        <span class="n">header_file</span><span class="o">=</span><span class="n">import_header_path</span><span class="p">,</span>
+    <span class="p">)</span><span class="o">.</span><span class="n">rows</span><span class="p">()</span>
+
+    <span class="c1"># Read back with `_n_partitions` to repartition off the table index (no shuffle).</span>
+    <span class="n">tmp_path</span> <span class="o">=</span> <span class="n">hl</span><span class="o">.</span><span class="n">utils</span><span class="o">.</span><span class="n">new_temp_file</span><span class="p">(</span><span class="s2">&quot;imported_vcq_result&quot;</span><span class="p">,</span> <span class="s2">&quot;ht&quot;</span><span class="p">)</span>
+    <span class="n">ht</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">tmp_path</span><span class="p">)</span>
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">hl</span><span class="o">.</span><span class="n">read_table</span><span class="p">(</span><span class="n">tmp_path</span><span class="p">,</span> <span class="n">_n_partitions</span><span class="o">=</span><span class="n">num_partitions</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">deduplicate_check</span><span class="p">:</span>
+        <span class="n">dup_ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">group_by</span><span class="p">(</span><span class="n">ht</span><span class="o">.</span><span class="n">locus</span><span class="p">,</span> <span class="n">ht</span><span class="o">.</span><span class="n">alleles</span><span class="p">)</span><span class="o">.</span><span class="n">aggregate</span><span class="p">(</span><span class="n">n</span><span class="o">=</span><span class="n">hl</span><span class="o">.</span><span class="n">agg</span><span class="o">.</span><span class="n">count</span><span class="p">())</span>
+        <span class="n">dup_ht</span> <span class="o">=</span> <span class="n">dup_ht</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">dup_ht</span><span class="o">.</span><span class="n">n</span> <span class="o">&gt;</span> <span class="mi">1</span><span class="p">)</span>
+        <span class="n">n_dup</span> <span class="o">=</span> <span class="n">dup_ht</span><span class="o">.</span><span class="n">count</span><span class="p">()</span>
+        <span class="k">if</span> <span class="n">n_dup</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="c1"># NOTE: distinct() keeps one arbitrary row per key, so if shards disagree</span>
+            <span class="c1"># on INFO values the surviving row is non-deterministic.</span>
+            <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span>
+                <span class="s2">&quot;Found </span><span class="si">%s</span><span class="s2"> variants with duplicate keys; keeping distinct rows. &quot;</span>
+                <span class="s2">&quot;Examples: </span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">,</span>
+                <span class="n">n_dup</span><span class="p">,</span>
+                <span class="p">[(</span><span class="n">e</span><span class="o">.</span><span class="n">locus</span><span class="p">,</span> <span class="n">e</span><span class="o">.</span><span class="n">alleles</span><span class="p">)</span> <span class="k">for</span> <span class="n">e</span> <span class="ow">in</span> <span class="n">dup_ht</span><span class="o">.</span><span class="n">take</span><span class="p">(</span><span class="mi">5</span><span class="p">)],</span>
+            <span class="p">)</span>
+            <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">distinct</span><span class="p">()</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;No duplicate variants found.&quot;</span><span class="p">)</span>
+
+    <span class="n">unsplit_count</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">is_split</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">model_type</span> <span class="o">==</span> <span class="s2">&quot;vqsr&quot;</span><span class="p">:</span>
+            <span class="n">as_vqslod_expr</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;AS_VQSLOD&quot;</span><span class="p">:</span> <span class="n">ht</span><span class="o">.</span><span class="n">info</span><span class="o">.</span><span class="n">AS_VQSLOD</span><span class="o">.</span><span class="n">map</span><span class="p">(</span><span class="k">lambda</span> <span class="n">x</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">float</span><span class="p">(</span><span class="n">x</span><span class="p">))}</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">as_vqslod_expr</span> <span class="o">=</span> <span class="p">{}</span>
+        <span class="c1"># Reformat the pipe-delimited AS fields. This branch is v4-only: v4 exports them</span>
+        <span class="c1"># pipe-delimited (adjust_vcf_incompatible_types default) while v5 passes</span>
+        <span class="c1"># pipe_delimited_annotations=[]. Guards allow for fields absent from the input.</span>
+        <span class="n">reformat_expr</span> <span class="o">=</span> <span class="p">{}</span>
+        <span class="k">if</span> <span class="s2">&quot;AS_QUALapprox&quot;</span> <span class="ow">in</span> <span class="n">ht</span><span class="o">.</span><span class="n">info</span><span class="p">:</span>
+            <span class="n">reformat_expr</span><span class="p">[</span><span class="s2">&quot;AS_QUALapprox&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">info</span><span class="o">.</span><span class="n">AS_QUALapprox</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s2">&quot;\|&quot;</span><span class="p">)[</span><span class="mi">1</span><span class="p">:]</span><span class="o">.</span><span class="n">map</span><span class="p">(</span>
+                <span class="k">lambda</span> <span class="n">x</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">int</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
+            <span class="p">)</span>
+        <span class="k">if</span> <span class="s2">&quot;AS_VarDP&quot;</span> <span class="ow">in</span> <span class="n">ht</span><span class="o">.</span><span class="n">info</span><span class="p">:</span>
+            <span class="n">reformat_expr</span><span class="p">[</span><span class="s2">&quot;AS_VarDP&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">info</span><span class="o">.</span><span class="n">AS_VarDP</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s2">&quot;\|&quot;</span><span class="p">)[</span><span class="mi">1</span><span class="p">:]</span><span class="o">.</span><span class="n">map</span><span class="p">(</span>
+                <span class="k">lambda</span> <span class="n">x</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">int</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
+            <span class="p">)</span>
+        <span class="k">if</span> <span class="s2">&quot;AS_SB_TABLE&quot;</span> <span class="ow">in</span> <span class="n">ht</span><span class="o">.</span><span class="n">info</span><span class="p">:</span>
+            <span class="n">reformat_expr</span><span class="p">[</span><span class="s2">&quot;AS_SB_TABLE&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">info</span><span class="o">.</span><span class="n">AS_SB_TABLE</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s2">&quot;\|&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">map</span><span class="p">(</span>
+                <span class="k">lambda</span> <span class="n">x</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">or_missing</span><span class="p">(</span><span class="n">x</span> <span class="o">!=</span> <span class="s2">&quot;&quot;</span><span class="p">,</span> <span class="n">x</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s2">&quot;,&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">map</span><span class="p">(</span><span class="k">lambda</span> <span class="n">y</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">int</span><span class="p">(</span><span class="n">y</span><span class="p">)))</span>
+            <span class="p">)</span>
+        <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">annotate</span><span class="p">(</span><span class="n">info</span><span class="o">=</span><span class="n">ht</span><span class="o">.</span><span class="n">info</span><span class="o">.</span><span class="n">annotate</span><span class="p">(</span><span class="o">**</span><span class="n">as_vqslod_expr</span><span class="p">,</span> <span class="o">**</span><span class="n">reformat_expr</span><span class="p">))</span>
+
+        <span class="n">unsplit_ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">checkpoint</span><span class="p">(</span><span class="n">hl</span><span class="o">.</span><span class="n">utils</span><span class="o">.</span><span class="n">new_temp_file</span><span class="p">(</span><span class="s2">&quot;unsplit_vcq_result&quot;</span><span class="p">,</span> <span class="s2">&quot;ht&quot;</span><span class="p">))</span>
+        <span class="n">unsplit_count</span> <span class="o">=</span> <span class="n">unsplit_ht</span><span class="o">.</span><span class="n">count</span><span class="p">()</span>
+        <span class="n">split_ht</span> <span class="o">=</span> <span class="n">hl</span><span class="o">.</span><span class="n">split_multi_hts</span><span class="p">(</span><span class="n">unsplit_ht</span><span class="p">)</span>
+        <span class="n">split_ht</span> <span class="o">=</span> <span class="n">split_ht</span><span class="o">.</span><span class="n">annotate</span><span class="p">(</span>
+            <span class="n">info</span><span class="o">=</span><span class="n">split_ht</span><span class="o">.</span><span class="n">info</span><span class="o">.</span><span class="n">annotate</span><span class="p">(</span>
+                <span class="o">**</span><span class="n">split_info_annotation</span><span class="p">(</span><span class="n">split_ht</span><span class="o">.</span><span class="n">info</span><span class="p">,</span> <span class="n">split_ht</span><span class="o">.</span><span class="n">a_index</span><span class="p">)</span>
+            <span class="p">),</span>
+        <span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">unsplit_ht</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="c1"># Number=A fields import as length-1 arrays on split input; index to scalars</span>
+        <span class="c1"># (split_info_annotation does this via a_index on the unsplit path).</span>
+        <span class="n">split_ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">annotate</span><span class="p">(</span>
+            <span class="n">info</span><span class="o">=</span><span class="n">ht</span><span class="o">.</span><span class="n">info</span><span class="o">.</span><span class="n">annotate</span><span class="p">(</span>
+                <span class="o">**</span><span class="p">{</span>
+                    <span class="n">f</span><span class="p">:</span> <span class="n">ht</span><span class="o">.</span><span class="n">info</span><span class="p">[</span><span class="n">f</span><span class="p">][</span><span class="mi">0</span><span class="p">]</span>
+                    <span class="k">for</span> <span class="n">f</span><span class="p">,</span> <span class="n">t</span> <span class="ow">in</span> <span class="n">ht</span><span class="o">.</span><span class="n">info</span><span class="o">.</span><span class="n">dtype</span><span class="o">.</span><span class="n">items</span><span class="p">()</span>
+                    <span class="k">if</span> <span class="n">f</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s2">&quot;AS_&quot;</span><span class="p">)</span> <span class="ow">and</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">t</span><span class="p">,</span> <span class="n">hl</span><span class="o">.</span><span class="n">tarray</span><span class="p">)</span>
+                <span class="p">}</span>
+            <span class="p">)</span>
+        <span class="p">)</span>
+
+    <span class="c1"># `ht` is already materialized at `tmp_path`; only checkpoint if it was changed</span>
+    <span class="c1"># (the split-path scalar indexing is cheap enough to recompute).</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">is_split</span> <span class="ow">or</span> <span class="n">deduplicate_check</span><span class="p">:</span>
+        <span class="n">split_ht</span> <span class="o">=</span> <span class="n">split_ht</span><span class="o">.</span><span class="n">checkpoint</span><span class="p">(</span><span class="n">hl</span><span class="o">.</span><span class="n">utils</span><span class="o">.</span><span class="n">new_temp_file</span><span class="p">(</span><span class="s2">&quot;split_vcq_result&quot;</span><span class="p">,</span> <span class="s2">&quot;ht&quot;</span><span class="p">))</span>
+    <span class="n">split_count</span> <span class="o">=</span> <span class="n">split_ht</span><span class="o">.</span><span class="n">count</span><span class="p">()</span>
+    <span class="k">if</span> <span class="n">unsplit_count</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Found </span><span class="si">%s</span><span class="s2"> split variants in the VCF.&quot;</span><span class="p">,</span> <span class="n">split_count</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span>
+            <span class="s2">&quot;Found </span><span class="si">%s</span><span class="s2"> unsplit and </span><span class="si">%s</span><span class="s2"> split variants in the VCF.&quot;</span><span class="p">,</span>
+            <span class="n">unsplit_count</span><span class="p">,</span>
+            <span class="n">split_count</span><span class="p">,</span>
+        <span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">unsplit_ht</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">split_ht</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">split_ht</span><span class="p">,</span> <span class="n">unsplit_ht</span></div>
+
+
+<div class="viewcode-block" id="main"><a class="viewcode-back" href="../../../../api_reference/v5/variant_qc/import_variant_qc_vcf.html#gnomad_qc.v5.variant_qc.import_variant_qc_vcf.main">[docs]</a><span class="k">def</span> <span class="nf">main</span><span class="p">(</span><span class="n">args</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Load a single variant QC result VCF into a Hail Table.&quot;&quot;&quot;</span>
+    <span class="n">environment</span> <span class="o">=</span> <span class="n">args</span><span class="o">.</span><span class="n">environment</span>
+    <span class="n">_init_hail</span><span class="p">(</span>
+        <span class="s2">&quot;import_variant_qc_vcf&quot;</span><span class="p">,</span>
+        <span class="n">environment</span><span class="p">,</span>
+        <span class="o">**</span><span class="n">_get_batch_resource_kwargs</span><span class="p">(</span><span class="n">args</span><span class="p">),</span>
+    <span class="p">)</span>
+
+    <span class="c1"># An already-split input yields only the split HT; otherwise split and unsplit.</span>
+    <span class="n">splits</span> <span class="o">=</span> <span class="p">(</span><span class="kc">True</span><span class="p">,)</span> <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">is_split</span> <span class="k">else</span> <span class="p">(</span><span class="kc">True</span><span class="p">,</span> <span class="kc">False</span><span class="p">)</span>
+    <span class="n">resources</span> <span class="o">=</span> <span class="p">[</span>
+        <span class="n">get_variant_qc_result</span><span class="p">(</span>
+            <span class="n">args</span><span class="o">.</span><span class="n">model_id</span><span class="p">,</span> <span class="n">test</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">test</span><span class="p">,</span> <span class="n">split</span><span class="o">=</span><span class="n">split</span><span class="p">,</span> <span class="n">environment</span><span class="o">=</span><span class="n">environment</span>
+        <span class="p">)</span>
+        <span class="k">for</span> <span class="n">split</span> <span class="ow">in</span> <span class="n">splits</span>
+    <span class="p">]</span>
+    <span class="c1"># Check up front so a rerun fails before the import instead of after it, and</span>
+    <span class="c1"># never after the split HT has already been written.</span>
+    <span class="n">_check_resource_existence</span><span class="p">(</span>
+        <span class="n">environment</span><span class="o">=</span><span class="n">environment</span><span class="p">,</span>
+        <span class="n">output_step_resources</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;variant_qc_result&quot;</span><span class="p">:</span> <span class="n">resources</span><span class="p">},</span>
+        <span class="n">overwrite</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">overwrite</span><span class="p">,</span>
+    <span class="p">)</span>
+
+    <span class="n">hts</span> <span class="o">=</span> <span class="n">import_variant_qc_vcf</span><span class="p">(</span>
+        <span class="n">args</span><span class="o">.</span><span class="n">vcf_path</span><span class="p">,</span>
+        <span class="n">args</span><span class="o">.</span><span class="n">model_id</span><span class="p">,</span>
+        <span class="n">args</span><span class="o">.</span><span class="n">n_partitions</span><span class="p">,</span>
+        <span class="n">args</span><span class="o">.</span><span class="n">header_path</span><span class="p">,</span>
+        <span class="n">args</span><span class="o">.</span><span class="n">array_elements_required</span><span class="p">,</span>
+        <span class="n">args</span><span class="o">.</span><span class="n">is_split</span><span class="p">,</span>
+        <span class="n">args</span><span class="o">.</span><span class="n">deduplication_check</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">hts</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">):</span>
+        <span class="n">hts</span> <span class="o">=</span> <span class="p">(</span><span class="n">hts</span><span class="p">,)</span>
+
+    <span class="k">for</span> <span class="n">ht</span><span class="p">,</span> <span class="n">res</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="n">hts</span><span class="p">,</span> <span class="n">resources</span><span class="p">):</span>
+        <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">annotate_globals</span><span class="p">(</span>
+            <span class="n">model_id</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">model_id</span><span class="p">,</span>
+            <span class="n">snp_features</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">snp_features</span><span class="p">,</span>
+            <span class="n">indel_features</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">indel_features</span><span class="p">,</span>
+        <span class="p">)</span>
+        <span class="n">ht</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">res</span><span class="o">.</span><span class="n">path</span><span class="p">,</span> <span class="n">overwrite</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">overwrite</span><span class="p">)</span></div>
+
+
+<span class="k">def</span> <span class="nf">get_script_argument_parser</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="n">argparse</span><span class="o">.</span><span class="n">ArgumentParser</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Get script argument parser.&quot;&quot;&quot;</span>
+    <span class="n">parser</span> <span class="o">=</span> <span class="n">argparse</span><span class="o">.</span><span class="n">ArgumentParser</span><span class="p">()</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;-o&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;--overwrite&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Whether to overwrite data already present in the output Table.&quot;</span><span class="p">,</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--test&quot;</span><span class="p">,</span> <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Whether to use a tmp path for output.&quot;</span><span class="p">,</span> <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--environment&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Compute environment.&quot;</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="s2">&quot;batch&quot;</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">str</span><span class="p">,</span>
+        <span class="n">choices</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;rwb&quot;</span><span class="p">,</span> <span class="s2">&quot;batch&quot;</span><span class="p">,</span> <span class="s2">&quot;dataproc&quot;</span><span class="p">],</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--app-name&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Job name for the batch/QoB backend.&quot;</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">str</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--driver-cores&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Number of driver cores (Batch only).&quot;</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">int</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--driver-memory&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Driver memory (Batch only).&quot;</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">str</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--worker-cores&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Number of worker cores (Batch only).&quot;</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">int</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--worker-memory&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Worker memory (Batch only).&quot;</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">str</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--vcf-path&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Path to variant QC result VCF. Can be Hadoop glob patterns.&quot;</span><span class="p">,</span>
+        <span class="n">required</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--model-id&quot;</span><span class="p">,</span> <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Model ID for the result HT.&quot;</span><span class="p">,</span> <span class="nb">type</span><span class="o">=</span><span class="nb">str</span><span class="p">,</span> <span class="n">required</span><span class="o">=</span><span class="kc">True</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--n-partitions&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Number of partitions for the output Table.&quot;</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="mi">5000</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">int</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span><span class="s2">&quot;--header-path&quot;</span><span class="p">,</span> <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Optional header file to use for import.&quot;</span><span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--array-elements-required&quot;</span><span class="p">,</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Set array_elements_required=True in import_vcf.&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--is-split&quot;</span><span class="p">,</span> <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span> <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Whether the VCF is already split.&quot;</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--deduplication-check&quot;</span><span class="p">,</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Remove duplicate variants (for overlapping shards).&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--snp-features&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;SNP model features (stored as a global).&quot;</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="n">VARIANT_QC_FEATURES</span><span class="p">[</span><span class="s2">&quot;snv&quot;</span><span class="p">],</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">str</span><span class="p">,</span>
+        <span class="n">nargs</span><span class="o">=</span><span class="s2">&quot;+&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--indel-features&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Indel model features (stored as a global).&quot;</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="n">VARIANT_QC_FEATURES</span><span class="p">[</span><span class="s2">&quot;indel&quot;</span><span class="p">],</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">str</span><span class="p">,</span>
+        <span class="n">nargs</span><span class="o">=</span><span class="s2">&quot;+&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="k">return</span> <span class="n">parser</span>
+
+
+<span class="k">if</span> <span class="vm">__name__</span> <span class="o">==</span> <span class="s2">&quot;__main__&quot;</span><span class="p">:</span>
+    <span class="n">parser</span> <span class="o">=</span> <span class="n">get_script_argument_parser</span><span class="p">()</span>
+    <span class="n">main</span><span class="p">(</span><span class="n">parser</span><span class="o">.</span><span class="n">parse_args</span><span class="p">())</span>
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p></p>
+  </div>
+
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

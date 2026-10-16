@@ -1,0 +1,798 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+  <meta charset="utf-8" /><meta name="generator" content="Docutils 0.18.1: http://docutils.sourceforge.net/" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>gnomad_qc.v5.annotations.batch_fanout &mdash; gnomad_qc master documentation</title>
+      <link rel="stylesheet" href="../../../_static/pygments.css" type="text/css" />
+      <link rel="stylesheet" href="../../../_static/css/theme.css" type="text/css" />
+      <link rel="stylesheet" href="../../../_static/theme_overrides.css" type="text/css" />
+  <!--[if lt IE 9]>
+    <script src="../../../_static/js/html5shiv.min.js"></script>
+  <![endif]-->
+  
+        <script src="../../../_static/jquery.js"></script>
+        <script src="../../../_static/_sphinx_javascript_frameworks_compat.js"></script>
+        <script data-url_root="../../../" id="documentation_options" src="../../../_static/documentation_options.js"></script>
+        <script src="../../../_static/doctools.js"></script>
+        <script src="../../../_static/sphinx_highlight.js"></script>
+    <script src="../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" />
+    <link rel="next" title="gnomad_qc.v5.annotations.compute_coverage" href="compute_coverage.html" />
+    <link rel="prev" title="gnomad_qc.v5.annotations.annotation_utils" href="annotation_utils.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../index.html" class="icon icon-home">
+            gnomad_qc
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul class="current">
+<li class="toctree-l1 current"><a class="reference internal" href="../../index.html">API Reference</a><ul class="current">
+<li class="toctree-l2"><a class="reference internal" href="../../analyses/index.html">analyses</a></li>
+<li class="toctree-l2 current"><a class="reference internal" href="../index.html">v5</a><ul class="current">
+<li class="toctree-l3 current"><a class="reference internal" href="index.html">annotations</a><ul class="current">
+<li class="toctree-l4"><a class="reference internal" href="annotation_utils.html">annotation_utils</a></li>
+<li class="toctree-l4 current"><a class="current reference internal" href="#">batch_fanout</a></li>
+<li class="toctree-l4"><a class="reference internal" href="compute_coverage.html">compute_coverage</a></li>
+<li class="toctree-l4"><a class="reference internal" href="generate_frequency.html">generate_frequency</a></li>
+<li class="toctree-l4"><a class="reference internal" href="generate_variant_qc_annotations.html">generate_variant_qc_annotations</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../resources/index.html">resources</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../variant_qc/index.html">variant_qc</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../../federated/index.html">federated</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../v4/index.html">v4</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/broadinstitute/gnomad_qc/tags">Change Log</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../index.html">gnomad_qc</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../index.html">gnomad_qc</a></li>
+          <li class="breadcrumb-item"><a href="../index.html">gnomad_qc.v5</a></li>
+          <li class="breadcrumb-item"><a href="index.html">gnomad_qc.v5.annotations</a></li>
+      <li class="breadcrumb-item active">gnomad_qc.v5.annotations.batch_fanout</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="../../../_sources/api_reference/v5/annotations/batch_fanout.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="gnomad-qc-v5-annotations-batch-fanout">
+<h1>gnomad_qc.v5.annotations.batch_fanout<a class="headerlink" href="#gnomad-qc-v5-annotations-batch-fanout" title="Permalink to this heading"></a></h1>
+<p>Hail Batch relay fan-out for the v5 annotation scripts.</p>
+<p>A Query-on-Batch run has one driver, and a driver crash loses everything it was
+computing. The scripts therefore cut the genome into chunks and run each chunk from
+its own small, non-spot Batch job (a “relay”) that starts a QoB driver inside its
+container. A crash then costs one chunk, and a rerun skips the chunks that already
+have a <code class="docutils literal notranslate"><span class="pre">_SUCCESS</span></code> marker. The orchestrator that submits the relays never starts
+Hail.</p>
+<p>Chunk outputs are stored under a hash of the chunk layout. The layout is sampled
+without a fixed seed, so each regeneration moves the cut points, and a chunk left
+behind by an older layout must not be taken for a finished chunk of the new one.</p>
+<section id="module-functions">
+<h2>Module Functions<a class="headerlink" href="#module-functions" title="Permalink to this heading"></a></h2>
+<table class="autosummary longtable docutils align-default">
+<tbody>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v5.annotations.batch_fanout.RelayJobSpec" title="gnomad_qc.v5.annotations.batch_fanout.RelayJobSpec"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v5.annotations.batch_fanout.RelayJobSpec</span></code></a>(...)</p></td>
+<td><p>One relay job for <code class="xref py py-func docutils literal notranslate"><span class="pre">submit_relay_batch()</span></code>.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#gnomad_qc.v5.annotations.batch_fanout.resolve_commit" title="gnomad_qc.v5.annotations.batch_fanout.resolve_commit"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v5.annotations.batch_fanout.resolve_commit</span></code></a>()</p></td>
+<td><p>Return the gnomad_qc commit the relay containers should check out.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v5.annotations.batch_fanout.build_setup_command" title="gnomad_qc.v5.annotations.batch_fanout.build_setup_command"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v5.annotations.batch_fanout.build_setup_command</span></code></a>(commit)</p></td>
+<td><p>Return the shell prefix every relay runs before the script.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#gnomad_qc.v5.annotations.batch_fanout.relay_context" title="gnomad_qc.v5.annotations.batch_fanout.relay_context"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v5.annotations.batch_fanout.relay_context</span></code></a>(...)</p></td>
+<td><p>Return what every relay submission needs: setup command, backend kwargs, script.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v5.annotations.batch_fanout.submit_relay_batch" title="gnomad_qc.v5.annotations.batch_fanout.submit_relay_batch"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v5.annotations.batch_fanout.submit_relay_batch</span></code></a>(...)</p></td>
+<td><p>Submit one Hail Batch of relay jobs and wait for it.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#gnomad_qc.v5.annotations.batch_fanout.chunk_intervals_hash" title="gnomad_qc.v5.annotations.batch_fanout.chunk_intervals_hash"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v5.annotations.batch_fanout.chunk_intervals_hash</span></code></a>(data)</p></td>
+<td><p>Return a 16-hex-char content hash of a chunk layout.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v5.annotations.batch_fanout.test_region_hash" title="gnomad_qc.v5.annotations.batch_fanout.test_region_hash"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v5.annotations.batch_fanout.test_region_hash</span></code></a>(...)</p></td>
+<td><p>Return the layout hash of a <code class="docutils literal notranslate"><span class="pre">--test-region</span></code> run, which has no layout JSON.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#gnomad_qc.v5.annotations.batch_fanout.interval_to_list" title="gnomad_qc.v5.annotations.batch_fanout.interval_to_list"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v5.annotations.batch_fanout.interval_to_list</span></code></a>(iv)</p></td>
+<td><p>Serialize a locus interval for the chunk-intervals JSON.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v5.annotations.batch_fanout.interval_from_list" title="gnomad_qc.v5.annotations.batch_fanout.interval_from_list"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v5.annotations.batch_fanout.interval_from_list</span></code></a>(t, ...)</p></td>
+<td><p>Rebuild a locus interval from its chunk-intervals JSON form.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#gnomad_qc.v5.annotations.batch_fanout.parse_region_interval" title="gnomad_qc.v5.annotations.batch_fanout.parse_region_interval"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v5.annotations.batch_fanout.parse_region_interval</span></code></a>(...)</p></td>
+<td><p>Parse <code class="docutils literal notranslate"><span class="pre">contig:start-end</span></code> into a half-open locus interval.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v5.annotations.batch_fanout.spans_sex_chromosome" title="gnomad_qc.v5.annotations.batch_fanout.spans_sex_chromosome"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v5.annotations.batch_fanout.spans_sex_chromosome</span></code></a>(...)</p></td>
+<td><p>Return whether a read scope can include chrX or chrY.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#gnomad_qc.v5.annotations.batch_fanout.select_chunks_for_contig" title="gnomad_qc.v5.annotations.batch_fanout.select_chunks_for_contig"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v5.annotations.batch_fanout.select_chunks_for_contig</span></code></a>(...)</p></td>
+<td><p>Return the chunk indices on <code class="docutils literal notranslate"><span class="pre">chrom</span></code>, or every index when <code class="docutils literal notranslate"><span class="pre">chrom</span></code> is None.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v5.annotations.batch_fanout.apply_path_suffix" title="gnomad_qc.v5.annotations.batch_fanout.apply_path_suffix"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v5.annotations.batch_fanout.apply_path_suffix</span></code></a>(...)</p></td>
+<td><p>Insert <code class="docutils literal notranslate"><span class="pre">_&lt;suffix&gt;</span></code> before the <code class="docutils literal notranslate"><span class="pre">.ht</span></code> extension; unchanged when <code class="docutils literal notranslate"><span class="pre">suffix</span></code> is empty.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#gnomad_qc.v5.annotations.batch_fanout.combine_suffix" title="gnomad_qc.v5.annotations.batch_fanout.combine_suffix"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v5.annotations.batch_fanout.combine_suffix</span></code></a>(*parts)</p></td>
+<td><p>Join the non-empty parts with underscores, so each scope writes its own path.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v5.annotations.batch_fanout.chunk_path" title="gnomad_qc.v5.annotations.batch_fanout.chunk_path"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v5.annotations.batch_fanout.chunk_path</span></code></a>(...)</p></td>
+<td><p>Return the per-chunk HT path beside the final HT.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#gnomad_qc.v5.annotations.batch_fanout.group_path" title="gnomad_qc.v5.annotations.batch_fanout.group_path"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v5.annotations.batch_fanout.group_path</span></code></a>(...)</p></td>
+<td><p>Return a merge-tree intermediate HT path.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v5.annotations.batch_fanout.failed_chunks_path" title="gnomad_qc.v5.annotations.batch_fanout.failed_chunks_path"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v5.annotations.batch_fanout.failed_chunks_path</span></code></a>(...)</p></td>
+<td><p>Return the failed-chunk manifest path for one layout.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#gnomad_qc.v5.annotations.batch_fanout.list_present_chunk_indices" title="gnomad_qc.v5.annotations.batch_fanout.list_present_chunk_indices"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v5.annotations.batch_fanout.list_present_chunk_indices</span></code></a>(...)</p></td>
+<td><p>Return the chunk indices that have a <code class="docutils literal notranslate"><span class="pre">_SUCCESS</span></code> marker.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v5.annotations.batch_fanout.new_run_id" title="gnomad_qc.v5.annotations.batch_fanout.new_run_id"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v5.annotations.batch_fanout.new_run_id</span></code></a>()</p></td>
+<td><p>Return a UTC timestamp id for one orchestrator run.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#gnomad_qc.v5.annotations.batch_fanout.write_failed_chunks_manifest" title="gnomad_qc.v5.annotations.batch_fanout.write_failed_chunks_manifest"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v5.annotations.batch_fanout.write_failed_chunks_manifest</span></code></a>(...)</p></td>
+<td><p>Record which dispatched chunks did not land.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v5.annotations.batch_fanout.dispatch_in_waves" title="gnomad_qc.v5.annotations.batch_fanout.dispatch_in_waves"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v5.annotations.batch_fanout.dispatch_in_waves</span></code></a>(...)</p></td>
+<td><p>Submit pending chunks in sequential waves and report the ones that did not land.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#gnomad_qc.v5.annotations.batch_fanout.orchestrate_tree_merge" title="gnomad_qc.v5.annotations.batch_fanout.orchestrate_tree_merge"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v5.annotations.batch_fanout.orchestrate_tree_merge</span></code></a>(...)</p></td>
+<td><p>Union <code class="docutils literal notranslate"><span class="pre">inputs</span></code> into <code class="docutils literal notranslate"><span class="pre">final_output_path</span></code> with a tree of relay merge jobs.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v5.annotations.batch_fanout.union_and_write_hts" title="gnomad_qc.v5.annotations.batch_fanout.union_and_write_hts"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v5.annotations.batch_fanout.union_and_write_hts</span></code></a>(...)</p></td>
+<td><p>Union HTs that share a schema and globals, and write the result.</p></td>
+</tr>
+</tbody>
+</table>
+<span class="target" id="module-gnomad_qc.v5.annotations.batch_fanout"></span><p>Hail Batch relay fan-out for the v5 annotation scripts.</p>
+<p>A Query-on-Batch run has one driver, and a driver crash loses everything it was
+computing. The scripts therefore cut the genome into chunks and run each chunk from
+its own small, non-spot Batch job (a “relay”) that starts a QoB driver inside its
+container. A crash then costs one chunk, and a rerun skips the chunks that already
+have a <code class="docutils literal notranslate"><span class="pre">_SUCCESS</span></code> marker. The orchestrator that submits the relays never starts
+Hail.</p>
+<p>Chunk outputs are stored under a hash of the chunk layout. The layout is sampled
+without a fixed seed, so each regeneration moves the cut points, and a chunk left
+behind by an older layout must not be taken for a finished chunk of the new one.</p>
+<dl class="py class">
+<dt class="sig sig-object py" id="gnomad_qc.v5.annotations.batch_fanout.RelayJobSpec">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">gnomad_qc.v5.annotations.batch_fanout.</span></span><span class="sig-name descname"><span class="pre">RelayJobSpec</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">name</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">cpu</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">memory</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">storage</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">attempts</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">command</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v5/annotations/batch_fanout.html#RelayJobSpec"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v5.annotations.batch_fanout.RelayJobSpec" title="Permalink to this definition"></a></dt>
+<dd><p>One relay job for <a class="reference internal" href="#gnomad_qc.v5.annotations.batch_fanout.submit_relay_batch" title="gnomad_qc.v5.annotations.batch_fanout.submit_relay_batch"><code class="xref py py-func docutils literal notranslate"><span class="pre">submit_relay_batch()</span></code></a>.</p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="gnomad_qc.v5.annotations.batch_fanout.RelayJobSpec.name">
+<span class="sig-name descname"><span class="pre">name</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></em><a class="headerlink" href="#gnomad_qc.v5.annotations.batch_fanout.RelayJobSpec.name" title="Permalink to this definition"></a></dt>
+<dd><p>Alias for field number 0</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="gnomad_qc.v5.annotations.batch_fanout.RelayJobSpec.cpu">
+<span class="sig-name descname"><span class="pre">cpu</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code></em><a class="headerlink" href="#gnomad_qc.v5.annotations.batch_fanout.RelayJobSpec.cpu" title="Permalink to this definition"></a></dt>
+<dd><p>Alias for field number 1</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="gnomad_qc.v5.annotations.batch_fanout.RelayJobSpec.memory">
+<span class="sig-name descname"><span class="pre">memory</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></em><a class="headerlink" href="#gnomad_qc.v5.annotations.batch_fanout.RelayJobSpec.memory" title="Permalink to this definition"></a></dt>
+<dd><p>Alias for field number 2</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="gnomad_qc.v5.annotations.batch_fanout.RelayJobSpec.storage">
+<span class="sig-name descname"><span class="pre">storage</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></em><a class="headerlink" href="#gnomad_qc.v5.annotations.batch_fanout.RelayJobSpec.storage" title="Permalink to this definition"></a></dt>
+<dd><p>Alias for field number 3</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="gnomad_qc.v5.annotations.batch_fanout.RelayJobSpec.attempts">
+<span class="sig-name descname"><span class="pre">attempts</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code></em><a class="headerlink" href="#gnomad_qc.v5.annotations.batch_fanout.RelayJobSpec.attempts" title="Permalink to this definition"></a></dt>
+<dd><p>Alias for field number 4</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="gnomad_qc.v5.annotations.batch_fanout.RelayJobSpec.command">
+<span class="sig-name descname"><span class="pre">command</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></em><a class="headerlink" href="#gnomad_qc.v5.annotations.batch_fanout.RelayJobSpec.command" title="Permalink to this definition"></a></dt>
+<dd><p>Alias for field number 5</p>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v5.annotations.batch_fanout.resolve_commit">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v5.annotations.batch_fanout.</span></span><span class="sig-name descname"><span class="pre">resolve_commit</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v5/annotations/batch_fanout.html#resolve_commit"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v5.annotations.batch_fanout.resolve_commit" title="Permalink to this definition"></a></dt>
+<dd><p>Return the gnomad_qc commit the relay containers should check out.</p>
+<p>The <code class="docutils literal notranslate"><span class="pre">GNOMAD_QC_COMMIT</span></code> environment variable takes precedence so an orchestrator
+that itself runs inside a Batch job, where the checkout is a tarball with no
+<code class="docutils literal notranslate"><span class="pre">.git</span></code> directory, can still pin the relays.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Full commit hash.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v5.annotations.batch_fanout.build_setup_command">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v5.annotations.batch_fanout.</span></span><span class="sig-name descname"><span class="pre">build_setup_command</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">commit</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">gcp_billing_project</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'broad-mpg-gnomad'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">methods_branch</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'main'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">hail_version</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v5/annotations/batch_fanout.html#build_setup_command"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v5.annotations.batch_fanout.build_setup_command" title="Permalink to this definition"></a></dt>
+<dd><p>Return the shell prefix every relay runs before the script.</p>
+<p>Both repos change faster than the image, so the relay downloads them at the
+pinned commit and branch when it starts. The Hail config file sets the Batch
+billing project and scratch directory for the nested QoB driver, and together
+with the <code class="docutils literal notranslate"><span class="pre">quota_project_id</span></code> patch gives Hail’s GCS client a requester-pays
+project, which a bare container has no gcloud config to supply.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>commit</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – gnomad_qc commit to check out.</p></li>
+<li><p><strong>gcp_billing_project</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Requester-pays project.</p></li>
+<li><p><strong>methods_branch</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – gnomad_methods branch or commit to check out.</p></li>
+<li><p><strong>hail_version</strong> (<code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>]) – If set, reinstall this Hail version in the container;
+otherwise the image’s Hail is used. The relay’s Python Hail sets the QoB
+JAR, so this pins everything. WARNING: the pin is also a floor for every
+HT the pipeline reads. Hail’s table format is not backward compatible,
+so lowering the pin without rewriting the input HTs breaks the fan-out.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Shell command string ending in a newline.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v5.annotations.batch_fanout.relay_context">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v5.annotations.batch_fanout.</span></span><span class="sig-name descname"><span class="pre">relay_context</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">commit</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">methods_branch</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">batch_billing_project</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">batch_remote_tmpdir</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">script_name</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">gcp_billing_project</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'broad-mpg-gnomad'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">hail_version</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v5/annotations/batch_fanout.html#relay_context"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v5.annotations.batch_fanout.relay_context" title="Permalink to this definition"></a></dt>
+<dd><p>Return what every relay submission needs: setup command, backend kwargs, script.</p>
+<p>Bundles the three values from one caller-supplied commit so every relay an
+orchestrator submits checks out the same code. The fan-out and the merge are
+separate orchestrator runs and each resolves its own commit.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>commit</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – gnomad_qc commit the relays check out.</p></li>
+<li><p><strong>methods_branch</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – gnomad_methods branch or commit the relays check out.</p></li>
+<li><p><strong>batch_billing_project</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Hail Batch billing project for the relay jobs.</p></li>
+<li><p><strong>batch_remote_tmpdir</strong> (<code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>]) – <code class="docutils literal notranslate"><span class="pre">hb.ServiceBackend</span></code> scratch, or None for Hail’s
+configured one.</p></li>
+<li><p><strong>script_name</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Script file name under <code class="docutils literal notranslate"><span class="pre">gnomad_qc/v5/annotations</span></code>.</p></li>
+<li><p><strong>gcp_billing_project</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Requester-pays project for the relays.</p></li>
+<li><p><strong>hail_version</strong> (<code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>]) – Optional Hail pin for <a class="reference internal" href="#gnomad_qc.v5.annotations.batch_fanout.build_setup_command" title="gnomad_qc.v5.annotations.batch_fanout.build_setup_command"><code class="xref py py-func docutils literal notranslate"><span class="pre">build_setup_command()</span></code></a>.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="xref py py-data docutils literal notranslate"><span class="pre">Tuple</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">Dict</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>], <code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>]</p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p><code class="docutils literal notranslate"><span class="pre">(setup_cmd,</span> <span class="pre">backend_kwargs,</span> <span class="pre">script_command)</span></code>.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v5.annotations.batch_fanout.submit_relay_batch">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v5.annotations.batch_fanout.</span></span><span class="sig-name descname"><span class="pre">submit_relay_batch</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">batch_image</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">backend_kwargs</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">batch_name</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">job_specs</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">log_label</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">*</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">dry_run</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v5/annotations/batch_fanout.html#submit_relay_batch"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v5.annotations.batch_fanout.submit_relay_batch" title="Permalink to this definition"></a></dt>
+<dd><p>Submit one Hail Batch of relay jobs and wait for it.</p>
+<p>Relays are non-spot because a preempted relay leaves the QoB batch it was
+waiting on running with nobody to collect it. For the same reason callers
+normally ask for one attempt: a Batch retry cannot cancel that orphaned batch
+and would run alongside it.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>batch_image</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Docker image for the relay containers.</p></li>
+<li><p><strong>backend_kwargs</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">Dict</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>]) – kwargs for <code class="docutils literal notranslate"><span class="pre">hb.ServiceBackend</span></code>.</p></li>
+<li><p><strong>batch_name</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Hail Batch name.</p></li>
+<li><p><strong>job_specs</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">Sequence</span></code>[<a class="reference internal" href="#gnomad_qc.v5.annotations.batch_fanout.RelayJobSpec" title="gnomad_qc.v5.annotations.batch_fanout.RelayJobSpec"><code class="xref py py-class docutils literal notranslate"><span class="pre">RelayJobSpec</span></code></a>]) – Jobs to submit; nothing is submitted when empty.</p></li>
+<li><p><strong>log_label</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Noun for log messages (“chunk”, “merge”).</p></li>
+<li><p><strong>dry_run</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Validate the batch without running it.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>]</p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Batch id, or None when nothing ran.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v5.annotations.batch_fanout.chunk_intervals_hash">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v5.annotations.batch_fanout.</span></span><span class="sig-name descname"><span class="pre">chunk_intervals_hash</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">data</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v5/annotations/batch_fanout.html#chunk_intervals_hash"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v5.annotations.batch_fanout.chunk_intervals_hash" title="Permalink to this definition"></a></dt>
+<dd><p>Return a 16-hex-char content hash of a chunk layout.</p>
+<p>Every regeneration of the layout moves the cut points, and keying outputs by
+this hash keeps each layout’s chunks apart. An embedded <code class="docutils literal notranslate"><span class="pre">intervals_hash</span></code> key
+is dropped before hashing, so a JSON that carries its own hash re-hashes to the
+same value.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>data</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">Dict</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>, <code class="xref py py-data docutils literal notranslate"><span class="pre">Any</span></code>]) – Parsed chunk-intervals JSON.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>First 16 hex chars of the SHA-256 of its canonical serialization.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v5.annotations.batch_fanout.test_region_hash">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v5.annotations.batch_fanout.</span></span><span class="sig-name descname"><span class="pre">test_region_hash</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">test_region</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v5/annotations/batch_fanout.html#test_region_hash"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v5.annotations.batch_fanout.test_region_hash" title="Permalink to this definition"></a></dt>
+<dd><p>Return the layout hash of a <code class="docutils literal notranslate"><span class="pre">--test-region</span></code> run, which has no layout JSON.</p>
+<p>Hashing the region strings keeps two region tests under the same output path
+from seeing each other’s chunk as already present. The sub-interval count is
+deliberately left out: the merge and validate steps do not pass it, and it does
+not change the chunk’s contents.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>test_region</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">Sequence</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>]) – Region strings as passed on the command line.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p><code class="docutils literal notranslate"><span class="pre">test_region_</span></code> plus a 16-hex-char hash.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v5.annotations.batch_fanout.interval_to_list">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v5.annotations.batch_fanout.</span></span><span class="sig-name descname"><span class="pre">interval_to_list</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">iv</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v5/annotations/batch_fanout.html#interval_to_list"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v5.annotations.batch_fanout.interval_to_list" title="Permalink to this definition"></a></dt>
+<dd><p>Serialize a locus interval for the chunk-intervals JSON.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>iv</strong> (<a class="reference external" href="https://hail.is/docs/0.2/utils/index.html#hail.utils.Interval" title="(in Hail v0.2.139)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Interval</span></code></a>) – Locus interval.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="xref py py-class docutils literal notranslate"><span class="pre">list</span></code></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p><code class="docutils literal notranslate"><span class="pre">[start_contig,</span> <span class="pre">start_pos,</span> <span class="pre">end_contig,</span> <span class="pre">end_pos,</span> <span class="pre">includes_start,</span>
+<span class="pre">includes_end]</span></code>.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v5.annotations.batch_fanout.interval_from_list">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v5.annotations.batch_fanout.</span></span><span class="sig-name descname"><span class="pre">interval_from_list</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">t</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">reference_genome</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v5/annotations/batch_fanout.html#interval_from_list"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v5.annotations.batch_fanout.interval_from_list" title="Permalink to this definition"></a></dt>
+<dd><p>Rebuild a locus interval from its chunk-intervals JSON form.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>t</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">Sequence</span></code>) – Output of <a class="reference internal" href="#gnomad_qc.v5.annotations.batch_fanout.interval_to_list" title="gnomad_qc.v5.annotations.batch_fanout.interval_to_list"><code class="xref py py-func docutils literal notranslate"><span class="pre">interval_to_list()</span></code></a>.</p></li>
+<li><p><strong>reference_genome</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Reference genome name.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://hail.is/docs/0.2/utils/index.html#hail.utils.Interval" title="(in Hail v0.2.139)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Interval</span></code></a></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Locus interval.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v5.annotations.batch_fanout.parse_region_interval">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v5.annotations.batch_fanout.</span></span><span class="sig-name descname"><span class="pre">parse_region_interval</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">interval_s</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">reference_genome</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'GRCh38'</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v5/annotations/batch_fanout.html#parse_region_interval"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v5.annotations.batch_fanout.parse_region_interval" title="Permalink to this definition"></a></dt>
+<dd><p>Parse <code class="docutils literal notranslate"><span class="pre">contig:start-end</span></code> into a half-open locus interval.</p>
+<p>Half-open so adjacent regions never share a locus.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>interval_s</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Interval string; commas in positions are allowed.</p></li>
+<li><p><strong>reference_genome</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Reference genome name.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://hail.is/docs/0.2/utils/index.html#hail.utils.Interval" title="(in Hail v0.2.139)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Interval</span></code></a></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p><code class="docutils literal notranslate"><span class="pre">[start,</span> <span class="pre">end)</span></code> locus interval.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v5.annotations.batch_fanout.spans_sex_chromosome">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v5.annotations.batch_fanout.</span></span><span class="sig-name descname"><span class="pre">spans_sex_chromosome</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">intervals</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">chrom</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v5/annotations/batch_fanout.html#spans_sex_chromosome"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v5.annotations.batch_fanout.spans_sex_chromosome" title="Permalink to this definition"></a></dt>
+<dd><p>Return whether a read scope can include chrX or chrY.</p>
+<p>The sex-ploidy adjustment changes nothing on autosomes, so a scope that cannot
+touch chrX or chrY may skip it. A read with no scope counts as spanning.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>intervals</strong> (<code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">Sequence</span></code>[<a class="reference external" href="https://hail.is/docs/0.2/utils/index.html#hail.utils.Interval" title="(in Hail v0.2.139)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Interval</span></code></a>]]) – Read intervals, or None. When given, they decide the answer
+and <code class="docutils literal notranslate"><span class="pre">chrom</span></code> is ignored.</p></li>
+<li><p><strong>chrom</strong> (<code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>]) – Single contig, or None. Used only when <code class="docutils literal notranslate"><span class="pre">intervals</span></code> is empty;
+this path assumes GRCh38 contig names.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>True unless the scope is known to exclude both sex contigs.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v5.annotations.batch_fanout.select_chunks_for_contig">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v5.annotations.batch_fanout.</span></span><span class="sig-name descname"><span class="pre">select_chunks_for_contig</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">chunk_contigs</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">chrom</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v5/annotations/batch_fanout.html#select_chunks_for_contig"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v5.annotations.batch_fanout.select_chunks_for_contig" title="Permalink to this definition"></a></dt>
+<dd><p>Return the chunk indices on <code class="docutils literal notranslate"><span class="pre">chrom</span></code>, or every index when <code class="docutils literal notranslate"><span class="pre">chrom</span></code> is None.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>chunk_contigs</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">Sequence</span></code>[<code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>]]) – Contig of each chunk, by index.</p></li>
+<li><p><strong>chrom</strong> (<code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>]) – Contig to keep, or None.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="xref py py-class docutils literal notranslate"><span class="pre">List</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>]</p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Eligible chunk indices.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v5.annotations.batch_fanout.apply_path_suffix">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v5.annotations.batch_fanout.</span></span><span class="sig-name descname"><span class="pre">apply_path_suffix</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">path</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">suffix</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v5/annotations/batch_fanout.html#apply_path_suffix"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v5.annotations.batch_fanout.apply_path_suffix" title="Permalink to this definition"></a></dt>
+<dd><p>Insert <code class="docutils literal notranslate"><span class="pre">_&lt;suffix&gt;</span></code> before the <code class="docutils literal notranslate"><span class="pre">.ht</span></code> extension; unchanged when <code class="docutils literal notranslate"><span class="pre">suffix</span></code> is empty.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>path</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – HT path ending in <code class="docutils literal notranslate"><span class="pre">.ht</span></code>.</p></li>
+<li><p><strong>suffix</strong> (<code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>]) – Suffix without the leading underscore.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Suffixed path.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v5.annotations.batch_fanout.combine_suffix">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v5.annotations.batch_fanout.</span></span><span class="sig-name descname"><span class="pre">combine_suffix</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">parts</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v5/annotations/batch_fanout.html#combine_suffix"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v5.annotations.batch_fanout.combine_suffix" title="Permalink to this definition"></a></dt>
+<dd><p>Join the non-empty parts with underscores, so each scope writes its own path.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>parts</strong> (<code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>]) – Suffix fragments; empty ones are skipped.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>]</p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Joined suffix, or None when every part is empty.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v5.annotations.batch_fanout.chunk_path">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v5.annotations.batch_fanout.</span></span><span class="sig-name descname"><span class="pre">chunk_path</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ht_path</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">idx</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">intervals_hash</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v5/annotations/batch_fanout.html#chunk_path"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v5.annotations.batch_fanout.chunk_path" title="Permalink to this definition"></a></dt>
+<dd><p>Return the per-chunk HT path beside the final HT.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>ht_path</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Final HT path the chunks will be merged into.</p></li>
+<li><p><strong>idx</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>) – Chunk index.</p></li>
+<li><p><strong>intervals_hash</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Layout hash namespacing the chunk directory.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p><code class="docutils literal notranslate"><span class="pre">&lt;ht&gt;_chunks/&lt;hash&gt;/&lt;idx:08d&gt;.chunk.ht</span></code>.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v5.annotations.batch_fanout.group_path">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v5.annotations.batch_fanout.</span></span><span class="sig-name descname"><span class="pre">group_path</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ht_path</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">level</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">group_idx</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">tree_tag</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">intervals_hash</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v5/annotations/batch_fanout.html#group_path"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v5.annotations.batch_fanout.group_path" title="Permalink to this definition"></a></dt>
+<dd><p>Return a merge-tree intermediate HT path.</p>
+<p>Level, tree shape and layout hash are all in the directory so a rerun with a
+different tree or layout writes fresh instead of reusing stale groups.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>ht_path</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Final HT path.</p></li>
+<li><p><strong>level</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>) – Merge-tree level, 1-indexed.</p></li>
+<li><p><strong>group_idx</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>) – Group index within the level.</p></li>
+<li><p><strong>tree_tag</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Tree-shape tag the caller builds from its own tree parameters,
+e.g. coverage passes <code class="docutils literal notranslate"><span class="pre">pp3_gs500</span></code> (partitions per chunk, group size).
+Two consumers may use different tags; each must keep its own tag stable
+or its finished groups stop being found.</p></li>
+<li><p><strong>intervals_hash</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Layout hash.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p><code class="docutils literal notranslate"><span class="pre">&lt;ht&gt;_merge_groups_&lt;tag&gt;/&lt;hash&gt;/L&lt;level&gt;_&lt;group&gt;.ht</span></code>.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v5.annotations.batch_fanout.failed_chunks_path">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v5.annotations.batch_fanout.</span></span><span class="sig-name descname"><span class="pre">failed_chunks_path</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ht_path</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">intervals_hash</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v5/annotations/batch_fanout.html#failed_chunks_path"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v5.annotations.batch_fanout.failed_chunks_path" title="Permalink to this definition"></a></dt>
+<dd><p>Return the failed-chunk manifest path for one layout.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>ht_path</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Final HT path.</p></li>
+<li><p><strong>intervals_hash</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Layout hash.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p><code class="docutils literal notranslate"><span class="pre">&lt;ht&gt;_chunks/&lt;hash&gt;/_failed_chunks.json</span></code>.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v5.annotations.batch_fanout.list_present_chunk_indices">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v5.annotations.batch_fanout.</span></span><span class="sig-name descname"><span class="pre">list_present_chunk_indices</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ht_path</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">intervals_hash</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v5/annotations/batch_fanout.html#list_present_chunk_indices"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v5.annotations.batch_fanout.list_present_chunk_indices" title="Permalink to this definition"></a></dt>
+<dd><p>Return the chunk indices that have a <code class="docutils literal notranslate"><span class="pre">_SUCCESS</span></code> marker.</p>
+<p>One listing is cheaper than one GCS stat per chunk, and looking for <code class="docutils literal notranslate"><span class="pre">_SUCCESS</span></code>
+rather than the chunk directory means a half-written chunk is rerun. A missing
+directory lists as empty.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>ht_path</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Final HT path.</p></li>
+<li><p><strong>intervals_hash</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Layout hash.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="xref py py-class docutils literal notranslate"><span class="pre">Set</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>]</p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Completed chunk indices.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v5.annotations.batch_fanout.new_run_id">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v5.annotations.batch_fanout.</span></span><span class="sig-name descname"><span class="pre">new_run_id</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v5/annotations/batch_fanout.html#new_run_id"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v5.annotations.batch_fanout.new_run_id" title="Permalink to this definition"></a></dt>
+<dd><p>Return a UTC timestamp id for one orchestrator run.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="docutils literal notranslate"><span class="pre">run-YYYYmmddTHHMMSSZ</span></code>.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v5.annotations.batch_fanout.write_failed_chunks_manifest">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v5.annotations.batch_fanout.</span></span><span class="sig-name descname"><span class="pre">write_failed_chunks_manifest</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ht_path</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">intervals_hash</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">failed</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">n_dispatched</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">run_id</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">commit</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">app_name</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">waves</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v5/annotations/batch_fanout.html#write_failed_chunks_manifest"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v5.annotations.batch_fanout.write_failed_chunks_manifest" title="Permalink to this definition"></a></dt>
+<dd><p>Record which dispatched chunks did not land.</p>
+<p>A rerun of the fan-out resumes from the missing chunks on its own. The manifest
+is a durable record of what ran and what failed, which the logs are not, so it
+is written even when every chunk landed (<code class="docutils literal notranslate"><span class="pre">n_failed</span></code> 0 with the run id and
+batch ids). Successive runs on one layout overwrite the same file.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>ht_path</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Final HT path.</p></li>
+<li><p><strong>intervals_hash</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Layout hash.</p></li>
+<li><p><strong>failed</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">Sequence</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>]) – Dispatched chunk indices with no <code class="docutils literal notranslate"><span class="pre">_SUCCESS</span></code>.</p></li>
+<li><p><strong>n_dispatched</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>) – Chunks dispatched by this run.</p></li>
+<li><p><strong>run_id</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – This orchestrator run’s id.</p></li>
+<li><p><strong>commit</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – gnomad_qc commit the relays ran.</p></li>
+<li><p><strong>app_name</strong> (<code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>]) – <code class="docutils literal notranslate"><span class="pre">--app-name</span></code> the relays used.</p></li>
+<li><p><strong>waves</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">Sequence</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">Dict</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>, <code class="xref py py-data docutils literal notranslate"><span class="pre">Any</span></code>]]) – Per-wave records: wave number, batch id, chunks dispatched and
+chunks that failed.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Manifest path.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v5.annotations.batch_fanout.dispatch_in_waves">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v5.annotations.batch_fanout.</span></span><span class="sig-name descname"><span class="pre">dispatch_in_waves</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">pending</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">wave_size</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">submit_wave</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">present_indices</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">*</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">dry_run</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">on_wave_complete</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">retry_passes</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v5/annotations/batch_fanout.html#dispatch_in_waves"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v5.annotations.batch_fanout.dispatch_in_waves" title="Permalink to this definition"></a></dt>
+<dd><p>Submit pending chunks in sequential waves and report the ones that did not land.</p>
+<p>Waves cap how many relays, and so how many nested QoB drivers, run at once. A
+batch run does not raise when a job fails, so the chunk directory is listed
+again after each wave to find the chunks that did not land.</p>
+<p>After the last wave, the chunks still missing are re-dispatched up to
+<code class="docutils literal notranslate"><span class="pre">retry_passes</span></code> times. This is safe where Batch-level attempts are not: by the
+time a pass runs, every relay from the previous dispatch has exited, so a
+re-dispatch cannot race a live relay’s inner QoB batch.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>pending</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">Sequence</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>]) – Chunk indices to dispatch.</p></li>
+<li><p><strong>wave_size</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>) – Chunks per wave; <code class="docutils literal notranslate"><span class="pre">&lt;=</span> <span class="pre">0</span></code> means one wave.</p></li>
+<li><p><strong>submit_wave</strong> (<code class="xref py py-data docutils literal notranslate"><span class="pre">Callable</span></code>[[<code class="xref py py-class docutils literal notranslate"><span class="pre">List</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>], <code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>]], <code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>]]) – Submits one wave and returns its batch id. It must honor
+the dry run itself (pass <code class="docutils literal notranslate"><span class="pre">dry_run</span></code> on to <a class="reference internal" href="#gnomad_qc.v5.annotations.batch_fanout.submit_relay_batch" title="gnomad_qc.v5.annotations.batch_fanout.submit_relay_batch"><code class="xref py py-func docutils literal notranslate"><span class="pre">submit_relay_batch()</span></code></a>);
+this function only stops after the first wave. Retry passes get the
+labels <code class="docutils literal notranslate"><span class="pre">retry1</span></code>, <code class="docutils literal notranslate"><span class="pre">retry2</span></code>, …</p></li>
+<li><p><strong>present_indices</strong> (<code class="xref py py-data docutils literal notranslate"><span class="pre">Callable</span></code>[[], <code class="xref py py-class docutils literal notranslate"><span class="pre">Set</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>]]) – Lists the chunk indices with <code class="docutils literal notranslate"><span class="pre">_SUCCESS</span></code>.</p></li>
+<li><p><strong>dry_run</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Stop after the first wave without checking its outputs.</p></li>
+<li><p><strong>on_wave_complete</strong> (<code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code>[<code class="xref py py-data docutils literal notranslate"><span class="pre">Callable</span></code>[[<code class="xref py py-class docutils literal notranslate"><span class="pre">List</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>], <code class="xref py py-class docutils literal notranslate"><span class="pre">List</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">Dict</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>, <code class="xref py py-data docutils literal notranslate"><span class="pre">Any</span></code>]]], <code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code>]]) – Called after each wave and each retry pass with the
+failed indices and wave records so far, e.g. to rewrite the failed-chunk
+manifest so it survives an orchestrator death. Not called on a dry run.
+The lists are this function’s live accumulators: read them, do not keep
+or change them.</p></li>
+<li><p><strong>retry_passes</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>) – Re-dispatch passes for missing chunks after the waves.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="xref py py-data docutils literal notranslate"><span class="pre">Tuple</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">List</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>], <code class="xref py py-class docutils literal notranslate"><span class="pre">List</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">Dict</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>, <code class="xref py py-data docutils literal notranslate"><span class="pre">Any</span></code>]]]</p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p><code class="docutils literal notranslate"><span class="pre">(failed</span> <span class="pre">indices,</span> <span class="pre">wave</span> <span class="pre">records)</span></code>; the failed list is what is still
+missing after the last retry pass. Both are empty when nothing was pending
+and on a dry run, so a caller must check <code class="docutils literal notranslate"><span class="pre">dry_run</span></code> before treating an
+empty failed list as “every chunk landed”.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v5.annotations.batch_fanout.orchestrate_tree_merge">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v5.annotations.batch_fanout.</span></span><span class="sig-name descname"><span class="pre">orchestrate_tree_merge</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">inputs</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">final_output_path</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">group_path_fn</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">merge_group_size</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">overwrite</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">final_coalesce_to</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">batch_prefix</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">job_prefix</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">setup_cmd</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">script</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">common_flags</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">merge_cpu</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">merge_memory</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">merge_storage</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">final_merge_storage</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">submit</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">attempts</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v5/annotations/batch_fanout.html#orchestrate_tree_merge"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v5.annotations.batch_fanout.orchestrate_tree_merge" title="Permalink to this definition"></a></dt>
+<dd><p>Union <code class="docutils literal notranslate"><span class="pre">inputs</span></code> into <code class="docutils literal notranslate"><span class="pre">final_output_path</span></code> with a tree of relay merge jobs.</p>
+<p>With thousands of chunks, one job that unions everything would need a huge
+input list and too much memory, so the merge is a tree. Each level groups its
+inputs <code class="docutils literal notranslate"><span class="pre">merge_group_size</span></code> at a time and submits one <code class="docutils literal notranslate"><span class="pre">--run-merge</span></code> job per
+group; a group whose HT already exists is skipped unless <code class="docutils literal notranslate"><span class="pre">overwrite</span></code> is set.
+The last level is a single job that writes the final HT, and it always runs and
+overwrites, so a caller that wants to keep an existing final HT checks for it
+before calling.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>inputs</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">Sequence</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>]) – Chunk HT paths, in order.</p></li>
+<li><p><strong>final_output_path</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Final HT path.</p></li>
+<li><p><strong>group_path_fn</strong> (<code class="xref py py-data docutils literal notranslate"><span class="pre">Callable</span></code>[[<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>], <code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>]) – <code class="docutils literal notranslate"><span class="pre">(level,</span> <span class="pre">group_idx)</span> <span class="pre">-&gt;</span> <span class="pre">intermediate</span> <span class="pre">HT</span> <span class="pre">path</span></code>.</p></li>
+<li><p><strong>merge_group_size</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>) – Inputs per merge job.</p></li>
+<li><p><strong>overwrite</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Recompute intermediate groups that already exist.</p></li>
+<li><p><strong>final_coalesce_to</strong> (<code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>]) – <code class="docutils literal notranslate"><span class="pre">--merge-coalesce-to</span></code> for the final job, or None.</p></li>
+<li><p><strong>batch_prefix</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Batch name prefix; level and <code class="docutils literal notranslate"><span class="pre">final</span></code> are appended.</p></li>
+<li><p><strong>job_prefix</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Job name prefix.</p></li>
+<li><p><strong>setup_cmd</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Relay shell prefix from <a class="reference internal" href="#gnomad_qc.v5.annotations.batch_fanout.build_setup_command" title="gnomad_qc.v5.annotations.batch_fanout.build_setup_command"><code class="xref py py-func docutils literal notranslate"><span class="pre">build_setup_command()</span></code></a>.</p></li>
+<li><p><strong>script</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Script command inside the relay container.</p></li>
+<li><p><strong>common_flags</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Flags appended to every <code class="docutils literal notranslate"><span class="pre">--run-merge</span></code> command.</p></li>
+<li><p><strong>merge_cpu</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code>) – CPU per merge job.</p></li>
+<li><p><strong>merge_memory</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Memory class per merge job.</p></li>
+<li><p><strong>merge_storage</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Storage per intermediate merge job.</p></li>
+<li><p><strong>final_merge_storage</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Storage for the final merge job.</p></li>
+<li><p><strong>submit</strong> (<code class="xref py py-data docutils literal notranslate"><span class="pre">Callable</span></code>[[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">List</span></code>[<a class="reference internal" href="#gnomad_qc.v5.annotations.batch_fanout.RelayJobSpec" title="gnomad_qc.v5.annotations.batch_fanout.RelayJobSpec"><code class="xref py py-class docutils literal notranslate"><span class="pre">RelayJobSpec</span></code></a>], <code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>], <code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>]]) – <code class="docutils literal notranslate"><span class="pre">(batch_name,</span> <span class="pre">job_specs,</span> <span class="pre">log_label)</span> <span class="pre">-&gt;</span> <span class="pre">batch</span> <span class="pre">id</span></code>.</p></li>
+<li><p><strong>attempts</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>) – Batch attempts per merge job. Default 1.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>None.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v5.annotations.batch_fanout.union_and_write_hts">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v5.annotations.batch_fanout.</span></span><span class="sig-name descname"><span class="pre">union_and_write_hts</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">input_paths</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">output_path</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">coalesce_to</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v5/annotations/batch_fanout.html#union_and_write_hts"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v5.annotations.batch_fanout.union_and_write_hts" title="Permalink to this definition"></a></dt>
+<dd><p>Union HTs that share a schema and globals, and write the result.</p>
+<p>Needs a running Hail context. <code class="docutils literal notranslate"><span class="pre">Table.union</span></code> keeps the globals of the first
+input, which loses nothing because every chunk was built from the same inputs
+and carries the same globals.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>input_paths</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">Sequence</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>]) – HT paths to union.</p></li>
+<li><p><strong>output_path</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Destination path, overwritten.</p></li>
+<li><p><strong>coalesce_to</strong> (<code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>]) – <code class="docutils literal notranslate"><span class="pre">naive_coalesce</span></code> target before writing, or None.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>None.</p>
+</dd>
+</dl>
+</dd></dl>
+
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="annotation_utils.html" class="btn btn-neutral float-left" title="gnomad_qc.v5.annotations.annotation_utils" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="compute_coverage.html" class="btn btn-neutral float-right" title="gnomad_qc.v5.annotations.compute_coverage" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p></p>
+  </div>
+
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>
