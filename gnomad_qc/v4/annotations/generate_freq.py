@@ -10,7 +10,7 @@ the filtering allele frequency and grpmax with the AB-adjusted frequencies.
 
 Provenance: the published v4.1 exome frequencies were produced with gnomad_methods
 before commit 0e38c42e (adj read the reference depth for phased alt-first hets; fixed
-in 0.9.0) and Hail 0.2.122. See v4/README.md.
+in 0.9.1) and Hail 0.2.122. See v4/README.md.
 """
 
 import argparse
