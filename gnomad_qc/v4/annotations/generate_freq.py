@@ -7,6 +7,10 @@ in a hail Table. Next the script corrects for the high AB heterozygous GATK arti
 existing annotations when given the AF threshold using a high AB het array. The script
 then computes the inbreeding coefficient using the raw call stats. Finally, it computes
 the filtering allele frequency and grpmax with the AB-adjusted frequencies.
+
+Provenance: the published v4.1 exome frequencies were produced with gnomad_methods
+before commit 0e38c42e (adj read the reference depth for phased alt-first hets; fixed
+in 0.9.1) and Hail 0.2.122. See v4/README.md.
 """
 
 import argparse

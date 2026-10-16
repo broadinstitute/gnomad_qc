@@ -40,6 +40,9 @@ This script performs the following steps:
 
     - Generates allele number and GQ/DP histograms for the frequency correction.
 
+Provenance: the published v4.1 exome AN and frequencies were produced with
+gnomad_methods before commit 0e38c42e (adj read the reference depth for phased
+alt-first hets; fixed in 0.9.1) and Hail 0.2.122. See v4/README.md.
 """
 
 import argparse
