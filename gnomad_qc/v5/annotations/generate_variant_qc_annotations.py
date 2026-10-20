@@ -945,18 +945,14 @@ def run_generate_sib_stats(
     """
     Generate sibling stats from the AoU VDS and relatedness info.
 
-    Sibling stats only require autosomal, bi-allelic sites for the subset of samples
-    that form sibling pairs. To avoid doing per-entry work on the full sample set,
-    this function:
+    Only sibling singletons are used downstream, so before any per-entry work this
+    function:
 
-        - Derives the sibling sample set from `relatedness_ht` first (no MT scan).
-        - Filters the VDS to those samples and autosomes, keeping only
-          the entries needed for the split + adj (LA/LGT/LAD/GQ).
-        - Restricts to `info_ht` sites that are bi-allelic (two nonsplit alleles, as
-          in main's split-then-bi-allelic filter) and raw/adj doubletons
-          (AC_high_quality_raw == 2 or AC_high_quality == 2), since only sibling
-          singletons are used downstream: a locus-keyed prefilter before
-          `sparse_split_multi`, then an exact-key semi-join after it.
+        - Filters the VDS to the sibling samples in `relatedness_ht` and to
+          autosomes, keeping only the entries the split and adj need.
+        - Restricts to info HT sites with two nonsplit alleles and
+          AC_high_quality_raw == 2 or AC_high_quality == 2: a locus prefilter
+          before `sparse_split_multi`, then an exact-key semi-join after it.
 
     :param vds: AoU VariantDataset. Load with `remove_dead_alleles=False`: the
         dead-allele recode is a full-width per-row LA aggregation that sibling stats
@@ -966,7 +962,6 @@ def run_generate_sib_stats(
         loci.
     :return: Table containing sibling stats.
     """
-    # Sibling sample set, kept as a Hail Table to avoid localizing the IDs.
     sib_ht = relatedness_ht.filter(relatedness_ht.relationship == SIBLINGS)
     sib_samples_ht = (
         sib_ht.key_by(s=sib_ht.i.s)
@@ -981,17 +976,7 @@ def run_generate_sib_stats(
     vds = hl.vds.filter_chromosomes(vds, keep_autosomes=True)
     vds = hl.vds.filter_samples(vds, sib_samples_ht)
     mt = vds.variant_data
-    # LA is needed by sparse_split_multi to downcode LGT/LAD.
     mt = mt.select_entries("LA", "LGT", "LAD", "GQ")
-    # Target sites from the info HT: bi-allelic after main's cohort-wide dead-allele
-    # recode (two nonsplit alleles, i.e. main's ~was_split; n_alt_alleles would miss
-    # star alleles) and raw/adj doubletons. Adj doubletons are needed because
-    # sibling_singleton_adj downstream requires AC_high_quality == 2, which can hold
-    # where AC_high_quality_raw > 2.
-    # Read the info HT natively: semi_join_rows is an index join that reads the
-    # overlapping info partitions inside the main stage; re-reading with
-    # _n_partitions adds a calculate_new_partitions stage of one job per source
-    # partition (62k jobs on the chr20 test HT) for no gain.
     info_ht = hl.read_table(info_ht_path)
     ac_info = info_ht.AC_info
     ac2 = info_ht.filter(
@@ -1001,8 +986,7 @@ def run_generate_sib_stats(
     # Locus-keyed prefilter before the split, instead of a native len(alleles) == 2
     # filter: with remove_dead_alleles=False a site whose extra allele is carried only
     # by hard-filtered samples is still multi-allelic here but bi-allelic in main and
-    # the info HT (692 such doubleton rows on chr20). Splitting only the target loci
-    # keeps the explosion small; the exact-key semi-join below drops the dead allele.
+    # the info HT (692 such doubleton rows on chr20). Semi-join below drops the dead allele.
     ac2_loci = ac2.key_by("locus").select().distinct()
     mt = mt.filter_rows(hl.is_defined(ac2_loci[mt.locus]))
     mt = hl.experimental.sparse_split_multi(mt)
@@ -2512,10 +2496,6 @@ def main(args):
             ht = run_generate_sib_stats(
                 vds, relatedness(environment=environment).ht(), sib_info_ht_path
             )
-            # Checkpoint to materialize the aggregation at full (~per-VDS-partition)
-            # parallelism before coalescing the output. A lazy naive_coalesce on the
-            # write would otherwise run the whole upstream decode/aggregation at the
-            # coalesced partition count.
             ht = ht.checkpoint(hl.utils.new_temp_file("sib_stats", "ht"))
             ht = ht.naive_coalesce(args.sib_stats_n_partitions)
             ht.write(sib_stats_ht_path, overwrite=overwrite)
@@ -2668,7 +2648,11 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
             "read intervals via --read-subintervals-scale or "
             "--read-subintervals-per-chunk; with --scout-alleles the scout pass "
             "is restricted to the contig. Mutually exclusive with chunk "
-            "processing and --test-n-partitions for the AC-info step."
+            "is restricted to the contig. Mutually exclusive with chunk "
+            "processing and --test-n-partitions for the AC-info step. With "
+            "--generate-sibling-stats, requires --sib-stats-ht-path-override; "
+            "without --generate-ac-info-ht the VDS is filtered to the contig "
+            "instead of subdivided."
         ),
         type=str,
         default=None,
