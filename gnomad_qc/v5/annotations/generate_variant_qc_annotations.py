@@ -986,7 +986,8 @@ def run_generate_sib_stats(
     # Locus-keyed prefilter before the split, instead of a native len(alleles) == 2
     # filter: with remove_dead_alleles=False a site whose extra allele is carried only
     # by hard-filtered samples is still multi-allelic here but bi-allelic in main and
-    # the info HT (692 such doubleton rows on chr20). Semi-join below drops the dead allele.
+    # the info HT (692 such doubleton rows on chr20). Semi-join below drops the
+    # dead allele.
     ac2_loci = ac2.key_by("locus").select().distinct()
     mt = mt.filter_rows(hl.is_defined(ac2_loci[mt.locus]))
     mt = hl.experimental.sparse_split_multi(mt)
