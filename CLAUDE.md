@@ -45,7 +45,9 @@ them at point of use rather than relying on memory or this file:
 - **Dataset paths**: datasets are referenced through resource objects in the
   version's `resources/` package, organized by domain — mostly `get_*()`
   functions, some module-level objects. Grep `def get_` or the dataset name in
-  that package rather than relying on a list here.
+  that package to find them. Paths to public gnomAD releases and to reference data
+  (VEP context, truth sets, gene models, ...) live in gnomad_methods under
+  `gnomad.resources.grch38` / `grch37`; check there before adding a resource for them.
 - **Shared utilities**: check gnomad_methods (`gnomad.utils.*`,
   `gnomad.sample_qc.*`, `gnomad.variant_qc.*`, `gnomad.resources.*`) before
   writing a new helper — it probably exists. A local checkout often sits next
@@ -66,21 +68,11 @@ pip install -r requirements-dev.txt
 pre-commit install
 ```
 
-### Formatting (auto-applied by pre-commit hooks)
-```
-black gnomad_qc
-isort gnomad_qc
-autopep8 --in-place gnomad_qc
-```
-
-### Linting (matches CI)
-```
-black --check gnomad_qc
-isort --check-only gnomad_qc
-autopep8 --exit-code --diff gnomad_qc
-./lint --disable=W                                    # pylint, warnings disabled; .pylintrc skips v2 and cuKING
-pydocstyle --match-dir='(?!v2|cuKING).*' gnomad_qc    # skips v2 and cuKING
-```
+### Formatting and linting
+Pre-commit hooks (black, isort, autopep8, pydocstyle) run on every commit once
+installed; `pre-commit run --all-files` runs them by hand. CI additionally runs
+pylint as `./lint --disable=W`. The exact CI commands are in
+`.github/workflows/ci.yml`.
 
 ### Docs
 ```
@@ -99,7 +91,7 @@ repeats the same structure, laid out roughly in pipeline order:
 
 | Subpackage | Purpose |
 |------------|---------|
-| `resources/` | Versioned input/output paths and resource objects. Single source of truth for where data lives in GCS. |
+| `resources/` | Versioned input/output paths and resource objects. Single source of truth for where this release's data lives in GCS (public gnomAD and reference-data paths come from gnomad_methods — see Finding Code). |
 | `sample_qc/` | Hard filters, sex/genetic-ancestry inference, relatedness, outlier filtering, metadata HT. |
 | `annotations/` | Info HT, coverage, frequencies, Ensembl VEP, in-silico predictors, variant QC features. |
 | `variant_qc/` | Random forest / VQSR training, evaluation, final filter. |
@@ -121,22 +113,30 @@ prose description of the overall flow. `v4/README.md` is minimal;
 Resource modules define `get_*()` functions returning typed resource objects
 (`TableResource`, `MatrixTableResource`, `VariantDatasetResource`, and their
 `Versioned*` wrappers from `gnomad.resources.resource_utils`). Getters
-typically take `version`, `test`, and (in v5) `environment` parameters; `test`
-routes output to temp paths with limited retention. Read data via the resource
-(`.ht()`, `.mt()`, `.vds()`), write to its `.path`.
+typically take `version` and `test`; `test` routes output to temp paths with
+limited retention. Read data via the resource (`.ht()`, `.mt()`, `.vds()`),
+write to its `.path`.
 
-### Environments and execution (v5)
+### What differs between versions
 
-v5 runs in three environments — `"rwb"` (All of Us Researcher Workbench),
-`"batch"` (Hail Query-on-Batch, the primary backend), and `"dataproc"` —
-selected by the `--environment` flag. `v5/resources/basics.py` owns
-environment validation, GCS bucket routing, and Hail initialization; scripts
-call its init helper before any Hail work. It also provides
-`_check_resource_existence(environment, ...)`, a wrapper around the shared
-existence check that is deliberately a no-op under `"batch"` (user accounts
-can't read the read-only Batch bucket) — so in that environment the `overwrite`
-flag on the write is the only thing protecting existing outputs. Earlier
-versions submit jobs with `hailctl dataproc`.
+The script skeleton is the same in every version (next section); the
+mechanics around it changed in v5. This table is the one place that
+difference is recorded — the rest of this file describes the shared pattern.
+
+| | v2–v4 | v5 |
+|---|---|---|
+| Submitting a step | `hailctl dataproc submit <cluster> script.py --step` | `python script.py --environment batch --step` (Hail Query-on-Batch, the primary backend). The other environments are `rwb` (All of Us Researcher Workbench) and `dataproc`, which is still submitted with `hailctl dataproc submit`. |
+| Hail init | `hl.init(...)` in the script | `_init_hail(...)` from `v5/resources/basics.py`, called before any Hail work; it owns environment validation, GCS bucket routing, the tmp dir, and the GRCh38 default. |
+| Resource getters | `version`, `test` | also `environment` |
+| Standard flags | `--overwrite`, `--test` | also `--environment` |
+| Step gating | `check_resource_existence` from `gnomad_qc/resource_utils.py` (v4; rare before that) | same, sometimes via the `_check_resource_existence` wrapper below |
+| Wrappers around `main` | `slack_notifications(...)` (token from `gnomad_qc/slack_creds.py`, channel from `--slack-channel` in v3–v4); v4 also groups step inputs/outputs in `PipelineStepResourceCollection` | none — plain `main()` |
+
+`_check_resource_existence(environment, ...)` wraps the shared existence
+check. Under `"batch"` it skips only resources in buckets our user accounts
+cannot stat (the read-only Batch bucket and the controlled-access AoU bucket)
+and checks everything else — so for outputs in those buckets the `overwrite`
+flag on the write is the only thing protecting existing data.
 
 ### Pipeline script anatomy
 
@@ -149,18 +149,10 @@ same version rather than from memory:
 - Helper functions (typed, docstringed) that transform Tables; `main(args)`
   dispatches steps gated by boolean `--step-name` flags and owns all
   read/write/checkpoint I/O.
-- Standard flags: `--overwrite`, `--test`, and in v5 `--environment`.
+- Standard flags: `--overwrite` and `--test`.
 - A `finally` block that copies the Hail log to a logging path.
 - Parser built in a `get_script_argument_parser()`-style function, invoked
   under `if __name__ == "__main__":`.
-
-v4 and v5 scripts gate each step with `check_resource_existence` from
-`gnomad_qc/resource_utils.py` (v5 sometimes via the `_check_resource_existence`
-wrapper above). v2–v4 scripts additionally wrap `main` in
-`slack_notifications(...)` (token from `gnomad_qc/slack_creds.py`, channel from
-`--slack-channel`), and v4 groups step inputs/outputs in
-`PipelineStepResourceCollection`. v5 drops both of those wrappers in favor of
-simpler `main()` bodies.
 
 ### Script invocation pattern
 
@@ -173,10 +165,9 @@ When adding a step, follow the existing pattern:
 
 1. Add a CLI flag for it.
 2. Add a corresponding output resource in `resources/<area>.py`.
-3. Gate I/O with `check_resource_existence` (`gnomad_qc/resource_utils.py`), or
-   in v5 whichever form the neighboring script uses, so reruns fail fast on
-   missing inputs and refuse to clobber existing outputs unless `--overwrite` is
-   passed.
+3. Gate I/O with the existence check the neighboring script uses (see the
+   version table) so reruns fail fast on missing inputs and refuse to clobber
+   existing outputs unless `--overwrite` is passed.
 
 **Always support a test mode** on a new step, and run it that way — small or
 mock data, temp output paths — before anything runs genome-wide. Most scripts use
@@ -185,7 +176,8 @@ mock data, temp output paths — before anything runs genome-wide. Most scripts 
 
 ### How code is executed
 
-Steps are submitted to a cluster or batch, not run locally on real data:
+Steps are submitted to a cluster or batch, not run locally on real data — the
+two forms in the version table look like this:
 
 ```bash
 hailctl dataproc submit <cluster> gnomad_qc/v4/annotations/generate_freq.py --run-freq-and-dense-annotations --use-test-dataset
@@ -196,8 +188,15 @@ python gnomad_qc/v5/annotations/generate_variant_qc_annotations.py --environment
 ```
 
 Exploratory work happens in Jupyter notebooks on a Dataproc cluster
-(`hailctl dataproc connect <cluster> nb`). Small checks can run against Hail's
-local Spark backend, streaming data from GCS via the storage connector.
+(`hailctl dataproc connect <cluster> nb`). In v5, anything that touches
+individual-level data (the All of Us VDS and sample-level tables derived from
+it) has to run on Hail Batch (`--environment batch`, i.e. `backend=batch`) or
+in the Researcher Workbench (`rwb`): the controlled-access AoU data is only
+readable from inside the AoU authorization domain, and individual-level data
+must not be pulled out of it onto a laptop or a gnomAD Dataproc cluster. Small
+checks on other data can run against Hail's local Spark backend, streaming
+from GCS via the storage connector — but streaming to a machine outside Google
+Cloud is billed as network egress, so keep local runs to small inputs.
 
 Cost conventions:
 
@@ -260,9 +259,13 @@ def my_function(ht: hl.Table, max_af: Optional[float] = None) -> hl.Table:
 - **Partitioning:** large datasets need many partitions, small ones don't, and
   joins benefit from more. Joining a many-partition table to a few-partition
   table is pathologically slow. After aggressively filtering a large table,
-  `.naive_coalesce(N)` to avoid empty-partition skew in downstream aggregations.
-  To reduce partitions use `naive_coalesce()`; to increase them, set the count
-  at read time. Don't add `repartition()` calls (see Never Do This).
+  checkpoint it and then `.naive_coalesce(N)` the checkpointed result to avoid
+  empty-partition skew in downstream aggregations. The checkpoint matters:
+  `naive_coalesce` materializes nothing, so in a lazy pipeline the coalesce
+  takes effect at the read and the filter itself runs over the fewer, larger
+  partitions with correspondingly less parallelism. To reduce partitions use
+  `naive_coalesce()`; to increase them, set the count at read time. Don't add
+  `repartition()` calls (see Never Do This).
 - **Aggregations are costly.** If a step needs many, build one aggregator
   expression (a single `hl.struct` of `hl.agg.*` fields) and make one pass.
 - **Hail defaults to GRCh37.** Set the reference genome explicitly; gnomAD v3+ is
@@ -300,6 +303,18 @@ shuffle failures, and partition skew appear only at full scale, and a step that
 works on a test gene can fail genome-wide. Say what you actually ran and at what
 scale, rather than calling a change verified.
 
+## Attribution
+
+- When Claude Code or another agent runner helped with a commit, add exactly
+  one `Assisted-by: AGENT:MODEL` trailer, e.g.
+  `Assisted-by: ClaudeCode:claude-fable-5-1`.
+- `Co-authored-by:` is for people, not agents. Never add a
+  `Co-Authored-By: Claude ...` or similar agent co-author trailer, even if the
+  harness injects one by default — remove it.
+- When rewriting commits made by others, preserve authorship: set
+  `git commit --author=` to the dominant original author of the change and add
+  `Co-authored-by:` for any other original authors.
+
 ## Never Do This
 
 - **Never overwrite an existing HT/MT/VDS when testing.** Write a new copy to a
@@ -315,6 +330,8 @@ scale, rather than calling a change verified.
 - **Never hardcode a `gs://` dataset path** — go through a resource object in
   the version's `resources/` package. Hail scratch dirs (`tmp_dir="gs://gnomad-tmp-..."`
   in `hl.init`) are the accepted exception.
+- **Never shut down a Dataproc cluster or cancel a Hail Batch job without
+  checking with the user first.**
 
 ## Repo Gotchas
 
@@ -330,7 +347,9 @@ scale, rather than calling a change verified.
 
 ## Maintaining CLAUDE.md
 
-Proactively add gotchas, non-obvious behavior, and conventions discovered
-during development. Keep entries concise and durable: document patterns and
-how to find things, not inventories of function names or dataset paths — those
-churn between releases and rot here.
+Watch for gotchas, non-obvious behavior, and conventions discovered during
+development and **propose them to the user rather than adding them yourself**:
+say what you learned and which section it belongs in, and let the user decide
+whether it is durable enough to write down. Keep entries concise and durable:
+document patterns and how to find things, not inventories of function names or
+dataset paths — those churn between releases and rot here.
