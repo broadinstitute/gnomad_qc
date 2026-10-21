@@ -27,19 +27,12 @@ Examples::
 """
 
 import argparse
-import hashlib
-import json
 import logging
-import os
-import re
-import subprocess
-from collections.abc import Sequence
-from datetime import datetime, timezone
-from typing import Any, NamedTuple
+from collections.abc import Callable
+from functools import partial
+from typing import Any
 
 import hail as hl
-import hailtop.batch as hb
-import hailtop.fs as hfs
 from gnomad.resources.grch38.gnomad import GEN_ANC_GROUPS_TO_REMOVE_FOR_GRPMAX
 from gnomad.sample_qc.sex import adjust_sex_ploidy, adjusted_sex_ploidy_expr
 from gnomad.utils.annotations import (
@@ -56,7 +49,6 @@ from gnomad.utils.annotations import (
     merge_histograms,
     qual_hist_expr,
 )
-from gnomad.utils.file_utils import file_exists
 from gnomad.utils.filtering import filter_arrays_by_meta
 from gnomad.utils.release import make_freq_index_dict_from_meta
 from hail.utils import new_temp_file
@@ -66,6 +58,31 @@ from gnomad_qc.v3.resources.release import release_sites as v3_release_sites
 from gnomad_qc.v3.utils import hom_alt_depletion_fix
 from gnomad_qc.v4.resources.release import release_sites
 from gnomad_qc.v5.annotations.annotation_utils import annotate_adj_no_dp
+from gnomad_qc.v5.annotations.batch_fanout import (
+    RelayJobSpec,
+    apply_path_suffix,
+    chunk_intervals_hash,
+    chunk_intervals_path,
+    chunk_path,
+    chunk_read_intervals,
+    combine_suffix,
+    fold_chunk_layout,
+    group_path,
+    list_present_chunk_indices,
+    load_chunk_layout,
+    orchestrate_tree_merge,
+    parse_region_interval,
+    qob_sizing_flags,
+    relay_context,
+    resolve_commit,
+    run_chunk_fanout,
+    select_chunks_for_contig,
+    spans_sex_chromosome,
+    split_intervals,
+    submit_relay_batch,
+    test_region_hash,
+    union_and_write_hts,
+)
 from gnomad_qc.v5.resources.annotations import (
     coverage_and_an_path,
     get_freq,
@@ -92,136 +109,16 @@ logging.basicConfig(
 )
 logger = logging.getLogger("v5_frequency")
 
-# Relay jobs and their nested QoB jobs stay in the one region that can reach the
-# AoU VDS.
-BATCH_REGIONS = ["us-central1"]
-BATCH_REMOTE_TMPDIR = "gs://fc-11093c2b-590e-424a-91ac-0cc040d562fc/batch-tmp"
 # Hail 0.2.137 is the lowest version that runs on the Batch workers' Java 21.
 DEFAULT_BATCH_IMAGE = (
     "us-central1-docker.pkg.dev/broad-mpg-gnomad/images/v5_freq_batch:0.2.137"
 )
-RELAY_SCRIPT = "python3 /tmp/gnomad_qc/gnomad_qc/v5/annotations/generate_frequency.py"
 AGE_HIST_BINS = (30, 80, 10)
 
 
 # ---------------------------------------------------------------------------
 # Small helpers
 # ---------------------------------------------------------------------------
-
-
-def _apply_path_suffix(path: str, suffix: str | None) -> str:
-    """
-    Insert ``_<suffix>`` before the ``.ht`` extension; unchanged when ``suffix`` is empty.
-
-    Same convention as ``compute_coverage.py``, so a suffixed AN table can be read.
-
-    :param path: HT path ending in ``.ht``.
-    :param suffix: Suffix without the leading underscore.
-    :return: Suffixed path.
-    """
-    if not suffix:
-        return path
-    return path.rstrip("/").removesuffix(".ht") + f"_{suffix}.ht"
-
-
-def _combine_suffix(*parts: str | None) -> str | None:
-    """
-    Join the non-empty suffix parts with underscores so each scope writes its own path.
-
-    :param parts: Suffix fragments; empty ones are skipped.
-    :return: Joined suffix, or None when every part is empty.
-    """
-    kept = [p for p in parts if p]
-    return "_".join(kept) if kept else None
-
-
-def _parse_region_interval(
-    s: str, reference_genome: str = "GRCh38"
-) -> hl.utils.Interval:
-    """
-    Parse ``contig:start-end`` into a half-open locus interval.
-
-    Half-open, like ``compute_coverage.py``'s regions, so adjacent regions never share
-    a locus and a region test lines up with the AN table made over the same region.
-
-    :param s: Interval string; commas in positions are allowed.
-    :param reference_genome: Reference genome name.
-    :return: ``[start, end)`` locus interval.
-    """
-    contig, span = s.split(":")
-    start_pos, end_pos = (int(p.replace(",", "")) for p in span.split("-"))
-    return hl.Interval(
-        hl.Locus(contig, start_pos, reference_genome=reference_genome),
-        hl.Locus(contig, end_pos, reference_genome=reference_genome),
-        includes_start=True,
-        includes_end=False,
-    )
-
-
-def _split_intervals(
-    intervals: list[hl.utils.Interval], n: int
-) -> list[hl.utils.Interval]:
-    """
-    Tile each half-open interval into ``n`` equal position slices.
-
-    ``read_vds`` partitions by the intervals it is given, so a region read as one
-    interval lands in one partition and its whole aggregation runs on one core.
-    Slices tile the input exactly, so no locus is dropped or counted twice.
-
-    :param intervals: Half-open locus intervals.
-    :param n: Slices per interval; ``<= 1`` returns the input unchanged.
-    :return: The slices, in order.
-    """
-    if n <= 1:
-        return intervals
-    out = []
-    for iv in intervals:
-        contig, rg = iv.start.contig, iv.start.reference_genome
-        start, end = iv.start.position, iv.end.position
-        if end - start <= n:
-            out.append(iv)
-            continue
-        step = (end - start) // n
-        bounds = [start + i * step for i in range(n)] + [end]
-        out.extend(
-            hl.Interval(
-                hl.Locus(contig, bounds[i], reference_genome=rg),
-                hl.Locus(contig, bounds[i + 1], reference_genome=rg),
-                includes_start=True,
-                includes_end=False,
-            )
-            for i in range(n)
-        )
-    return out
-
-
-def _spans_sex_chromosome(
-    intervals: list[hl.utils.Interval] | None, chrom: str | None = None
-) -> bool:
-    """
-    Return whether a read scope can include chrX or chrY.
-
-    The sex-ploidy adjustment is the identity on autosomes, so a scope that cannot
-    touch chrX or chrY skips it and its self-join. An unscoped read counts as spanning.
-
-    :param intervals: Read intervals, or None.
-    :param chrom: Single contig, or None.
-    :return: True unless the scope is known to exclude both sex contigs.
-    """
-    if intervals:
-        rg = intervals[0].start.reference_genome
-        sex = set(rg.x_contigs) | set(rg.y_contigs)
-        order = {c: k for k, c in enumerate(rg.contigs)}
-        contigs: set[str] = set()
-        for iv in intervals:
-            contigs.update(
-                rg.contigs[order[iv.start.contig] : order[iv.end.contig] + 1]
-            )
-        return bool(contigs & sex)
-    if chrom:
-        rg = hl.get_reference("GRCh38")
-        return chrom in set(rg.x_contigs) | set(rg.y_contigs)
-    return True
 
 
 def _release_meta(project: str, environment: str) -> hl.Table:
@@ -268,7 +165,7 @@ def _aou_group_membership_ht(test: bool, environment: str) -> hl.Table:
         the full strata).
     :raises FileNotFoundError: if the cells HT has not been written.
     """
-    path = _apply_path_suffix(
+    path = apply_path_suffix(
         group_membership(test=test, data_set="aou", environment=environment).path,
         "cells",
     )
@@ -501,13 +398,13 @@ def _region_read_intervals(
     Turn ``--test-region`` strings into read intervals, tiled for parallelism.
 
     :param test_region: Region strings, or None.
-    :param read_subintervals: Slices per region (see :func:`_split_intervals`).
+    :param read_subintervals: Slices per region (see :func:`split_intervals`).
     :return: Read intervals, or None when no region was given.
     """
     if not test_region:
         return None
-    intervals = [_parse_region_interval(r) for r in test_region]
-    return _split_intervals(intervals, read_subintervals or 1)
+    intervals = [parse_region_interval(r) for r in test_region]
+    return split_intervals(intervals, read_subintervals or 1)
 
 
 def process_aou_dataset(
@@ -561,7 +458,7 @@ def process_aou_dataset(
         aou_vds,
         group_membership_ht,
         environment,
-        skip_sex_ploidy=not _spans_sex_chromosome(read_intervals, chrom),
+        skip_sex_ploidy=not spans_sex_chromosome(read_intervals, chrom),
     )
     ht = _sparse_split_strata_and_hists(vmt, group_membership_ht)
 
@@ -576,7 +473,7 @@ def process_aou_dataset(
     # to more JVM bytecode than a standard driver can hold.
     ht = ht.checkpoint(new_temp_file("aou_freq_agg", "ht"))
 
-    an_path = _apply_path_suffix(
+    an_path = apply_path_suffix(
         coverage_and_an_path(test=test, environment=an_environment).path,
         all_sites_an_suffix,
     )
@@ -970,243 +867,19 @@ def calculate_faf_and_grpmax_annotations(ht: hl.Table) -> hl.Table:
 # ---------------------------------------------------------------------------
 # Hail Batch relay fan-out for AoU
 #
-# One genome-wide QoB query is one driver, and a driver crash loses everything, so the
-# AoU run is cut into chunks. Each chunk runs from a small non-spot Batch job (a
-# "relay") that starts its own QoB driver; a crash costs one chunk, a rerun skips the
-# chunks that already have a _SUCCESS marker, and the orchestrator never starts Hail.
-# Chunk outputs are namespaced by a hash of the chunk layout because coverage samples
-# its layout without a seed: a chunk left by an older layout must never be merged.
+# The relay machinery is batch_fanout.py, shared with compute_coverage.py. What stays
+# here is freq policy: where the layout lives and how far it is folded, the flags a
+# freq relay gets, the relay command, and the chunk worker itself.
 # ---------------------------------------------------------------------------
-
-
-class _RelayJobSpec(NamedTuple):
-    """One relay job for :func:`_submit_relay_batch`."""
-
-    name: str
-    cpu: float
-    memory: str
-    storage: str
-    command: str
-
-
-def _resolve_commit() -> str:
-    """
-    Return the gnomad_qc commit the relays check out.
-
-    ``GNOMAD_QC_COMMIT`` wins so an orchestrator launched from a tarball checkout
-    (no ``.git``) can still pin the relays.
-
-    :return: Full commit hash.
-    """
-    return os.getenv("GNOMAD_QC_COMMIT") or (
-        subprocess.check_output(["git", "rev-parse", "HEAD"]).decode().strip()
-    )
-
-
-def _build_setup_command(
-    commit: str, methods_branch: str, gcp_billing_project: str = "broad-mpg-gnomad"
-) -> str:
-    """
-    Return the shell prefix every relay runs before the script.
-
-    Both repos change faster than the image, so the relay pulls them at the pinned
-    commit and branch on start-up. The Hail config and the ``quota_project_id``
-    patch exist because a bare container has no gcloud config to hand the
-    requester-pays project to Hail's Java GCS client. The Hail version comes from the
-    image.
-
-    :param commit: gnomad_qc commit to check out.
-    :param methods_branch: gnomad_methods branch or commit to check out.
-    :param gcp_billing_project: Requester-pays project.
-    :return: Shell command string ending in a newline.
-    """
-    qc_tarball = f"https://github.com/broadinstitute/gnomad_qc/archive/{commit}.tar.gz"
-    methods_tarball = (
-        "https://github.com/broadinstitute/gnomad_methods/archive/"
-        f"{methods_branch}.tar.gz"
-    )
-    config_body = (
-        "[batch]\n"
-        "billing_project = gnomad-production\n"
-        f"remote_tmpdir = {BATCH_REMOTE_TMPDIR}\n"
-        "[gcs_requester_pays]\n"
-        f"project = {gcp_billing_project}\n"
-    )
-    return (
-        "set -euxo pipefail\n"
-        "mkdir -p ~/.config/hail ~/.hail\n"
-        "cat > ~/.config/hail/config.ini <<'HAILCFG'\n"
-        f"{config_body}"
-        "HAILCFG\n"
-        "cp ~/.config/hail/config.ini ~/.hail/config.ini\n"
-        f"python3 -c \"import json, os; p='/gsa-key/key.json';"
-        f" d=json.load(open(p)); d['quota_project_id']='{gcp_billing_project}';"
-        f" json.dump(d, open(p+'.new','w')); os.replace(p+'.new', p)\"\n"
-        f"curl -sSL {methods_tarball} | tar xz -C /tmp\n"
-        f"mv /tmp/gnomad_methods-{methods_branch.replace('/', '-')} /tmp/gnomad_methods\n"
-        f"curl -sSL {qc_tarball} | tar xz -C /tmp\n"
-        f"mv /tmp/gnomad_qc-{commit} /tmp/gnomad_qc\n"
-        "export PYTHONPATH=/tmp/gnomad_qc:/tmp/gnomad_methods:${PYTHONPATH:-}\n"
-    )
-
-
-def _relay_context(args: argparse.Namespace) -> tuple[str, str, dict]:
-    """
-    Return the commit, setup command and backend kwargs every relay submission shares.
-
-    Built once per orchestrator so the fan-out and the merge cannot drift onto
-    different commits or images.
-
-    :param args: Parsed CLI args.
-    :return: ``(commit, setup_cmd, backend_kwargs)``.
-    """
-    commit = _resolve_commit()
-    setup_cmd = _build_setup_command(commit, args.methods_branch)
-    backend_kwargs = {"billing_project": args.billing_project}
-    if args.batch_remote_tmpdir:
-        backend_kwargs["remote_tmpdir"] = args.batch_remote_tmpdir
-    return commit, setup_cmd, backend_kwargs
-
-
-def _submit_relay_batch(
-    args: argparse.Namespace,
-    backend_kwargs: dict,
-    batch_name: str,
-    job_specs: Sequence[_RelayJobSpec],
-    log_label: str,
-) -> int | None:
-    """
-    Submit one Hail Batch of relay jobs and wait for it.
-
-    Relays are non-spot because a preempted relay orphans the QoB batch it waits
-    on, and they run once because a Batch retry cannot cancel that orphan and would
-    race it. Nothing is submitted when ``job_specs`` is empty.
-
-    :param args: Parsed CLI args (``batch_image``, ``batch_dry_run``).
-    :param backend_kwargs: kwargs for ``hb.ServiceBackend``.
-    :param batch_name: Hail Batch name.
-    :param job_specs: Jobs to submit.
-    :param log_label: Noun for log messages ("chunk", "merge").
-    :return: Batch id, or None when nothing ran.
-    """
-    if not job_specs:
-        logger.info(
-            "No pending %s jobs for %s; nothing submitted.", log_label, batch_name
-        )
-        return None
-    backend = hb.ServiceBackend(**backend_kwargs)
-    try:
-        batch = hb.Batch(name=batch_name, backend=backend)
-        for spec in job_specs:
-            j = batch.new_job(name=spec.name)
-            j.image(args.batch_image)
-            j.cpu(spec.cpu)
-            j.memory(spec.memory)
-            j.storage(spec.storage)
-            j.regions(BATCH_REGIONS)
-            j.spot(False)
-            j.n_max_attempts(1)
-            j.command(spec.command)
-        logger.info(
-            "Submitting Hail Batch '%s': %d %s jobs (dry_run=%s)",
-            batch_name,
-            len(job_specs),
-            log_label,
-            args.batch_dry_run,
-        )
-        submitted = batch.run(dry_run=args.batch_dry_run)
-        return getattr(submitted, "id", None)
-    finally:
-        backend.close()
-
-
-def _chunk_intervals_hash(data: dict[str, Any]) -> str:
-    """
-    Return a 16-hex-char content hash of a chunk layout.
-
-    :param data: Parsed chunk-intervals JSON.
-    :return: First 16 hex chars of the SHA-256 of its canonical serialization.
-    """
-    payload = {k: v for k, v in data.items() if k != "intervals_hash"}
-    canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"))
-    return hashlib.sha256(canonical.encode()).hexdigest()[:16]
-
-
-def _test_region_hash(test_region: Sequence[str]) -> str:
-    """
-    Return the layout hash of a ``--test-region`` run, which has no layout JSON.
-
-    Hashing the region keeps two region tests under one output path from seeing
-    each other's chunk as already present.
-
-    :param test_region: Region strings as given on the command line.
-    :return: ``test_region_`` plus a 16-hex-char hash.
-    """
-    return f"test_region_{_chunk_intervals_hash({'test_region': list(test_region)})}"
-
-
-def _interval_from_list(t: Sequence, reference_genome: str) -> hl.utils.Interval:
-    """
-    Rebuild a locus interval from the chunk-intervals JSON form.
-
-    :param t: ``[start_contig, start_pos, end_contig, end_pos, includes_start,
-        includes_end]``.
-    :param reference_genome: Reference genome name.
-    :return: Locus interval.
-    """
-    sc, sp, ec, ep, incs, ince = t
-    return hl.Interval(
-        hl.Locus(sc, sp, reference_genome=reference_genome),
-        hl.Locus(ec, ep, reference_genome=reference_genome),
-        includes_start=incs,
-        includes_end=ince,
-    )
-
-
-def _group_chunk_layout(data: dict[str, Any], n_chunks: int | None) -> dict[str, Any]:
-    """
-    Fold consecutive coverage chunks into about ``n_chunks`` freq chunks.
-
-    Coverage sizes its chunks for its own heavy compute; freq's work per chunk is so
-    small that the fixed relay plus QoB driver cost per job dominates, so fewer,
-    larger jobs are cheaper. A folded chunk reads the union of its parts, never
-    across a contig, so results and the AN join are unchanged. The folded layout
-    hashes differently, so its chunks live in their own directory.
-
-    :param data: Parsed chunk-intervals JSON.
-    :param n_chunks: Target chunk count; None, or at least the current count, keeps
-        the layout as is.
-    :return: Layout with the folded ``chunks``.
-    """
-    n_coverage = len(data["chunks"])
-    if n_chunks is None or n_chunks >= n_coverage:
-        return data
-    if n_chunks < 1:
-        raise ValueError(f"--n-chunks must be >= 1, got {n_chunks}")
-    per_job = -(-n_coverage // n_chunks)
-    grouped: list[dict[str, Any]] = []
-    for c in data["chunks"]:
-        last = grouped[-1] if grouped else None
-        if last and last["contig"] == c["contig"] and last["_n"] < per_job:
-            last["intervals"].extend(c["intervals"])
-            last["_n"] += 1
-        else:
-            grouped.append(
-                {"contig": c["contig"], "intervals": list(c["intervals"]), "_n": 1}
-            )
-    for g in grouped:
-        del g["_n"]
-    return {**data, "chunks": grouped}
 
 
 def _load_chunk_layout(
     an_environment: str, test: bool, n_chunks: int | None
 ) -> tuple[dict[str, Any], str]:
     """
-    Load the chunk layout ``compute_coverage.py`` wrote beside the AN table.
+    Load the layout coverage wrote beside the AN table, folded by ``--n-chunks``.
 
-    Read with ``hailtop.fs`` so the orchestrator and every worker find their chunks
-    without a QoB job. All of them must pass the same ``n_chunks`` so they agree on
+    Every orchestrator and worker must pass the same ``n_chunks`` so they agree on
     the chunk indices and the layout hash.
 
     :param an_environment: Environment (bucket) the AN table lives in.
@@ -1215,119 +888,12 @@ def _load_chunk_layout(
     :return: ``(layout, layout hash)``.
     :raises FileNotFoundError: if the layout has not been written.
     """
-    base = coverage_and_an_path(test=test, environment=an_environment).path
-    path = base.rstrip("/").removesuffix(".ht") + "_chunk_intervals.json"
-    if not file_exists(path):
-        raise FileNotFoundError(
-            f"Chunk layout not found at {path}; run compute_coverage.py"
-            " --write-chunk-intervals first (and pass --an-environment if the AN"
-            " table lives in another bucket)."
-        )
-    with hfs.open(path) as f:
-        data = _group_chunk_layout(json.load(f), n_chunks)
-    logger.info("Using chunk layout %s (%d freq chunks).", path, len(data["chunks"]))
-    return data, _chunk_intervals_hash(data)
-
-
-def _chunk_path(ht_path: str, idx: int, intervals_hash: str) -> str:
-    """
-    Return a chunk's HT path, beside the final HT and namespaced by the layout hash.
-
-    :param ht_path: Final AoU freq HT path.
-    :param idx: Chunk index.
-    :param intervals_hash: Layout hash.
-    :return: ``<ht>_chunks/<hash>/<idx:08d>.chunk.ht``.
-    """
-    base = ht_path.rstrip("/").removesuffix(".ht")
-    return f"{base}_chunks/{intervals_hash}/{idx:08d}.chunk.ht"
-
-
-def _group_path(
-    ht_path: str, level: int, group_idx: int, merge_group_size: int, intervals_hash: str
-) -> str:
-    """
-    Return a merge-tree intermediate HT path.
-
-    Level, tree shape and layout hash are in the directory so a rerun with a
-    different tree or layout writes fresh instead of reusing stale groups.
-
-    :param ht_path: Final AoU freq HT path.
-    :param level: Merge-tree level, 1-indexed.
-    :param group_idx: Group index within the level.
-    :param merge_group_size: Inputs per merge job.
-    :param intervals_hash: Layout hash.
-    :return: ``<ht>_merge_groups_gs<size>/<hash>/L<level>_<group>.ht``.
-    """
-    base = ht_path.rstrip("/").removesuffix(".ht")
-    return (
-        f"{base}_merge_groups_gs{merge_group_size}/{intervals_hash}/"
-        f"L{level:02d}_{group_idx:08d}.ht"
+    path = chunk_intervals_path(
+        coverage_and_an_path(test=test, environment=an_environment).path
     )
-
-
-def _list_present_chunk_indices(ht_path: str, intervals_hash: str) -> set[int]:
-    """
-    Return the chunk indices that have a ``_SUCCESS`` marker.
-
-    One listing instead of one GCS stat per chunk, and keyed on ``_SUCCESS`` so a
-    half-written chunk is rerun. A missing directory lists as empty.
-
-    :param ht_path: Final AoU freq HT path.
-    :param intervals_hash: Layout hash.
-    :return: Completed chunk indices.
-    """
-    base = ht_path.rstrip("/").removesuffix(".ht")
-    present: set[int] = set()
-    for entry in hfs.ls(f"{base}_chunks/{intervals_hash}/*/_SUCCESS"):
-        m = re.search(r"/(\d+)\.chunk\.ht/_SUCCESS$", entry.path)
-        if m:
-            present.add(int(m.group(1)))
-    return present
-
-
-def _write_failed_chunks_manifest(
-    ht_path: str,
-    intervals_hash: str,
-    failed: Sequence[int],
-    n_dispatched: int,
-    commit: str,
-    app_name: str | None,
-    waves: Sequence[dict[str, Any]],
-) -> str | None:
-    """
-    Record which dispatched chunks did not land, or clear the record when all did.
-
-    Rerunning the fan-out already resumes from the missing chunks; the manifest is
-    the durable record of what failed and when, since log scrollback is not.
-
-    :param ht_path: Final AoU freq HT path.
-    :param intervals_hash: Layout hash.
-    :param failed: Dispatched chunk indices with no ``_SUCCESS``.
-    :param n_dispatched: Chunks dispatched by this run.
-    :param commit: gnomad_qc commit the relays ran.
-    :param app_name: ``--app-name`` the relays used.
-    :param waves: Per-wave records.
-    :return: Manifest path when one was written, else None.
-    """
-    base = ht_path.rstrip("/").removesuffix(".ht")
-    path = f"{base}_chunks/{intervals_hash}/_failed_chunks.json"
-    if not failed:
-        if file_exists(path):
-            hfs.remove(path)
-        return None
-    payload = {
-        "written_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
-        "commit": commit,
-        "app_name": app_name,
-        "intervals_hash": intervals_hash,
-        "n_dispatched": n_dispatched,
-        "n_failed": len(failed),
-        "failed_chunk_indices": sorted(failed),
-        "waves": list(waves),
-    }
-    with hfs.open(path, "w") as f:
-        f.write(json.dumps(payload, indent=2) + "\n")
-    return path
+    data = fold_chunk_layout(load_chunk_layout(path), n_chunks)
+    logger.info("Using chunk layout %s (%d freq chunks).", path, len(data["chunks"]))
+    return data, chunk_intervals_hash(data)
 
 
 def _chunk_scope(args: argparse.Namespace) -> tuple[list[int], int, str]:
@@ -1341,19 +907,12 @@ def _chunk_scope(args: argparse.Namespace) -> tuple[list[int], int, str]:
     :return: ``(eligible indices, total chunks, layout hash)``.
     """
     if args.test_region:
-        return [0], 1, _test_region_hash(args.test_region)
+        return [0], 1, test_region_hash(args.test_region)
     data, intervals_hash = _load_chunk_layout(
         args.an_environment, args.test, args.n_chunks
     )
     contigs = [c["contig"] for c in data["chunks"]]
-    if not args.chrom:
-        return list(range(len(contigs))), len(contigs), intervals_hash
-    eligible = [i for i, c in enumerate(contigs) if c == args.chrom]
-    if not eligible:
-        raise ValueError(
-            f"No chunks on --chrom {args.chrom}; the layout covers {sorted(set(contigs))}."
-        )
-    return eligible, len(contigs), intervals_hash
+    return select_chunks_for_contig(contigs, args.chrom), len(contigs), intervals_hash
 
 
 def _relay_flags(args: argparse.Namespace, chunk: bool) -> str:
@@ -1370,14 +929,8 @@ def _relay_flags(args: argparse.Namespace, chunk: bool) -> str:
         f"--billing-project {args.billing_project}",
         f"--tmp-dir-days {args.tmp_dir_days}",
     ]
-    valued = [
-        ("app_name", "--app-name"),
-        ("n_chunks", "--n-chunks"),
-        ("chunk_driver_cores", "--driver-cores"),
-        ("chunk_driver_memory", "--driver-memory"),
-        ("chunk_worker_cores", "--worker-cores"),
-        ("chunk_worker_memory", "--worker-memory"),
-    ]
+    flags += qob_sizing_flags(args)
+    valued = [("app_name", "--app-name"), ("n_chunks", "--n-chunks")]
     if chunk:
         valued += [
             ("read_subintervals", "--read-subintervals"),
@@ -1397,114 +950,81 @@ def _relay_flags(args: argparse.Namespace, chunk: bool) -> str:
     return " ".join(flags)
 
 
+def _relay_context(
+    args: argparse.Namespace,
+) -> tuple[str, str, str, Callable[[str, list[RelayJobSpec], str], int | None]]:
+    """
+    Return the commit, setup command, script and submitter every relay shares.
+
+    Resolved once per orchestrator run so every relay it submits checks out the same
+    commit. The Hail version comes from the image, so no pin is passed.
+
+    :param args: Parsed CLI args.
+    :return: ``(commit, setup_cmd, script, submit)``. ``submit`` takes a batch name,
+        job specs and a log label, and honors ``--batch-dry-run``.
+    """
+    commit = resolve_commit()
+    setup_cmd, backend_kwargs, script = relay_context(
+        commit,
+        args.methods_branch,
+        args.billing_project,
+        args.batch_remote_tmpdir,
+        "generate_frequency.py",
+    )
+    submit = partial(
+        submit_relay_batch, args.batch_image, backend_kwargs, dry_run=args.batch_dry_run
+    )
+    return commit, setup_cmd, script, submit
+
+
 def _orchestrate_freq_fanout(args: argparse.Namespace, ht_path: str) -> None:
     """
-    Submit one relay job per pending chunk, in sequential waves of ``--wave-size``.
+    Fan the AoU freq run out as one relay job per chunk.
 
-    Waves bound how many relays and nested QoB drivers run at once, and keep each
-    ``batch.run()`` sequential, which Hail Batch's progress display requires. Chunks
-    with a ``_SUCCESS`` are skipped, so rerunning this step resumes a partial run. A
-    batch does not raise on job failure, so every wave is re-listed afterwards and
-    the misses are recorded in a manifest.
+    :func:`run_chunk_fanout` skips the chunks with a ``_SUCCESS``, dispatches the
+    rest in waves of ``--wave-size`` and records the misses, so rerunning this step
+    resumes a partial run. This function only names the batch and builds the freq
+    relay command.
 
     :param args: Parsed CLI args.
     :param ht_path: Final AoU freq HT path the chunks are namespaced under.
     :return: None.
     """
     eligible, n_total, intervals_hash = _chunk_scope(args)
-    present = (
-        set()
-        if args.overwrite
-        else _list_present_chunk_indices(ht_path, intervals_hash)
-    )
-    pending = [i for i in eligible if i not in present]
-    logger.info(
-        "Fan-out: %d chunks, %d eligible, %d pending, %d already complete.",
-        n_total,
-        len(eligible),
-        len(pending),
-        len(eligible) - len(pending),
-    )
-    if not pending:
-        return
-
-    commit, setup_cmd, backend_kwargs = _relay_context(args)
+    commit, setup_cmd, script, submit = _relay_context(args)
     common = _relay_flags(args, chunk=True)
-    scope = "region" if args.test_region else f"{len(pending)}of{n_total}c"
-    batch_base = _combine_suffix(
-        f"v5_freq_aou_chunk_{scope}_{intervals_hash[:8]}",
-        args.aou_freq_ht_suffix,
-        args.chrom,
+    scope = "region" if args.test_region else f"{len(eligible)}of{n_total}c"
+
+    def make_job(i: int) -> RelayJobSpec:
+        return RelayJobSpec(
+            name=f"freq_chunk_{i:06d}",
+            cpu=args.chunk_cpu,
+            memory=args.chunk_memory,
+            storage=args.chunk_storage,
+            attempts=1,
+            command=(
+                f"{setup_cmd}{script} --run-chunk --chunk-index {i}"
+                f" --chunk-output {chunk_path(ht_path, i, intervals_hash)} {common}"
+            ),
+        )
+
+    run_chunk_fanout(
+        ht_path,
+        intervals_hash,
+        eligible,
+        make_job=make_job,
+        submit=submit,
+        batch_base=combine_suffix(
+            f"v5_freq_aou_chunk_{scope}_{intervals_hash[:8]}",
+            args.aou_freq_ht_suffix,
+            args.chrom,
+        ),
+        wave_size=args.wave_size,
+        commit=commit,
+        app_name=args.app_name,
+        overwrite=args.overwrite,
+        dry_run=args.batch_dry_run,
     )
-    wave_size = args.wave_size
-    if wave_size <= 0 or wave_size >= len(pending):
-        waves = [pending]
-    else:
-        waves = [pending[i : i + wave_size] for i in range(0, len(pending), wave_size)]
-    failed: list[int] = []
-    records: list[dict[str, Any]] = []
-    for wi, wave in enumerate(waves, start=1):
-        label = f"_w{wi:03d}of{len(waves):03d}" if len(waves) > 1 else ""
-        specs = [
-            _RelayJobSpec(
-                name=f"freq_chunk_{i:06d}",
-                cpu=args.chunk_cpu,
-                memory=args.chunk_memory,
-                storage=args.chunk_storage,
-                command=(
-                    f"{setup_cmd}{RELAY_SCRIPT} --run-chunk --chunk-index {i}"
-                    f" --chunk-output {_chunk_path(ht_path, i, intervals_hash)} {common}"
-                ),
-            )
-            for i in wave
-        ]
-        logger.info(
-            "Wave %d/%d: %d chunks (%d..%d).",
-            wi,
-            len(waves),
-            len(wave),
-            wave[0],
-            wave[-1],
-        )
-        batch_id = _submit_relay_batch(
-            args, backend_kwargs, batch_base + label, specs, "chunk"
-        )
-        if args.batch_dry_run:
-            logger.info("Dry run: wave DAG validated; stopping.")
-            return
-        present = _list_present_chunk_indices(ht_path, intervals_hash)
-        wave_failed = [i for i in wave if i not in present]
-        failed.extend(wave_failed)
-        records.append({"wave": wi, "batch_id": batch_id, "failed": wave_failed})
-        if wave_failed:
-            logger.warning(
-                "Wave %d/%d: %d/%d chunk(s) MISSING after run: %s%s",
-                wi,
-                len(waves),
-                len(wave_failed),
-                len(wave),
-                wave_failed[:25],
-                " ..." if len(wave_failed) > 25 else "",
-            )
-        else:
-            logger.info(
-                "Wave %d/%d complete; all %d chunks present.", wi, len(waves), len(wave)
-            )
-    manifest = _write_failed_chunks_manifest(
-        ht_path, intervals_hash, failed, len(pending), commit, args.app_name, records
-    )
-    if failed:
-        logger.warning(
-            "Fan-out finished with %d/%d chunk(s) missing; see %s. Rerun"
-            " --use-batch-fanout to retry them.",
-            len(failed),
-            len(pending),
-            manifest,
-        )
-    else:
-        logger.info(
-            "Fan-out finished: all %d dispatched chunk(s) present.", len(pending)
-        )
 
 
 def _run_freq_chunk(args: argparse.Namespace) -> None:
@@ -1521,22 +1041,13 @@ def _run_freq_chunk(args: argparse.Namespace) -> None:
     """
     _initialize_hail(args)
     if args.test_region:
-        intervals_hash = _test_region_hash(args.test_region)
+        intervals_hash = test_region_hash(args.test_region)
         sub_intervals = _region_read_intervals(args.test_region, args.read_subintervals)
     else:
         data, intervals_hash = _load_chunk_layout(
             args.an_environment, args.test, args.n_chunks
         )
-        chunks = data["chunks"]
-        if not 0 <= args.chunk_index < len(chunks):
-            raise ValueError(
-                f"chunk index {args.chunk_index} is out of range for a layout of"
-                f" {len(chunks)} chunks; the fan-out and the layout are out of sync."
-            )
-        rg = data["reference_genome"]
-        sub_intervals = [
-            _interval_from_list(t, rg) for t in chunks[args.chunk_index]["intervals"]
-        ]
+        sub_intervals = chunk_read_intervals(data, args.chunk_index)
     logger.info("Chunk %d: %d read intervals.", args.chunk_index, len(sub_intervals))
     ht = process_aou_dataset(
         environment=args.environment,
@@ -1551,109 +1062,50 @@ def _run_freq_chunk(args: argparse.Namespace) -> None:
     logger.info("Wrote chunk %d to %s", args.chunk_index, args.chunk_output)
 
 
-def _union_and_write(
-    input_paths: Sequence[str], output_path: str, coalesce_to: int | None = None
-) -> None:
-    """
-    Union HTs that share a schema and globals, and write the result.
-
-    Globals come from the first input, which is right because every input was built
-    from the same strata tables.
-
-    :param input_paths: HT paths to union.
-    :param output_path: Destination path, overwritten.
-    :param coalesce_to: ``naive_coalesce`` target before writing, or None.
-    :return: None.
-    """
-    logger.info("Merging %d HTs -> %s", len(input_paths), output_path)
-    merged = hl.Table.union(*[hl.read_table(p) for p in input_paths])
-    if coalesce_to is not None:
-        merged = merged.naive_coalesce(coalesce_to)
-    merged.write(output_path, overwrite=True)
-
-
 def _orchestrate_freq_merge(args: argparse.Namespace, ht_path: str) -> None:
     """
     Union the chunk HTs into the final AoU freq HT with a tree of relay merge jobs.
 
-    A tree keeps every job's input list and memory bounded at thousands of chunks.
     Chunks are enumerated with the same helper as the fan-out, and a missing chunk
-    stops the merge rather than silently dropping loci. Intermediate groups that
-    already exist are skipped unless ``--overwrite``.
+    stops the merge rather than silently dropping loci. :func:`orchestrate_tree_merge`
+    builds the tree: intermediate groups that already exist are skipped unless
+    ``--overwrite``, and the final job always writes.
 
     :param args: Parsed CLI args.
     :param ht_path: Final AoU freq HT path.
     :return: None.
     """
     eligible, _n_total, intervals_hash = _chunk_scope(args)
-    present = _list_present_chunk_indices(ht_path, intervals_hash)
+    present = list_present_chunk_indices(ht_path, intervals_hash)
     missing = [i for i in eligible if i not in present]
     if missing:
         raise FileNotFoundError(
             f"{len(missing)} of {len(eligible)} chunks are missing (first:"
             f" {missing[:5]}); rerun --use-batch-fanout first."
         )
-    _commit, setup_cmd, backend_kwargs = _relay_context(args)
-    common = _relay_flags(args, chunk=False)
-    batch_base = _combine_suffix("v5_freq_merge", args.aou_freq_ht_suffix, args.chrom)
+    _commit, setup_cmd, script, submit = _relay_context(args)
     gs = args.merge_group_size
-
-    def merge_job(name, output, inputs, coalesce_to, storage):
-        coalesce = (
-            f" --merge-coalesce-to {coalesce_to}" if coalesce_to is not None else ""
-        )
-        return _RelayJobSpec(
-            name=name,
-            cpu=args.merge_cpu,
-            memory=args.merge_memory,
-            storage=storage,
-            command=(
-                f"{setup_cmd}{RELAY_SCRIPT} --run-merge --merge-output {output}{coalesce}"
-                f" --merge-inputs {' '.join(inputs)} {common}"
-            ),
-        )
-
-    inputs = [_chunk_path(ht_path, i, intervals_hash) for i in eligible]
-    level = 1
-    while len(inputs) > gs:
-        groups = [inputs[i : i + gs] for i in range(0, len(inputs), gs)]
-        outputs = [
-            _group_path(ht_path, level, g, gs, intervals_hash)
-            for g in range(len(groups))
-        ]
-        pending = [
-            g
-            for g in range(len(groups))
-            if args.overwrite or not file_exists(outputs[g])
-        ]
-        logger.info(
-            "Merge level %d: %d inputs -> %d groups, %d pending.",
-            level,
-            len(inputs),
-            len(groups),
-            len(pending),
-        )
-        specs = [
-            merge_job(
-                f"freq_merge_L{level:02d}_{g:06d}",
-                outputs[g],
-                groups[g],
-                len(groups[g]),
-                args.merge_storage,
-            )
-            for g in pending
-        ]
-        _submit_relay_batch(
-            args, backend_kwargs, f"{batch_base}_L{level:02d}", specs, "merge"
-        )
-        inputs = outputs
-        level += 1
-    logger.info("Final merge: %d inputs -> %s", len(inputs), ht_path)
-    final = merge_job(
-        "freq_merge_final", ht_path, inputs, args.n_partitions, args.final_merge_storage
-    )
-    _submit_relay_batch(
-        args, backend_kwargs, f"{batch_base}_final", [final], "final-merge"
+    orchestrate_tree_merge(
+        inputs=[chunk_path(ht_path, i, intervals_hash) for i in eligible],
+        final_output_path=ht_path,
+        group_path_fn=lambda level, idx: group_path(
+            ht_path, level, idx, f"gs{gs}", intervals_hash
+        ),
+        merge_group_size=gs,
+        overwrite=args.overwrite,
+        final_coalesce_to=args.n_partitions,
+        batch_prefix=combine_suffix(
+            "v5_freq_merge", args.aou_freq_ht_suffix, args.chrom
+        ),
+        job_prefix="freq_merge",
+        setup_cmd=setup_cmd,
+        script=script,
+        common_flags=_relay_flags(args, chunk=False),
+        merge_cpu=args.merge_cpu,
+        merge_memory=args.merge_memory,
+        merge_storage=args.merge_storage,
+        final_merge_storage=args.final_merge_storage,
+        submit=submit,
     )
 
 
@@ -1707,14 +1159,16 @@ def main(args):
         return
     if args.run_merge:
         _initialize_hail(args)
-        _union_and_write(args.merge_inputs, args.merge_output, args.merge_coalesce_to)
+        union_and_write_hts(
+            args.merge_inputs, args.merge_output, args.merge_coalesce_to
+        )
         return
 
     # Suffixes keep per-contig and tagged outputs on their own paths;
     # --merge-datasets reads the untagged, assembled AoU HT.
-    aou_suffix = _combine_suffix(args.aou_freq_ht_suffix, args.chrom)
-    aou_out_suffix = _combine_suffix(aou_suffix, args.freq_output_suffix)
-    gnomad_out_suffix = _combine_suffix(args.chrom, args.freq_output_suffix)
+    aou_suffix = combine_suffix(args.aou_freq_ht_suffix, args.chrom)
+    aou_out_suffix = combine_suffix(aou_suffix, args.freq_output_suffix)
+    gnomad_out_suffix = combine_suffix(args.chrom, args.freq_output_suffix)
     freq_kwargs = {
         "test": args.test,
         "data_type": "genomes",
@@ -1745,7 +1199,7 @@ def main(args):
             per_contig = [
                 get_freq(
                     data_set=data_set,
-                    suffix=_combine_suffix(base_suffix, c),
+                    suffix=combine_suffix(base_suffix, c),
                     **freq_kwargs,
                 )
                 for c in args.contigs
@@ -1755,7 +1209,7 @@ def main(args):
                 output_step_resources={"assemble-chrom-freq": [canonical]},
                 overwrite=args.overwrite,
             )
-            _union_and_write(
+            union_and_write_hts(
                 [p.path for p in per_contig], canonical.path, args.n_partitions
             )
 
