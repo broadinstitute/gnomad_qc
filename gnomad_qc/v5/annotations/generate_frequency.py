@@ -41,16 +41,16 @@ import hail as hl
 import hailtop.batch as hb
 import hailtop.fs as hfs
 from gnomad.resources.grch38.gnomad import GEN_ANC_GROUPS_TO_REMOVE_FOR_GRPMAX
-from gnomad.sample_qc.sex import adjusted_sex_ploidy_expr
+from gnomad.sample_qc.sex import adjust_sex_ploidy, adjusted_sex_ploidy_expr
 from gnomad.utils.annotations import (
     _read_reduction_globals,
     age_hists_expr,
+    annotate_adj,
     bi_allelic_site_inbreeding_expr,
     compute_freq_by_strata,
     expand_strata_array_from_leaves,
     faf_expr,
     gen_anc_faf_max_expr,
-    get_adj_expr,
     grpmax_expr,
     merge_freq_arrays,
     merge_histograms,
@@ -62,6 +62,7 @@ from gnomad.utils.release import make_freq_index_dict_from_meta
 from hail.utils import new_temp_file
 
 from gnomad_qc.resource_utils import check_resource_existence
+from gnomad_qc.v3.resources.release import release_sites as v3_release_sites
 from gnomad_qc.v3.utils import hom_alt_depletion_fix
 from gnomad_qc.v4.resources.release import release_sites
 from gnomad_qc.v5.annotations.annotation_utils import annotate_adj_no_dp
@@ -621,22 +622,22 @@ def process_aou_dataset(
 
 
 def _prepare_consent_vds(
-    v4_ht: hl.Table,
     test_vds: bool = False,
     test_partitions: int | None = None,
     chrom: str | None = None,
 ) -> hl.vds.VariantDataset:
     """
-    Build the VDS of samples that withdrew consent after v4, prepared as v4 was.
+    Load and split the VDS of the samples that withdrew consent after v4.
 
-    adj, sex ploidy and the hom-alt depletion fix are applied in the same order as
-    the v4 genomes release so the subtracted counts match what v4 added.
+    Only the load, the column and entry narrowing and the split happen here. adj,
+    sex ploidy and the hom-alt fix are applied on the dense matrix in
+    :func:`_consent_freq_ht`, in v3.1's order, so reference blocks get the same
+    treatment they had when v4's counts were made.
 
-    :param v4_ht: v4 release table, for the AF the hom-alt fix needs.
     :param test_vds: Read the test VDS.
     :param test_partitions: Keep only this many leading partitions.
     :param chrom: Single contig to scope the load to.
-    :return: Prepared, split VDS.
+    :return: Split VDS of the withdrawn samples.
     """
     vds = get_gnomad_v5_genomes_vds(
         release_only=True,
@@ -653,42 +654,31 @@ def _prepare_consent_vds(
     logger.info(
         "VDS filtered to %s consent-withdrawal samples.", vds.variant_data.count_cols()
     )
-    vmt = vds.variant_data
-    vmt = vmt.select_cols(
-        gen_anc=vmt.meta.population_inference.pop,
-        sex_karyotype=vmt.meta.sex_imputation.sex_karyotype,
-        age=vmt.meta.project_meta.age,
+    # A few hundred samples do not need the full VDS's partitioning (1,480 on chr22).
+    # Fewer, fuller partitions make the extraction cheaper, and the QoB driver, which
+    # collects one result per partition, died at 1,480 (batch 8447491).
+    n_parts = max(1, vds.variant_data.n_partitions() // 15)
+    vds = hl.vds.VariantDataset(
+        vds.reference_data.naive_coalesce(n_parts),
+        vds.variant_data.naive_coalesce(n_parts),
     )
+    vmt = vds.variant_data
+    meta = vmt.meta
+    vmt = vmt.select_cols(
+        gen_anc=meta.population_inference.pop,
+        sex_karyotype=meta.sex_imputation.sex_karyotype,
+        # v3.1 fell back to the bin midpoint when the exact age was missing.
+        age=hl.coalesce(meta.project_meta.age, meta.project_meta.age_alt),
+    )
+    # LPL stays so the split recalculates GQ from the downcoded PL, as it did for
+    # v3.1; without it the site-level GQ is kept and adj changes at multi-allelic
+    # sites.
     vmt = vmt.select_entries(
-        "LA", "LAD", "DP", "GQ", "LGT", _het_non_ref=vmt.LGT.is_het_non_ref()
+        "LA", "LAD", "LPL", "DP", "GQ", "LGT", _het_non_ref=vmt.LGT.is_het_non_ref()
     )
     vds = hl.vds.VariantDataset(vds.reference_data, vmt)
     vds = vds.checkpoint(new_temp_file("consent_samples_vds", "vds"))
-    vds = hl.vds.split_multi(vds, filter_changed_loci=True)
-
-    vmt = vds.variant_data
-    vmt = vmt.annotate_rows(v4_af=v4_ht[vmt.row_key].freq[0].AF)
-    # adj on the diploid call, then ploidy, then the hom-alt fix: the v4 genomes order.
-    vmt = vmt.annotate_entries(adj=get_adj_expr(vmt.GT, vmt.GQ, vmt.DP, vmt.AD))
-    vmt = vmt.select_entries(
-        "AD",
-        "DP",
-        "GQ",
-        "_het_non_ref",
-        "adj",
-        GT=adjusted_sex_ploidy_expr(vmt.locus, vmt.GT, vmt.sex_karyotype),
-    )
-    vmt = vmt.annotate_entries(
-        GT=hom_alt_depletion_fix(
-            vmt.GT,
-            het_non_ref_expr=vmt._het_non_ref,
-            af_expr=vmt.v4_af,
-            ab_expr=vmt.AD[1] / vmt.DP,
-            use_v3_1_correction=True,
-        )
-    )
-    vds = hl.vds.VariantDataset(vds.reference_data, vmt)
-    return vds.checkpoint(new_temp_file("consent_samples_vds_prepared", "vds"))
+    return hl.vds.split_multi(vds, filter_changed_loci=True)
 
 
 def _consent_freq_ht(
@@ -698,15 +688,32 @@ def _consent_freq_ht(
     Frequencies and age histograms of the consent-withdrawal samples.
 
     Densifying is affordable because the VDS holds only the withdrawn samples. The
-    strata come from the gnomAD membership table coverage was built with, so the
-    subtracted arrays line up with v4 and with the AN table.
+    strata come from the gnomAD membership table, so the subtracted arrays line up
+    with v4's.
 
-    :param vds: Prepared VDS from :func:`_prepare_consent_vds`.
+    :param vds: Split VDS from :func:`_prepare_consent_vds`.
     :param test: Use test paths.
     :param environment: Compute environment.
     :return: Table with ``freq`` and ``age_hists``.
     """
     mt = hl.vds.to_dense_mt(vds)
+    # v3.1's order, which v4 inherited: adj from the diploid call (reference blocks
+    # included, from the block's GQ and DP), then sex ploidy, then the hom-alt fix
+    # using the v3.0 release AF. The hom-alt fix only changes hets, so reference
+    # blocks pass through it untouched.
+    mt = annotate_adj(mt)
+    mt = adjust_sex_ploidy(mt, mt.sex_karyotype, xy_str="XY", xx_str="XX")
+    v30_ht = v3_release_sites(public=True).versions["3.0"].ht()
+    mt = mt.annotate_rows(_v30_af=v30_ht[mt.row_key].freq[0].AF)
+    mt = mt.annotate_entries(
+        GT=hom_alt_depletion_fix(
+            mt.GT,
+            het_non_ref_expr=mt._het_non_ref,
+            af_expr=mt._v30_af,
+            ab_expr=mt.AD[1] / mt.DP,
+            use_v3_1_correction=True,
+        )
+    )
     gm_ht = group_membership(test=test, data_set="gnomad", environment=environment).ht()
     mt = mt.annotate_cols(group_membership=gm_ht[mt.col_key].group_membership)
     mt = mt.annotate_globals(
@@ -789,7 +796,7 @@ def process_gnomad_dataset(
     v4_ht = release_sites(data_type="genomes").ht()
     if chrom:
         v4_ht = hl.filter_intervals(v4_ht, [hl.parse_locus_interval(chrom)])
-    vds = _prepare_consent_vds(v4_ht, test_vds, test_partitions, chrom)
+    vds = _prepare_consent_vds(test_vds, test_partitions, chrom)
     consent_ht = _consent_freq_ht(vds, test, environment)
     if test:
         v4_ht = v4_ht.filter(hl.is_defined(consent_ht[v4_ht.key]))
