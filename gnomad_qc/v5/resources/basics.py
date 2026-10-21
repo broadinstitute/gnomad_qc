@@ -557,37 +557,6 @@ def get_aou_vds(
             "filtering, which may result in many empty partitions."
         )
 
-    # Contig scoping (--chrom / autosomes_only / sex_chr_only) prunes the read the SAME
-    # way as an explicit locus scope: build whole-contig intervals and read with
-    # read-time pruning. The post-read ``filter_chromosomes`` below does NOT prune the
-    # read, so without this a --chrom run scans the whole genome and fans across
-    # thousands of (empty) partitions. An explicit ``read_intervals`` (finer scope, e.g.
-    # --test-region) takes precedence.
-    # NOT applied when ``filter_partitions`` is set: partition-index chunking assumes the
-    # FULL-VDS partition layout, but read-time pruning renumbers partitions relative to
-    # the pruned read -- so the indices would misalign. There, ``filter_partitions``
-    # prunes the read by index and the post-read ``filter_chromosomes`` scopes
-    # the contig.
-    if read_intervals is None and not filter_partitions:
-        _keep_contigs = None
-        if sex_chr_only:
-            _keep_contigs = ["chrX", "chrY"]
-        elif autosomes_only:
-            _keep_contigs = [f"chr{i}" for i in range(1, 23)]
-        elif chrom:
-            _keep_contigs = [chrom] if isinstance(chrom, str) else list(chrom)
-        if _keep_contigs:
-            _rg = hl.get_reference("GRCh38")
-            read_intervals = [
-                hl.Interval(
-                    hl.Locus(c, 1, reference_genome="GRCh38"),
-                    hl.Locus(c, _rg.lengths[c], reference_genome="GRCh38"),
-                    includes_start=True,
-                    includes_end=True,
-                )
-                for c in _keep_contigs
-            ]
-
     # ``read_intervals`` prunes the read to the given locus intervals at READ time
     # (``hl.vds.read_vds(intervals=...)``), so only the overlapping partitions are
     # scanned. This is much cheaper than the post-read ``filter_intervals`` below for a
