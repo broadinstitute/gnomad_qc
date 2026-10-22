@@ -13,6 +13,7 @@ without a fixed seed, so each regeneration moves the cut points, and a chunk lef
 behind by an older layout must not be taken for a finished chunk of the new one.
 """
 
+import argparse
 import hashlib
 import json
 import logging
@@ -165,6 +166,32 @@ def relay_context(
     return setup_cmd, backend_kwargs, script
 
 
+def qob_sizing_flags(args: argparse.Namespace) -> List[str]:
+    """
+    Return the QoB driver and worker sizing flags for a relay command.
+
+    The orchestrator takes the sizes as ``--chunk-driver-cores`` and its three
+    siblings and hands them to each relay as the plain ``--driver-cores`` and
+    siblings, which the relay's own Hail init reads. Merge relays reuse the chunk
+    sizing.
+
+    :param args: Parsed CLI args with ``chunk_driver_cores``, ``chunk_driver_memory``,
+        ``chunk_worker_cores`` and ``chunk_worker_memory``.
+    :return: One ``--flag value`` string per size that is set.
+    """
+    flags = []
+    for attr, flag in (
+        ("chunk_driver_cores", "--driver-cores"),
+        ("chunk_driver_memory", "--driver-memory"),
+        ("chunk_worker_cores", "--worker-cores"),
+        ("chunk_worker_memory", "--worker-memory"),
+    ):
+        value = getattr(args, attr, None)
+        if value is not None and value != "":
+            flags.append(f"{flag} {value}")
+    return flags
+
+
 def submit_relay_batch(
     batch_image: str,
     backend_kwargs: Dict[str, str],
@@ -315,6 +342,50 @@ def parse_region_interval(
     )
 
 
+def split_intervals(
+    intervals: Sequence[hl.utils.Interval], n: int
+) -> List[hl.utils.Interval]:
+    """
+    Tile each half-open interval into ``n`` equal position slices.
+
+    ``read_vds`` makes one partition per interval it is given, so a region read as
+    one interval lands in one partition and its whole aggregation runs on one core.
+    The slices tile the input exactly, so no locus is dropped or counted twice; an
+    interval of at most ``n`` positions is kept whole.
+
+    The slices are plain position cuts. A reference block that starts before a slice
+    and extends into it belongs to the earlier slice, so a consumer that reads
+    reference data through them must widen each slice's leading edge first (see
+    ``_expand_leading_edges`` in compute_coverage.py). Variant rows have no such
+    overlap.
+
+    :param intervals: Half-open locus intervals.
+    :param n: Slices per interval; ``<= 1`` returns the input unchanged.
+    :return: The slices, in order.
+    """
+    if n <= 1:
+        return list(intervals)
+    out: List[hl.utils.Interval] = []
+    for iv in intervals:
+        contig, rg = iv.start.contig, iv.start.reference_genome
+        start, end = iv.start.position, iv.end.position
+        if end - start <= n:
+            out.append(iv)
+            continue
+        step = (end - start) // n
+        bounds = [start + i * step for i in range(n)] + [end]
+        out.extend(
+            hl.Interval(
+                hl.Locus(contig, bounds[i], reference_genome=rg),
+                hl.Locus(contig, bounds[i + 1], reference_genome=rg),
+                includes_start=True,
+                includes_end=False,
+            )
+            for i in range(n)
+        )
+    return out
+
+
 def spans_sex_chromosome(
     intervals: Optional[Sequence[hl.utils.Interval]], chrom: Optional[str] = None
 ) -> bool:
@@ -369,6 +440,82 @@ def select_chunks_for_contig(
     return eligible
 
 
+def load_chunk_layout(path: str) -> Dict[str, Any]:
+    """
+    Read a chunk layout JSON driver-side, with no QoB job.
+
+    :param path: Layout path, see :func:`chunk_intervals_path`.
+    :return: Parsed layout. ``chunks`` holds ``{"contig", "intervals"}`` per chunk
+        index, with intervals in :func:`interval_to_list` form, and
+        ``reference_genome`` names their reference genome; the writer may store
+        more keys beside them.
+    :raises FileNotFoundError: if the layout has not been written.
+    """
+    if not file_exists(path):
+        raise FileNotFoundError(
+            f"Chunk layout not found at {path}; run compute_coverage.py"
+            " --write-chunk-intervals first."
+        )
+    with hfs.open(path) as f:
+        return json.load(f)
+
+
+def fold_chunk_layout(data: Dict[str, Any], n_chunks: Optional[int]) -> Dict[str, Any]:
+    """
+    Fold consecutive chunks of a layout into about ``n_chunks`` larger chunks.
+
+    A consumer whose work per chunk is small pays mostly the fixed relay and QoB
+    driver cost of each job, so fewer, larger jobs are cheaper. A folded chunk reads
+    the union of its parts and never crosses a contig, so per-locus results are
+    unchanged. The folded layout hashes differently, so its chunks live in their own
+    directory.
+
+    :param data: Parsed chunk layout.
+    :param n_chunks: Target chunk count. None, or at least the current count, returns
+        the layout unchanged.
+    :return: Layout with the folded ``chunks``; the other keys are kept.
+    """
+    n_input = len(data["chunks"])
+    if n_chunks is None or n_chunks >= n_input:
+        return data
+    if n_chunks < 1:
+        raise ValueError(f"n_chunks must be >= 1, got {n_chunks}")
+    per_job = -(-n_input // n_chunks)
+    grouped: List[Dict[str, Any]] = []
+    for c in data["chunks"]:
+        last = grouped[-1] if grouped else None
+        if last and last["contig"] == c["contig"] and last["_n"] < per_job:
+            last["intervals"].extend(c["intervals"])
+            last["_n"] += 1
+        else:
+            grouped.append(
+                {"contig": c["contig"], "intervals": list(c["intervals"]), "_n": 1}
+            )
+    for g in grouped:
+        del g["_n"]
+    return {**data, "chunks": grouped}
+
+
+def chunk_read_intervals(data: Dict[str, Any], idx: int) -> List[hl.utils.Interval]:
+    """
+    Return one chunk's read intervals from a layout.
+
+    :param data: Parsed chunk layout.
+    :param idx: Chunk index, as the orchestrator dispatched it.
+    :return: Locus intervals of chunk ``idx``.
+    :raises ValueError: if ``idx`` is outside the layout, which means the fan-out and
+        the layout are out of sync.
+    """
+    chunks = data["chunks"]
+    if not 0 <= idx < len(chunks):
+        raise ValueError(
+            f"chunk index {idx} is out of range for a layout of {len(chunks)} chunks;"
+            " the fan-out and the layout are out of sync."
+        )
+    rg = data["reference_genome"]
+    return [interval_from_list(t, rg) for t in chunks[idx]["intervals"]]
+
+
 # ---------------------------------------------------------------------------
 # Paths
 # ---------------------------------------------------------------------------
@@ -400,6 +547,19 @@ def combine_suffix(*parts: Optional[str]) -> Optional[str]:
 
 def _base(ht_path: str) -> str:
     return ht_path.rstrip("/").removesuffix(".ht")
+
+
+def chunk_intervals_path(ht_path: str) -> str:
+    """
+    Return the chunk layout JSON path beside the final HT.
+
+    Coverage writes it once with ``--write-chunk-intervals``; every orchestrator and
+    worker of either script reads it from here.
+
+    :param ht_path: Final HT path the layout was built for, without a suffix.
+    :return: ``<ht>_chunk_intervals.json``.
+    """
+    return f"{_base(ht_path)}_chunk_intervals.json"
 
 
 def chunk_path(ht_path: str, idx: int, intervals_hash: str) -> str:
@@ -669,6 +829,99 @@ def dispatch_in_waves(
         if on_wave_complete is not None:
             on_wave_complete(failed, records)
     return failed, records
+
+
+def run_chunk_fanout(
+    ht_path: str,
+    intervals_hash: str,
+    eligible: Sequence[int],
+    make_job: Callable[[int], RelayJobSpec],
+    submit: Callable[[str, List[RelayJobSpec], str], Optional[int]],
+    batch_base: str,
+    wave_size: int,
+    commit: str,
+    app_name: Optional[str],
+    *,
+    overwrite: bool,
+    dry_run: bool,
+    retry_passes: int = 0,
+) -> List[int]:
+    """
+    Dispatch the chunks of one layout that have no ``_SUCCESS`` yet and record misses.
+
+    This is the orchestrator shape the scripts share: list the finished chunks,
+    dispatch the rest in waves with :func:`dispatch_in_waves`, rewrite the
+    failed-chunk manifest after every wave so it survives an orchestrator death, and
+    log the outcome. The caller supplies only the per-chunk job and the submission.
+
+    :param ht_path: Final HT path the chunks are namespaced under.
+    :param intervals_hash: Layout hash.
+    :param eligible: Chunk indices in scope, after any ``--chrom`` filter.
+    :param make_job: ``idx -> RelayJobSpec`` for one chunk.
+    :param submit: ``(batch_name, job_specs, log_label) -> batch id``. It must honor
+        the dry run itself, by passing ``dry_run`` on to :func:`submit_relay_batch`.
+    :param batch_base: Batch name; a wave label is appended with an underscore.
+    :param wave_size: Chunks per wave; ``<= 0`` means one wave.
+    :param commit: gnomad_qc commit the relays run, recorded in the manifest.
+    :param app_name: ``--app-name`` the relays use, recorded in the manifest.
+    :param overwrite: Dispatch every eligible chunk, finished or not.
+    :param dry_run: Validate the first wave without running it. Nothing is listed
+        or written afterwards.
+    :param retry_passes: Re-dispatch passes for missing chunks after the waves.
+    :return: Chunk indices still missing at the end. Empty when every chunk landed,
+        when nothing was pending, and on a dry run.
+    """
+    present = (
+        set() if overwrite else list_present_chunk_indices(ht_path, intervals_hash)
+    )
+    pending = [i for i in eligible if i not in present]
+    logger.info(
+        "Fan-out: %d eligible chunk(s), %d pending, %d already complete.",
+        len(eligible),
+        len(pending),
+        len(eligible) - len(pending),
+    )
+    if not pending:
+        return []
+    run_id = new_run_id()
+
+    def submit_wave(wave: List[int], label: Optional[str]) -> Optional[int]:
+        return submit(
+            combine_suffix(batch_base, label), [make_job(i) for i in wave], "chunk"
+        )
+
+    def write_manifest(failed: List[int], records: List[Dict[str, Any]]) -> None:
+        # Retry passes re-dispatch chunks the numbered waves already counted, so
+        # count chunks from the numbered waves only.
+        n_sent = sum(r["n_dispatched"] for r in records if isinstance(r["wave"], int))
+        write_failed_chunks_manifest(
+            ht_path, intervals_hash, failed, n_sent, run_id, commit, app_name, records
+        )
+
+    failed, _records = dispatch_in_waves(
+        pending,
+        wave_size,
+        submit_wave=submit_wave,
+        present_indices=lambda: list_present_chunk_indices(ht_path, intervals_hash),
+        dry_run=dry_run,
+        on_wave_complete=write_manifest,
+        retry_passes=retry_passes,
+    )
+    if dry_run:
+        return []
+    if failed:
+        logger.warning(
+            "Fan-out finished with %d of %d dispatched chunk(s) missing; see %s. Rerun"
+            " the fan-out to retry them.",
+            len(failed),
+            len(pending),
+            failed_chunks_path(ht_path, intervals_hash),
+        )
+    else:
+        logger.info(
+            "Fan-out finished: all %d dispatched chunk(s) present.", len(pending)
+        )
+    return failed
 
 
 def orchestrate_tree_merge(
