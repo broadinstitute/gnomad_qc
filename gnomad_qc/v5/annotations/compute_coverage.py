@@ -2242,6 +2242,7 @@ def main(args):
         log_name,
         environment,
         billing_project=getattr(args, "gcp_billing_project", None),
+        batch_billing_project=args.batch_billing_project,
         tmp_dir_days=args.tmp_dir_days,
         tmp_dir=f"{qc_temp_prefix(environment=environment, days=args.tmp_dir_days)}coverage_and_an_generation",
         experimental=args.experimental,

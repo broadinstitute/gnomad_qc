@@ -1127,7 +1127,7 @@ def _initialize_hail(args: argparse.Namespace) -> None:
     _init_hail(
         "v5_frequency_generation",
         args.environment,
-        billing_project=args.billing_project,
+        batch_billing_project=args.billing_project,
         tmp_dir_days=args.tmp_dir_days,
         tmp_dir=f"{tmp}frequency_generation",
         **_get_batch_resource_kwargs(args),

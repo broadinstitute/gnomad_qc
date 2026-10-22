@@ -143,6 +143,7 @@ def _init_hail(
     tmp_dir_days: Optional[int] = 4,
     experimental: bool = False,
     batch_id: Optional[int] = None,
+    batch_billing_project: str = "gnomad-production",
     **kwargs,
 ) -> None:
     """
@@ -152,6 +153,8 @@ def _init_hail(
     :param environment: Compute environment. One of "rwb", "batch", or "dataproc". Default is "batch".
     :param billing_project: GCP billing project for requester-pays buckets (batch only).
         Default is None. When None, uses "broad-mpg-gnomad".
+    :param batch_billing_project: Hail Batch billing project the QoB driver bills to
+        (batch only). Default is "gnomad-production".
     :param tmp_dir_days: Retention days for the tmp directory passed to qc_temp_prefix.
         Must be None, 4, or 30. Default is 4.
     :param experimental: If True (batch only), route the init through
@@ -205,13 +208,13 @@ def _init_hail(
         **{k: v for k, v in kwargs.items() if v is not None},
     }
     if environment == "batch":
-        os.environ["HAIL_BATCH_BILLING_PROJECT"] = (
-            billing_project or "gnomad-production"
-        )
+        os.environ["HAIL_BATCH_BILLING_PROJECT"] = batch_billing_project
         init_kwargs.update(
             {
                 "backend": "batch",
-                "gcs_requester_pays_configuration": "broad-mpg-gnomad",
+                "gcs_requester_pays_configuration": (
+                    billing_project or "broad-mpg-gnomad"
+                ),
                 "regions": ["us-central1"],
             }
         )
