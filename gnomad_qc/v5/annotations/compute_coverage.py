@@ -74,7 +74,7 @@ import logging
 import re
 import shlex
 import sys
-from functools import reduce
+from functools import partial, reduce
 from itertools import groupby
 from typing import Any, Dict, List, Optional, Sequence, Set, Tuple
 
@@ -115,24 +115,26 @@ from gnomad_qc.v5.annotations.batch_fanout import (
     RelayJobSpec,
     apply_path_suffix,
     chunk_intervals_hash,
+    chunk_intervals_path,
     chunk_path,
+    chunk_read_intervals,
     combine_suffix,
-    dispatch_in_waves,
     group_path,
     interval_from_list,
     interval_to_list,
     list_present_chunk_indices,
-    new_run_id,
+    load_chunk_layout,
     orchestrate_tree_merge,
     parse_region_interval,
+    qob_sizing_flags,
     relay_context,
     resolve_commit,
+    run_chunk_fanout,
     select_chunks_for_contig,
     spans_sex_chromosome,
     submit_relay_batch,
     test_region_hash,
     union_and_write_hts,
-    write_failed_chunks_manifest,
 )
 from gnomad_qc.v5.resources.annotations import (
     coverage_and_an_path,
@@ -1273,8 +1275,9 @@ def _chunk_intervals_path(project: str, results_environment: str, test: bool) ->
     :param test: If True, return the test-scoped intervals path.
     :return: GCS path to the chunk-intervals JSON.
     """
-    base = _resolve_cov_and_an_ht_path(project, results_environment, test, suffix=None)
-    return base.rstrip("/").removesuffix(".ht") + "_chunk_intervals.json"
+    return chunk_intervals_path(
+        _resolve_cov_and_an_ht_path(project, results_environment, test, suffix=None)
+    )
 
 
 def _split_intervals_at_contigs(
@@ -1660,31 +1663,17 @@ def _run_coverage_chunk(args: argparse.Namespace) -> None:
         # Look this chunk up by index in the precompute JSON, driver-side (no
         # QoB job, no ~400s VDS re-open). --chrom is handled by the
         # orchestrator, so the worker just processes chunks[start].
-        intervals_path = _chunk_intervals_path(project, results_environment, test)
-        if not file_exists(intervals_path):
-            raise FileNotFoundError(
-                f"chunk-intervals JSON not found at {intervals_path};"
-                " --write-chunk-intervals is required before the fan-out."
-            )
-        with hfs.open(intervals_path) as f:
-            data = json.load(f)
+        data = load_chunk_layout(
+            _chunk_intervals_path(project, results_environment, test)
+        )
         intervals_hash = chunk_intervals_hash(data)
-        chunk_meta = data["chunks"]
-        if not 0 <= start < len(chunk_meta):
-            raise ValueError(
-                f"chunk index {start} is out of range [0, {len(chunk_meta)}) in"
-                f" {intervals_path}; the fan-out and precompute are out of sync --"
-                " regenerate --write-chunk-intervals."
-            )
-        entry = chunk_meta[start]
-        rg = data["reference_genome"]
-        sub_intervals = [interval_from_list(t, rg) for t in entry["intervals"]]
+        sub_intervals = chunk_read_intervals(data, start)
         max_ref_block_len = data["ref_block_max_length"]
         logger.info(
             "Read %d sub-intervals for chunk %d (contig %s) from the precompute.",
             len(sub_intervals),
             start,
-            entry["contig"],
+            data["chunks"][start]["contig"],
         )
         vds_read_intervals = _expand_leading_edges(sub_intervals, max_ref_block_len)
 
@@ -1770,14 +1759,7 @@ def _build_relay_common_flags(args: argparse.Namespace, *, chunk: bool) -> str:
         # Keep worker fallback path resolution consistent with the orchestrator.
         flags.append(f"--results-environment {args.results_environment}")
     # QoB driver/worker sizing; merge workers reuse the chunk sizing.
-    if args.chunk_driver_cores is not None:
-        flags.append(f"--driver-cores {args.chunk_driver_cores}")
-    if args.chunk_driver_memory:
-        flags.append(f"--driver-memory {args.chunk_driver_memory}")
-    if args.chunk_worker_cores is not None:
-        flags.append(f"--worker-cores {args.chunk_worker_cores}")
-    if args.chunk_worker_memory:
-        flags.append(f"--worker-memory {args.chunk_worker_memory}")
+    flags += qob_sizing_flags(args)
     if chunk:
         flags.append(
             f"--read-subintervals-per-chunk {args.read_subintervals_per_chunk}"
@@ -1857,76 +1839,6 @@ def _submit_orchestrator_batch(args: argparse.Namespace) -> None:
         backend.close()
 
 
-def _submit_chunk_batch(
-    args: argparse.Namespace,
-    backend_kwargs: dict,
-    chunk_indices: List[int],
-    cov_and_an_ht_path: str,
-    intervals_hash: str,
-    setup_cmd: str,
-    common_flags_str: str,
-    script: str,
-    wave_label: Optional[str] = None,
-) -> Optional[int]:
-    """
-    Build and submit one Hail Batch containing all pending chunk jobs.
-
-    Each chunk job is a relay container running ``--run-chunk``.
-    ``chunk_indices`` is the already-filtered pending set.
-
-    :param args: Parsed CLI args.
-    :param backend_kwargs: kwargs for ``hb.ServiceBackend``.
-    :param chunk_indices: Pending chunk indices to submit.
-    :param cov_and_an_ht_path: Resolved canonical output HT path.
-    :param intervals_hash: Layout hash namespacing each chunk's output.
-    :param setup_cmd: Shell prefix from ``build_setup_command``.
-    :param common_flags_str: Shared CLI flags.
-    :param script: Script path inside the relay container.
-    :param wave_label: Optional batch-name suffix (e.g. ``"w003of049"``).
-    :return: Batch id of the submitted wave (None under ``--batch-dry-run``).
-    """
-    project = args.project_name
-    total = args.total_partitions
-    ppc = args.partitions_per_chunk
-    batch_name = (
-        f"v5_cov_{project}_{total}p_{ppc}ppc_sub{args.read_subintervals_per_chunk}"
-    )
-    if args.cov_and_an_output_suffix:
-        batch_name += f"_{args.cov_and_an_output_suffix}"
-    if wave_label:
-        batch_name += f"_{wave_label}"
-
-    job_specs = []
-    for idx in chunk_indices:
-        path = chunk_path(cov_and_an_ht_path, idx, intervals_hash)
-        # Chunk identity is the index: the worker looks itself up in the JSON
-        # by --chunk-start (= idx); --chunk-stop is idx+1.
-        command = (
-            f"{setup_cmd}{script} --run-chunk"
-            f" --chunk-start {idx} --chunk-stop {idx + 1}"
-            f" --chunk-output {path}"
-            f" {common_flags_str}"
-        )
-        job_specs.append(
-            RelayJobSpec(
-                name=f"cov_chunk_{idx:06d}",
-                cpu=args.chunk_cpu,
-                memory=args.chunk_memory,
-                storage=args.chunk_storage,
-                attempts=args.chunk_attempts,
-                command=command,
-            )
-        )
-    return submit_relay_batch(
-        args.batch_image,
-        backend_kwargs,
-        batch_name,
-        job_specs,
-        "chunk",
-        dry_run=args.batch_dry_run,
-    )
-
-
 def _eligible_chunk_indices(
     args: argparse.Namespace,
 ) -> Tuple[List[Optional[str]], List[int], str]:
@@ -1947,17 +1859,11 @@ def _eligible_chunk_indices(
         chunk_contigs: List[Optional[str]] = [None]
         intervals_hash = test_region_hash(args.test_region)
     else:
-        intervals_path = _chunk_intervals_path(
-            args.project_name, args.results_environment, args.test
-        )
-        if not file_exists(intervals_path):
-            raise FileNotFoundError(
-                f"chunk-intervals JSON not found at {intervals_path}. Run"
-                " --write-chunk-intervals first (required: the fan-out and merge"
-                " enumerate chunks by contig from it)."
+        data = load_chunk_layout(
+            _chunk_intervals_path(
+                args.project_name, args.results_environment, args.test
             )
-        with hfs.open(intervals_path) as f:
-            data = json.load(f)
+        )
         chunk_contigs = [c["contig"] for c in data["chunks"]]
         intervals_hash = chunk_intervals_hash(data)
     eligible = select_chunks_for_contig(chunk_contigs, args.chrom)
@@ -1970,17 +1876,11 @@ def _orchestrate_coverage_batch(
     """
     Fan coverage/AN compute out as relay chunk jobs in Hail Batch (one per chunk).
 
-    Pending chunks are split into sequential waves of ``--wave-size``; each
-    wave is one Hail Batch run to completion before the next. Sequential waves
-    bound concurrency (relays + their nested QoB drivers) and avoid Hail
-    Batch's process-global progress display, which crashes on concurrent
-    ``batch.run()`` calls. The binding capacity is the shared Hail Batch
-    service's worker pool, not gnomad-production's own GCP quota.
-
-    Idempotent: chunks with a ``_SUCCESS`` are skipped, so rerunning resumes.
-    ``batch.run()`` does not raise on per-job failure; after the last wave,
-    missing chunks are re-dispatched for up to ``--fanout-retry-passes``
-    passes, and whatever remains is recorded in ``_failed_chunks.json``. Run
+    :func:`run_chunk_fanout` skips the chunks with a ``_SUCCESS``, dispatches the
+    rest in waves of ``--wave-size``, re-dispatches misses for up to
+    ``--fanout-retry-passes`` passes and records what is still missing in
+    ``_failed_chunks.json``, so rerunning this step resumes a partial run. This
+    function only names the batch and builds the chunk relay command. Run
     ``--merge-cov-chunks`` after this finishes.
 
     :param args: Parsed CLI args.
@@ -2000,28 +1900,13 @@ def _orchestrate_coverage_batch(
         )
 
     chunk_contigs, eligible, intervals_hash = _eligible_chunk_indices(args)
-    n_chunks = len(chunk_contigs)
-
-    if args.overwrite:
-        pending_indices = list(eligible)
-    else:
-        present = list_present_chunk_indices(cov_and_an_ht_path, intervals_hash)
-        pending_indices = [idx for idx in eligible if idx not in present]
     logger.info(
-        "Coverage fan-out: %d chunks total, %d eligible%s, %d pending, %d skipped"
-        " (overwrite=%s, project=%s)",
-        n_chunks,
+        "Coverage fan-out: %d chunks total, %d eligible%s (project=%s)",
+        len(chunk_contigs),
         len(eligible),
         f" (--chrom {args.chrom})" if args.chrom else "",
-        len(pending_indices),
-        len(eligible) - len(pending_indices),
-        args.overwrite,
         project,
     )
-
-    if not pending_indices:
-        logger.info("All chunks already complete; nothing to submit.")
-        return
 
     commit = resolve_commit()
     setup_cmd, backend_kwargs, script = relay_context(
@@ -2035,63 +1920,46 @@ def _orchestrate_coverage_batch(
     )
     common_flags_str = _build_relay_common_flags(args, chunk=True)
 
-    run_id = new_run_id()
-    logger.info(
-        "Orchestrator run id: %s (stamped into the failed-chunk manifest)", run_id
-    )
-
-    def _write_manifest(failed: List[int], records: List[Dict[str, Any]]) -> None:
-        """Rewrite after each wave and retry pass so the list survives a crash."""
-        # Retry passes re-dispatch chunks the waves already counted, so count
-        # chunks from the numbered waves only and relay jobs from every record.
-        n_sent = sum(r["n_dispatched"] for r in records if isinstance(r["wave"], int))
-        n_relay_jobs = sum(r["n_dispatched"] for r in records)
-        manifest = write_failed_chunks_manifest(
-            ht_path=cov_and_an_ht_path,
-            intervals_hash=intervals_hash,
-            failed=failed,
-            n_dispatched=n_sent,
-            run_id=run_id,
-            commit=commit,
-            app_name=args.app_name,
-            waves=records,
+    def make_job(idx: int) -> RelayJobSpec:
+        # Chunk identity is the index: the worker looks itself up in the JSON
+        # by --chunk-start (= idx); --chunk-stop is idx+1.
+        return RelayJobSpec(
+            name=f"cov_chunk_{idx:06d}",
+            cpu=args.chunk_cpu,
+            memory=args.chunk_memory,
+            storage=args.chunk_storage,
+            attempts=args.chunk_attempts,
+            command=(
+                f"{setup_cmd}{script} --run-chunk"
+                f" --chunk-start {idx} --chunk-stop {idx + 1}"
+                f" --chunk-output {chunk_path(cov_and_an_ht_path, idx, intervals_hash)}"
+                f" {common_flags_str}"
+            ),
         )
-        if failed:
-            logger.warning(
-                "%d of %d dispatched chunk(s) still missing after %d relay job(s)"
-                " in total; rerun list written to %s (run_id=%s)",
-                len(failed),
-                n_sent,
-                n_relay_jobs,
-                manifest,
-                run_id,
-            )
 
-    dispatch_in_waves(
-        pending_indices,
-        args.wave_size,
-        submit_wave=lambda wave, label: _submit_chunk_batch(
-            args=args,
-            backend_kwargs=backend_kwargs,
-            chunk_indices=wave,
-            cov_and_an_ht_path=cov_and_an_ht_path,
-            intervals_hash=intervals_hash,
-            setup_cmd=setup_cmd,
-            common_flags_str=common_flags_str,
-            script=script,
-            wave_label=label,
+    run_chunk_fanout(
+        cov_and_an_ht_path,
+        intervals_hash,
+        eligible,
+        make_job=make_job,
+        submit=partial(
+            submit_relay_batch,
+            args.batch_image,
+            backend_kwargs,
+            dry_run=args.batch_dry_run,
         ),
-        present_indices=lambda: list_present_chunk_indices(
-            cov_and_an_ht_path, intervals_hash
+        batch_base=combine_suffix(
+            f"v5_cov_{project}_{args.total_partitions}p_{args.partitions_per_chunk}ppc"
+            f"_sub{args.read_subintervals_per_chunk}",
+            args.cov_and_an_output_suffix,
         ),
+        wave_size=args.wave_size,
+        commit=commit,
+        app_name=args.app_name,
+        overwrite=args.overwrite,
         dry_run=args.batch_dry_run,
-        on_wave_complete=_write_manifest,
         retry_passes=args.fanout_retry_passes,
     )
-    # Under --batch-dry-run nothing ran, so there are no outputs to check and
-    # no manifest was written (it would overwrite the last real run's record).
-    # Otherwise whatever is still missing after the retry passes is in
-    # _failed_chunks.json; rerun --use-batch-fanout to pick it up.
 
 
 def _orchestrate_coverage_merge(
@@ -2282,10 +2150,10 @@ def main(args):
                 output_step_resources={"coverage_and_an_ht": [cov_and_an_ht_path]},
                 overwrite=overwrite,
             )
-            with hfs.open(
+            layout = load_chunk_layout(
                 _chunk_intervals_path(project, results_environment, test)
-            ) as f:
-                contigs = sorted({c["contig"] for c in json.load(f)["chunks"]})
+            )
+            contigs = sorted({c["contig"] for c in layout["chunks"]})
             inputs = [apply_path_suffix(cov_and_an_ht_path, c) for c in contigs]
             union_and_write_hts(
                 inputs, cov_and_an_ht_path, coalesce_to=args.n_partitions
@@ -2330,13 +2198,9 @@ def main(args):
                 )
                 if file_exists(intervals_path):
                     _, eligible, _ = _eligible_chunk_indices(args)
-                    with hfs.open(intervals_path) as f:
-                        cm = json.load(f)
-                    rg_name = cm["reference_genome"]
+                    cm = load_chunk_layout(intervals_path)
                     site_intervals = [
-                        interval_from_list(t, rg_name)
-                        for i in eligible
-                        for t in cm["chunks"][i]["intervals"]
+                        iv for i in eligible for iv in chunk_read_intervals(cm, i)
                     ]
                     logger.info(
                         "Test sites scoped to %d sub-intervals (%d chunks) from the"
@@ -2535,16 +2399,10 @@ def main(args):
             intervals_path = _chunk_intervals_path(project, results_environment, test)
             if args.test_n_partitions and file_exists(intervals_path):
                 _, eligible, _ = _eligible_chunk_indices(args)
-                with hfs.open(intervals_path) as f:
-                    cm = json.load(f)
-                rg = cm["reference_genome"]
+                cm = load_chunk_layout(intervals_path)
                 sites_ht = hl.filter_intervals(
                     sites_ht,
-                    [
-                        interval_from_list(t, rg)
-                        for i in eligible
-                        for t in cm["chunks"][i]["intervals"]
-                    ],
+                    [iv for i in eligible for iv in chunk_read_intervals(cm, i)],
                 )
             elif args.chrom:
                 sites_ht = hl.filter_intervals(
