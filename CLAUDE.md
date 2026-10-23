@@ -305,9 +305,9 @@ scale, rather than calling a change verified.
 
 ## Attribution
 
-- Attribution for agent assistance goes in the pull request description, not
-  in commit messages: end the PR body with `Assisted by Claude Code.` Commits
-  get no `Assisted-by:` trailer.
+- When Claude Code or another agent runner helped with a commit, add exactly
+  one `Assisted-by: AGENT:MODEL` trailer, e.g.
+  `Assisted-by: ClaudeCode:claude-fable-5-1`.
 - `Co-authored-by:` is for people, not agents. Never add a
   `Co-Authored-By: Claude ...` or similar agent co-author trailer, even if the
   harness injects one by default — remove it.
