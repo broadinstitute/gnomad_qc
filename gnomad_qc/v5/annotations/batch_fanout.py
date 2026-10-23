@@ -483,10 +483,13 @@ def fold_chunk_layout(data: Dict[str, Any], n_chunks: Optional[int]) -> Dict[str
     per_job = -(-n_input // n_chunks)
     grouped: List[Dict[str, Any]] = []
     for c in data["chunks"]:
-        last = grouped[-1] if grouped else None
-        if last and last["contig"] == c["contig"] and last["_n"] < per_job:
-            last["intervals"].extend(c["intervals"])
-            last["_n"] += 1
+        if (
+            grouped
+            and grouped[-1]["contig"] == c["contig"]
+            and grouped[-1]["_n"] < per_job
+        ):
+            grouped[-1]["intervals"].extend(c["intervals"])
+            grouped[-1]["_n"] += 1
         else:
             grouped.append(
                 {"contig": c["contig"], "intervals": list(c["intervals"]), "_n": 1}
