@@ -46,7 +46,7 @@ them at point of use rather than relying on memory or this file:
   version's `resources/` package, organized by domain — mostly `get_*()`
   functions, some module-level objects. Grep `def get_` or the dataset name in
   that package to find them. Paths to public gnomAD releases and to reference data
-  (VEP context, truth sets, gene models, ...) live in gnomad_methods under
+  (Ensembl VEP context, truth sets, gene models, ...) live in gnomad_methods under
   `gnomad.resources.grch38` / `grch37`; check there before adding a resource for them.
 - **Shared utilities**: check gnomad_methods (`gnomad.utils.*`,
   `gnomad.sample_qc.*`, `gnomad.variant_qc.*`, `gnomad.resources.*`) before
@@ -69,7 +69,7 @@ pre-commit install
 ```
 
 ### Formatting and linting
-Pre-commit hooks (black, isort, autopep8, pydocstyle) run on every commit once
+Pre-commit hooks (`.pre-commit-config.yaml`) run on every commit once
 installed; `pre-commit run --all-files` runs them by hand. CI additionally runs
 pylint as `./lint --disable=W`. The exact CI commands are in
 `.github/workflows/ci.yml`.
