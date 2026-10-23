@@ -9,10 +9,9 @@ VDS variant data and joins the allele number that ``compute_coverage.py`` alread
 computed at every site. ``--merge-datasets`` combines the two tables and adds FAF,
 grpmax and the inbreeding coefficient, which only make sense on the combined cohort.
 
-The AoU run is too large for one Query-on-Batch job, so it fans out over the chunk
-layout ``compute_coverage.py`` wrote beside its AN table (``--use-batch-fanout``) and
-tree-merges the chunk tables afterwards (``--merge-freq-chunks``). Reusing coverage's
-layout means every freq chunk reads exactly the AN partitions written for it.
+Genome-wide, ``--use-batch-fanout`` fans the AoU step out over the chunk layout
+``compute_coverage.py`` wrote beside its AN table, and ``--merge-freq-chunks``
+tree-merges the chunk tables.
 
 Examples::
 
@@ -100,8 +99,8 @@ from gnomad_qc.v5.resources.basics import (
 )
 from gnomad_qc.v5.resources.meta import meta
 
-# force=True so this handler wins over the ones Hail installs at import time;
-# without it every logger.info call is dropped when running against the batch backend.
+# force=True: the gnomad imports already called basicConfig, so without it this call
+# is a no-op and logger.info is dropped.
 logging.basicConfig(
     format="%(levelname)s (%(name)s %(lineno)s): %(message)s",
     level=logging.INFO,
@@ -109,7 +108,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger("v5_frequency")
 
-# Hail 0.2.137 is the lowest version that runs on the Batch workers' Java 21.
+# Hail 0.2.137 runs on the Batch workers' Java 21; 0.2.128 does not.
 DEFAULT_BATCH_IMAGE = (
     "us-central1-docker.pkg.dev/broad-mpg-gnomad/images/v5_freq_batch:0.2.137"
 )
@@ -125,9 +124,8 @@ def _release_meta(project: str, environment: str) -> hl.Table:
     """
     Return sex karyotype and age for one project's release samples, at 10 partitions.
 
-    The meta table has ~330 partitions, so every join or aggregate against it fans
-    ~330 tiny QoB tasks; a lazy select-and-coalesce of the two fields freq needs
-    makes that 10, with nothing written.
+    The meta table has ~330 partitions, so every join or aggregate against it would
+    fan ~330 tiny QoB tasks.
 
     :param project: ``"aou"`` or ``"gnomad"``.
     :param environment: Compute environment.
@@ -155,15 +153,13 @@ def _aou_group_membership_ht(test: bool, environment: str) -> hl.Table:
     """
     Read the cell-reduced AoU group-membership HT ``compute_coverage.py`` built the AN with.
 
-    Freq's AC must be stratified over exactly the sample sets the AN was, so the join
-    lines up index for index; reading any other membership table would be wrong, so
-    a missing HT is an error rather than a fallback.
+    AC and AN are paired index for index, so the strata must be the ones the AN
+    was built with; a missing HT is an error rather than something to rebuild here.
 
     :param test: Read the test-scoped path.
     :param environment: Compute environment.
     :return: The cells HT (one boolean per cell; ``_full`` globals map cells back to
         the full strata).
-    :raises FileNotFoundError: if the cells HT has not been written.
     """
     path = apply_path_suffix(
         group_membership(test=test, data_set="aou", environment=environment).path,
@@ -181,8 +177,8 @@ def _carrier_hists(c: hl.expr.StructExpression) -> hl.expr.StructExpression:
     """
     Quality and age histogram aggregators over the carriers of one split row.
 
-    Only the adj quality histograms are kept in v5, so they are filtered at the
-    source instead of also building the raw ones.
+    v5 keeps only the adj quality histograms; passing ``adj_expr`` would also build
+    the raw ones.
 
     :param c: Carrier struct with ``GT``, ``GQ``, ``AD``, ``adj`` and ``age``.
     :return: Struct of ``qual_hists`` and ``age_hists`` aggregators.
@@ -236,10 +232,8 @@ def _prepare_aou_vds(
     """
     Prepare the AoU variant data for the frequency aggregation.
 
-    Rows are left unsplit on purpose: adj is computed on the local ``LGT``/``LAD``
-    fields, and :func:`_sparse_split_strata_and_hists` splits each row only after
-    compacting its entries to the carriers, which is what keeps the per-row cost
-    proportional to carriers rather than samples.
+    Rows stay unsplit, so adj is computed on ``LGT``/``LAD``;
+    :func:`_sparse_split_strata_and_hists` compacts to carriers before it splits.
 
     :param aou_vds: AoU VDS filtered to release samples.
     :param group_membership_ht: The cells HT from :func:`_aou_group_membership_ht`.
@@ -247,7 +241,7 @@ def _prepare_aou_vds(
     :param skip_sex_ploidy: Skip the sex-ploidy adjustment; only valid when the
         read scope has no chrX/chrY loci.
     :return: Unsplit variant MT with ``LGT``, ``GQ``, ``LAD``, ``LA``, ``adj``
-        entries, ``age`` on the columns, and the strata globals.
+        entries, ``sex_karyotype`` and ``age`` on the columns, and the strata globals.
     """
     vmt = aou_vds.variant_data
     release = _release_meta("aou", environment)
@@ -274,14 +268,12 @@ def _sparse_split_strata_and_hists(
     """
     Split multi-allelics and aggregate per-stratum counts and histograms over carriers.
 
-    The entries array has one slot per sample (~365k) but the median variant has
-    three carriers, so ``split_multi`` followed by ``agg_by_strata`` spends almost all
-    of its time on missing entries, once per split row and per stratum. Compacting
-    to carriers first and splitting afterwards makes every later step proportional
-    to carriers. Output is identical to ``hl.vds.split_multi(filter_changed_loci=True)``
-    plus ``agg_by_strata``: the split reproduces ``sparse_split_multi``'s allele
-    min-rep, row ordering and ``LGT``/``LAD`` downcoding, applied to bi-allelic rows
-    as well because dead-allele removal can leave a bi-allelic row non-minimal.
+    The entries array has a slot per sample but most variants have few carriers, so
+    splitting first would process mostly missing entries once per split row.
+    Compacting to carriers first makes every later step proportional to carriers.
+    The split matches ``sparse_split_multi`` with ``filter_changed_loci=True``, except
+    that bi-allelic rows are min-repped too: ``get_aou_vds`` removes dead alleles,
+    which can leave a bi-allelic row non-minimal.
 
     :param mt: Prepared, unsplit variant MT from :func:`_prepare_aou_vds`.
     :param group_membership_ht: Membership HT whose ``group_membership`` array and
@@ -300,8 +292,8 @@ def _sparse_split_strata_and_hists(
     )
     mt = mt.annotate_cols(strata=gm[mt.col_key].strata)
     lt = mt.localize_entries("entries", "cols")
-    # Keep only carriers. Each carries the strata it counts toward (adj strata only
-    # when the call is adj) so one explode+group_by does every stratum at once.
+    # Each carrier lists the strata it counts toward so one explode and group_by
+    # covers every stratum.
     carriers = (
         hl.enumerate(lt.entries)
         .filter(lambda t: hl.is_defined(t[1]))
@@ -316,8 +308,6 @@ def _sparse_split_strata_and_hists(
     )
     lt = lt.select(carriers=carriers)
 
-    # Same split structs as sparse_split_multi; an alt whose min_rep moves the locus
-    # is dropped (filter_changed_loci).
     def _split_struct(i):
         return hl.bind(
             lambda mr: hl.or_missing(
@@ -336,8 +326,6 @@ def _sparse_split_strata_and_hists(
         ),
     )
 
-    # Same entry transform as sparse_split_multi for the fields present (LGT, LAD,
-    # LA, GQ).
     def _split_carrier(e, a_index):
         lai = hl.fold(
             lambda acc, k: hl.if_else(e.LA[k] == a_index, k, acc),
@@ -361,7 +349,7 @@ def _sparse_split_strata_and_hists(
         return hl.bind(_with_lai, lai)
 
     lt = lt.annotate(_split=splits).explode("_split")
-    # Re-key exactly as sparse_split_multi does so no sort is triggered.
+    # Re-key as sparse_split_multi does so no sort is triggered.
     lt = lt._key_by_assert_sorted("locus")
     lt = lt.transmute(
         alleles=lt._split.alleles,
@@ -438,8 +426,6 @@ def process_aou_dataset(
     :return: Table with ``freq`` and ``histograms``.
     """
     group_membership_ht = _aou_group_membership_ht(test, environment)
-    # Read-time interval pruning rather than a post-read filter: the latter leaves a
-    # small region fanned across thousands of empty partitions.
     aou_vds = get_aou_vds(
         annotate_meta=False,
         release_only=True,
@@ -484,9 +470,8 @@ def process_aou_dataset(
     elif chrom:
         an_ht = hl.filter_intervals(an_ht, [hl.parse_locus_interval(chrom)])
     ht = ht.annotate(_an=an_ht[ht.locus].AN)
-    # A variant with no AN at its locus gets a missing freq array below, which
-    # nothing downstream would flag. The AN table should cover every AoU variant
-    # locus (checked 2026-10-02), so any count here means the two runs disagree.
+    # The AN table should cover every AoU variant locus (checked 2026-10-02), so any
+    # count here means the two runs disagree.
     n_missing_an = ht.aggregate(hl.agg.count_where(hl.is_missing(ht._an)))
     if n_missing_an:
         logger.warning(
@@ -526,11 +511,6 @@ def _prepare_consent_vds(
     """
     Load and split the VDS of the samples that withdrew consent after v4.
 
-    Only the load, the column and entry narrowing and the split happen here. adj,
-    sex ploidy and the hom-alt fix are applied on the dense matrix in
-    :func:`_consent_freq_ht`, in v3.1's order, so reference blocks get the same
-    treatment they had when v4's counts were made.
-
     :param test_vds: Read the test VDS.
     :param test_partitions: Keep only this many leading partitions.
     :param chrom: Single contig to scope the load to.
@@ -551,9 +531,8 @@ def _prepare_consent_vds(
     logger.info(
         "VDS filtered to %s consent-withdrawal samples.", vds.variant_data.count_cols()
     )
-    # A few hundred samples do not need the full VDS's partitioning (1,480 on chr22).
-    # Fewer, fuller partitions make the extraction cheaper, and the QoB driver, which
-    # collects one result per partition, died at 1,480 (batch 8447491).
+    # Fewer, fuller partitions are cheaper for so few samples, and the QoB driver,
+    # which collects one result per partition, died at 1,480 on chr22 (batch 8447491).
     n_parts = max(1, vds.variant_data.n_partitions() // 15)
     vds = hl.vds.VariantDataset(
         vds.reference_data.naive_coalesce(n_parts),
@@ -679,10 +658,6 @@ def process_gnomad_dataset(
     """
     Build the gnomAD v5 frequency table from the v4 release.
 
-    v5 adds no gnomAD samples, so instead of recomputing from the VDS the withdrawn
-    samples' frequencies and age histograms are subtracted from v4. FAF, grpmax and
-    inbreeding are left to the merge step because they depend on the combined strata.
-
     :param environment: Compute environment.
     :param test: Use test paths and restrict v4 to the consent sites.
     :param test_vds: Read the test VDS.
@@ -700,10 +675,9 @@ def process_gnomad_dataset(
         v4_ht = v4_ht.filter(hl.is_defined(consent_ht[v4_ht.key]))
         v4_ht = v4_ht.naive_coalesce(100).checkpoint(new_temp_file("v4_test", "ht"))
     ht = _subtract_consent(v4_ht, consent_ht)
-    # raw_qual_hists was approved for removal from v5; the AoU side never builds it.
     ht = ht.annotate(histograms=ht.histograms.drop("raw_qual_hists"))
-    # Recomputed from the v5 meta rather than adjusted from v4's global: v5 both
-    # drops the withdrawn samples and carries corrected ages.
+    # Recomputed from the v5 meta, which already excludes the withdrawn samples,
+    # rather than subtracted from v4's global.
     ht = ht.annotate_globals(
         age_distribution=_age_distribution(_release_meta("gnomad", environment))
     )
@@ -719,11 +693,6 @@ def select_final_dataset_fields(ht: hl.Table, dataset: str = "gnomad") -> hl.Tab
     """
     Keep only the fields the next step reads.
 
-    gnomAD and AoU tables carry just ``freq`` and ``histograms`` because FAF, grpmax
-    and the inbreeding coefficient are only meaningful on the merged cohort; the
-    merged table also gets the index dicts the release and VCF export look fields
-    up by.
-
     :param ht: Table to trim.
     :param dataset: ``"gnomad"``, ``"aou"`` or ``"merged"``.
     :return: Trimmed table.
@@ -733,7 +702,7 @@ def select_final_dataset_fields(ht: hl.Table, dataset: str = "gnomad") -> hl.Tab
     if dataset in ["gnomad", "aou"]:
         final_globals = ["freq_meta", "freq_meta_sample_count", "age_distribution"]
         if dataset == "aou":
-            # Only AoU has downsamplings; gnomAD's were dropped with the v4 subset.
+            # Only AoU has downsamplings; the v4 genomes release carries none.
             final_globals.append("downsamplings")
         return ht.select("freq", "histograms").select_globals(*final_globals)
     ht = ht.annotate_globals(
@@ -759,11 +728,10 @@ def merge_gnomad_and_aou_frequencies(
     """
     Combine the gnomAD and AoU frequency tables into one ``freq`` array.
 
-    Matching strata are summed into the global (all-sample) strata, and the AoU
-    strata are kept again as an ``aou`` subset so the release can report AoU alone.
-    AoU downsamplings only mean something within AoU, so they appear in the subset
-    but not in the global strata. Histograms and the age distribution are summed
-    the same way.
+    Strata the two tables share are summed, and the AoU strata are kept again as an
+    ``aou`` subset so AoU can be reported on its own. AoU downsamplings only mean
+    something within AoU, so they appear only in the subset. Histograms and the age
+    distribution are summed too.
 
     :param gnomad_freq_ht: gnomAD v5 frequency table.
     :param aou_freq_ht: AoU frequency table.
@@ -819,7 +787,7 @@ def merge_gnomad_and_aou_frequencies(
 
 def calculate_faf_and_grpmax_annotations(ht: hl.Table) -> hl.Table:
     """
-    Add FAF, grpmax, fafmax and the inbreeding coefficient, overall and for the AoU subset.
+    Add FAF, grpmax and fafmax overall and for the AoU subset, and the inbreeding coefficient.
 
     ``faf_expr`` and ``grpmax_expr`` select strata by exact key set, so the
     ``subset`` key is removed from the AoU meta for the call and put back on the
@@ -868,9 +836,8 @@ def calculate_faf_and_grpmax_annotations(ht: hl.Table) -> hl.Table:
 # ---------------------------------------------------------------------------
 # Hail Batch relay fan-out for AoU
 #
-# The relay machinery is batch_fanout.py, shared with compute_coverage.py. What stays
-# here is freq policy: where the layout lives and how far it is folded, the flags a
-# freq relay gets, the relay command, and the chunk worker itself.
+# The relay machinery is batch_fanout.py, shared with compute_coverage.py; only
+# freq policy lives here.
 # ---------------------------------------------------------------------------
 
 
@@ -902,7 +869,7 @@ def _chunk_scope(args: argparse.Namespace) -> tuple[list[int], int, str]:
     Return the chunks this run covers: eligible indices, total count and layout hash.
 
     Shared by the fan-out and the merge so they can never disagree on which chunks
-    exist. A ``--test-region`` run is one chunk with no layout JSON.
+    exist.
 
     :param args: Parsed CLI args.
     :return: ``(eligible indices, total chunks, layout hash)``.
@@ -957,8 +924,7 @@ def _relay_context(
     """
     Return the commit, setup command, script and submitter every relay shares.
 
-    Resolved once per orchestrator run so every relay it submits checks out the same
-    commit. The Hail version comes from the image, so no pin is passed.
+    The Hail version comes from the image, so no pin is passed.
 
     :param args: Parsed CLI args.
     :return: ``(commit, setup_cmd, script, submit)``. ``submit`` takes a batch name,
@@ -981,11 +947,6 @@ def _relay_context(
 def _orchestrate_freq_fanout(args: argparse.Namespace, ht_path: str) -> None:
     """
     Fan the AoU freq run out as one relay job per chunk.
-
-    :func:`run_chunk_fanout` skips the chunks with a ``_SUCCESS``, dispatches the
-    rest in waves of ``--wave-size`` and records the misses, so rerunning this step
-    resumes a partial run. This function only names the batch and builds the freq
-    relay command.
 
     :param args: Parsed CLI args.
     :param ht_path: Final AoU freq HT path the chunks are namespaced under.
@@ -1032,10 +993,8 @@ def _run_freq_chunk(args: argparse.Namespace) -> None:
     """
     Compute and write one chunk's AoU freq HT, inside a relay under a nested QoB driver.
 
-    The chunk's read intervals come from the coverage layout (looked up by index with
-    ``hailtop.fs``, so no QoB job or VDS open is needed to find them) or, for a
-    ``--test-region`` run, from the region itself. The layout hash is stamped into a
-    global for provenance.
+    The read intervals come from the layout JSON or the region strings, so the
+    worker never opens the VDS to find them.
 
     :param args: Parsed CLI args (``chunk_index``, ``chunk_output``).
     :return: None.
@@ -1066,11 +1025,6 @@ def _run_freq_chunk(args: argparse.Namespace) -> None:
 def _orchestrate_freq_merge(args: argparse.Namespace, ht_path: str) -> None:
     """
     Union the chunk HTs into the final AoU freq HT with a tree of relay merge jobs.
-
-    Chunks are enumerated with the same helper as the fan-out, and a missing chunk
-    stops the merge rather than silently dropping loci. :func:`orchestrate_tree_merge`
-    builds the tree: intermediate groups that already exist are skipped unless
-    ``--overwrite``, and the final job always writes.
 
     :param args: Parsed CLI args.
     :param ht_path: Final AoU freq HT path.
@@ -1139,7 +1093,6 @@ def main(args):
     """Generate v5 frequency data."""
     args.an_environment = args.an_environment or args.environment
     if args.environment == "batch" and args.app_name is None:
-        # Name the Batch after the steps so runs are findable in the Batch UI.
         steps = [
             s
             for s, on in (
@@ -1154,7 +1107,6 @@ def main(args):
         ]
         args.app_name = f"v5_freq_{'_'.join(steps)}" if steps else None
 
-    # Relay workers.
     if args.run_chunk:
         _run_freq_chunk(args)
         return
@@ -1165,8 +1117,6 @@ def main(args):
         )
         return
 
-    # Suffixes keep per-contig and tagged outputs on their own paths;
-    # --merge-datasets reads the untagged, assembled AoU HT.
     aou_suffix = combine_suffix(args.aou_freq_ht_suffix, args.chrom)
     aou_out_suffix = combine_suffix(aou_suffix, args.freq_output_suffix)
     gnomad_out_suffix = combine_suffix(args.chrom, args.freq_output_suffix)
@@ -1180,8 +1130,8 @@ def main(args):
     if args.use_batch_fanout or args.merge_freq_chunks:
         aou_freq = get_freq(data_set="aou", suffix=aou_out_suffix, **freq_kwargs)
         if args.use_batch_fanout:
-            # Not gated on the final HT: the fan-out writes chunks, and a rerun
-            # after a merge must still be allowed.
+            # Not gated on the final HT: the fan-out never writes it, and a rerun
+            # after a merge must stay possible.
             _orchestrate_freq_fanout(args, aou_freq.path)
             return
         check_resource_existence(
@@ -1275,7 +1225,7 @@ def main(args):
             ht = select_final_dataset_fields(ht, dataset="merged")
             ht.write(merged.path, overwrite=args.overwrite)
     finally:
-        # Batch keeps its own logs; there is no local file to copy.
+        # On the batch backend the driver's log lives in Batch, not locally.
         if args.environment != "batch":
             hl.copy_log(
                 get_logging_path(
@@ -1424,9 +1374,9 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         choices=["rwb", "batch", "dataproc"],
         default=None,
         help=(
-            "Bucket the AN table and the chunk layout beside it are read from; pass"
-            " dataproc when compute_coverage ran with --results-environment dataproc."
-            " Default: the value of --environment."
+            "Bucket the AN table and the chunk layout beside it are read from; prod"
+            " compute_coverage writes to dataproc unless --results-environment"
+            " overrides. Default: the value of --environment."
         ),
     )
     env_group.add_argument(
@@ -1472,7 +1422,7 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
 
     fanout = parser.add_argument_group(
         "batch fan-out configuration",
-        "Relay sizing for --use-batch-fanout and --merge-freq-chunks.",
+        "Relay settings for --use-batch-fanout and --merge-freq-chunks.",
     )
     fanout.add_argument(
         "--wave-size",
@@ -1494,7 +1444,7 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
     fanout.add_argument(
         "--chunk-worker-cores",
         default=None,
-        help="Cores per chunk QoB worker; Hail Batch accepts 1, 2, 4 or 8 for JVM jobs.",
+        help="Cores per chunk QoB worker; accepts the same values as --worker-cores.",
     )
     fanout.add_argument(
         "--chunk-worker-memory", default=None, help="Memory class per chunk QoB worker."
@@ -1586,7 +1536,6 @@ if __name__ == "__main__":
     parser = get_script_argument_parser()
     args = parser.parse_args()
 
-    # The testing scopes all switch the run to test paths.
     args.test = (
         args.test
         or args.test_vds
