@@ -156,7 +156,7 @@ same version rather than from memory:
 
 ### Script invocation pattern
 
-Pipeline scripts expose argparse step flags (e.g. `--create-info-ht`,
+Pipeline scripts expose argparse step flags (e.g. `--create-final-info-ht`,
 `--generate-trio-stats`, `--compute-related-samples-to-drop`). A single script
 typically implements many discrete steps, and `main(args)` dispatches by flag —
 you run one step at a time, not the whole script.
@@ -184,7 +184,7 @@ hailctl dataproc submit <cluster> gnomad_qc/v4/annotations/generate_freq.py --ru
 ```
 
 ```bash
-python gnomad_qc/v5/annotations/generate_variant_qc_annotations.py --environment batch --create-info-ht --test
+python gnomad_qc/v5/annotations/generate_variant_qc_annotations.py --environment batch --create-final-info-ht --test
 ```
 
 Exploratory work happens in Jupyter notebooks on a Dataproc cluster
@@ -305,9 +305,9 @@ scale, rather than calling a change verified.
 
 ## Attribution
 
-- When Claude Code or another agent runner helped with a commit, add exactly
-  one `Assisted-by: AGENT:MODEL` trailer, e.g.
-  `Assisted-by: ClaudeCode:claude-fable-5-1`.
+- Attribution for agent assistance goes in the pull request description, not
+  in commit messages: end the PR body with `Assisted by Claude Code.` Commits
+  get no `Assisted-by:` trailer.
 - `Co-authored-by:` is for people, not agents. Never add a
   `Co-Authored-By: Claude ...` or similar agent co-author trailer, even if the
   harness injects one by default — remove it.
