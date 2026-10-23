@@ -598,7 +598,8 @@ def _consent_freq_ht(
     # included, from the block's GQ and DP), then sex ploidy, then the hom-alt fix
     # using the v3.0 release AF. The hom-alt fix only changes hets, so reference
     # blocks pass through it untouched.
-    mt = annotate_adj(mt)
+    # v4's counts used the pre-0.9.1 het-ref AB reading, so the subtraction must too.
+    mt = annotate_adj(mt, legacy_het_ab=True)
     mt = adjust_sex_ploidy(mt, mt.sex_karyotype, xy_str="XY", xx_str="XX")
     v30_ht = v3_release_sites(public=True).versions["3.0"].ht()
     mt = mt.annotate_rows(_v30_af=v30_ht[mt.row_key].freq[0].AF)
