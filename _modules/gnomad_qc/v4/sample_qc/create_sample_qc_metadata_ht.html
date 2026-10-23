@@ -1,0 +1,863 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>gnomad_qc.v4.sample_qc.create_sample_qc_metadata_ht &mdash; gnomad_qc master documentation</title>
+      <link rel="stylesheet" href="../../../../_static/pygments.css" type="text/css" />
+      <link rel="stylesheet" href="../../../../_static/css/theme.css" type="text/css" />
+      <link rel="stylesheet" href="../../../../_static/theme_overrides.css" type="text/css" />
+  <!--[if lt IE 9]>
+    <script src="../../../../_static/js/html5shiv.min.js"></script>
+  <![endif]-->
+  
+        <script src="../../../../_static/jquery.js"></script>
+        <script src="../../../../_static/_sphinx_javascript_frameworks_compat.js"></script>
+        <script data-url_root="../../../../" id="documentation_options" src="../../../../_static/documentation_options.js"></script>
+        <script src="../../../../_static/doctools.js"></script>
+        <script src="../../../../_static/sphinx_highlight.js"></script>
+        <script src="https://unpkg.com/mermaid@10.2.0/dist/mermaid.min.js"></script>
+        <script>mermaid.initialize({startOnLoad:true});</script>
+    <script src="../../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../../index.html" class="icon icon-home">
+            gnomad_qc
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../../api_reference/index.html">API Reference</a></li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/broadinstitute/gnomad_qc/tags">Change Log</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../../index.html">gnomad_qc</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../../index.html">Module code</a></li>
+      <li class="breadcrumb-item active">gnomad_qc.v4.sample_qc.create_sample_qc_metadata_ht</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for gnomad_qc.v4.sample_qc.create_sample_qc_metadata_ht</h1><div class="highlight"><pre>
+<span></span><span class="sd">&quot;&quot;&quot;Script to merge the output of all sample QC modules into a single Table.&quot;&quot;&quot;</span>
+
+<span class="kn">import</span> <span class="nn">argparse</span>
+<span class="kn">import</span> <span class="nn">json</span>
+<span class="kn">import</span> <span class="nn">logging</span>
+<span class="kn">from</span> <span class="nn">datetime</span> <span class="kn">import</span> <span class="n">datetime</span>
+<span class="kn">from</span> <span class="nn">functools</span> <span class="kn">import</span> <span class="n">reduce</span>
+<span class="kn">from</span> <span class="nn">typing</span> <span class="kn">import</span> <span class="n">Dict</span><span class="p">,</span> <span class="n">List</span><span class="p">,</span> <span class="n">Optional</span>
+
+<span class="kn">import</span> <span class="nn">hail</span> <span class="k">as</span> <span class="nn">hl</span>
+<span class="kn">from</span> <span class="nn">gnomad.assessment.validity_checks</span> <span class="kn">import</span> <span class="n">compare_row_counts</span>
+<span class="kn">from</span> <span class="nn">gnomad.sample_qc.relatedness</span> <span class="kn">import</span> <span class="p">(</span>
+    <span class="n">DUPLICATE_OR_TWINS</span><span class="p">,</span>
+    <span class="n">PARENT_CHILD</span><span class="p">,</span>
+    <span class="n">SECOND_DEGREE_RELATIVES</span><span class="p">,</span>
+    <span class="n">SIBLINGS</span><span class="p">,</span>
+    <span class="n">UNRELATED</span><span class="p">,</span>
+<span class="p">)</span>
+<span class="kn">from</span> <span class="nn">gnomad.utils.slack</span> <span class="kn">import</span> <span class="n">slack_notifications</span>
+<span class="kn">from</span> <span class="nn">hail.utils.misc</span> <span class="kn">import</span> <span class="n">new_temp_file</span>
+
+<span class="kn">from</span> <span class="nn">gnomad_qc.slack_creds</span> <span class="kn">import</span> <span class="n">slack_token</span>
+<span class="kn">from</span> <span class="nn">gnomad_qc.v3.create_release.create_hgdp_tgp_subset</span> <span class="kn">import</span> <span class="p">(</span>
+    <span class="n">convert_heterogeneous_dict_to_struct</span><span class="p">,</span>
+<span class="p">)</span>
+<span class="kn">from</span> <span class="nn">gnomad_qc.v4.resources.basics</span> <span class="kn">import</span> <span class="n">all_ukb_samples_to_remove</span><span class="p">,</span> <span class="n">get_gnomad_v4_vds</span>
+<span class="kn">from</span> <span class="nn">gnomad_qc.v4.resources.meta</span> <span class="kn">import</span> <span class="n">gatk_versions</span><span class="p">,</span> <span class="n">meta</span><span class="p">,</span> <span class="n">project_meta</span>
+<span class="kn">from</span> <span class="nn">gnomad_qc.v4.resources.sample_qc</span> <span class="kn">import</span> <span class="p">(</span>
+    <span class="n">contamination</span><span class="p">,</span>
+    <span class="n">finalized_outlier_filtering</span><span class="p">,</span>
+    <span class="n">get_pop_ht</span><span class="p">,</span>
+    <span class="n">get_sample_qc</span><span class="p">,</span>
+    <span class="n">get_sample_qc_field_def_json_path</span><span class="p">,</span>
+    <span class="n">hard_filtered_samples</span><span class="p">,</span>
+    <span class="n">hard_filtered_samples_no_sex</span><span class="p">,</span>
+    <span class="n">joint_qc_meta</span><span class="p">,</span>
+    <span class="n">platform</span><span class="p">,</span>
+    <span class="n">related_samples_to_drop</span><span class="p">,</span>
+    <span class="n">relatedness</span><span class="p">,</span>
+    <span class="n">sample_chr20_mean_dp</span><span class="p">,</span>
+    <span class="n">sample_qc_mt_callrate</span><span class="p">,</span>
+    <span class="n">sex</span><span class="p">,</span>
+<span class="p">)</span>
+<span class="kn">from</span> <span class="nn">gnomad_qc.v4.resources.variant_qc</span> <span class="kn">import</span> <span class="n">TRUTH_SAMPLES</span>
+
+<span class="n">logging</span><span class="o">.</span><span class="n">basicConfig</span><span class="p">(</span><span class="nb">format</span><span class="o">=</span><span class="s2">&quot;</span><span class="si">%(levelname)s</span><span class="s2"> (</span><span class="si">%(name)s</span><span class="s2"> </span><span class="si">%(lineno)s</span><span class="s2">): </span><span class="si">%(message)s</span><span class="s2">&quot;</span><span class="p">)</span>
+<span class="n">logger</span> <span class="o">=</span> <span class="n">logging</span><span class="o">.</span><span class="n">getLogger</span><span class="p">(</span><span class="s2">&quot;sample_metadata&quot;</span><span class="p">)</span>
+<span class="n">logger</span><span class="o">.</span><span class="n">setLevel</span><span class="p">(</span><span class="n">logging</span><span class="o">.</span><span class="n">INFO</span><span class="p">)</span>
+
+
+<span class="c1"># TODO: How to handle PCs in platform and population Tables? For example in the</span>
+<span class="c1">#  platform Table the number of PCs will be 9 because that is what was used, should we</span>
+<span class="c1">#  modify to have all 30 PCs, or add all 30 PCs to another annotation, or only keep the</span>
+<span class="c1">#  9 since that is all that was used? gnomad_production issue #899.</span>
+<span class="c1"># TODO: Add more nearest neighbor info? gnomad_production issue #900.</span>
+<span class="c1"># TODO: Add trio info? gnomad_production issue #901.</span>
+<span class="c1"># TODO: Should we have a joint HT that has v3 info? Including adding v3 relationships</span>
+<span class="c1">#  to the relationships set, or have different annotation for that. gnomad_production</span>
+<span class="c1">#  issue #902.</span>
+
+
+<div class="viewcode-block" id="get_project_meta"><a class="viewcode-back" href="../../../../api_reference/v4/sample_qc/create_sample_qc_metadata_ht.html#gnomad_qc.v4.sample_qc.create_sample_qc_metadata_ht.get_project_meta">[docs]</a><span class="k">def</span> <span class="nf">get_project_meta</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Load project-specific metadata Table and add GATK version.</span>
+
+<span class="sd">    :return: GATK version annotated project metadata Table.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">fixed_homalt_ver</span> <span class="o">=</span> <span class="n">hl</span><span class="o">.</span><span class="n">literal</span><span class="p">({</span><span class="s2">&quot;4.1.4.1&quot;</span><span class="p">,</span> <span class="s2">&quot;4.1.8.0&quot;</span><span class="p">})</span>
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">project_meta</span><span class="o">.</span><span class="n">ht</span><span class="p">()</span><span class="o">.</span><span class="n">select_globals</span><span class="p">()</span>
+
+    <span class="c1"># Add an annotation at the project_meta level indicating the sample belongs to UKB.</span>
+    <span class="n">project_meta_expr</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">project_meta</span><span class="o">.</span><span class="n">annotate</span><span class="p">(</span>
+        <span class="n">ukb_sample</span><span class="o">=</span><span class="n">ht</span><span class="o">.</span><span class="n">project_meta</span><span class="o">.</span><span class="n">project</span> <span class="o">==</span> <span class="s2">&quot;UKBB&quot;</span>
+    <span class="p">)</span>
+    <span class="c1"># Add GATK version to project metadata.</span>
+    <span class="n">project_meta_expr</span> <span class="o">=</span> <span class="n">project_meta_expr</span><span class="o">.</span><span class="n">annotate</span><span class="p">(</span>
+        <span class="n">gatk_version</span><span class="o">=</span><span class="n">hl</span><span class="o">.</span><span class="n">or_else</span><span class="p">(</span>
+            <span class="n">gatk_versions</span><span class="o">.</span><span class="n">ht</span><span class="p">()[</span><span class="n">ht</span><span class="o">.</span><span class="n">key</span><span class="p">]</span><span class="o">.</span><span class="n">gatk_version</span><span class="p">,</span>
+            <span class="n">hl</span><span class="o">.</span><span class="n">or_missing</span><span class="p">(</span><span class="n">project_meta_expr</span><span class="o">.</span><span class="n">ukb_sample</span><span class="p">,</span> <span class="s2">&quot;4.0.10.1&quot;</span><span class="p">),</span>
+        <span class="p">)</span>
+    <span class="p">)</span>
+    <span class="c1"># Add an annotation indicating whether the sample was processed with the fixed</span>
+    <span class="c1"># homalt model.</span>
+    <span class="n">project_meta_expr</span> <span class="o">=</span> <span class="n">project_meta_expr</span><span class="o">.</span><span class="n">annotate</span><span class="p">(</span>
+        <span class="n">fixed_homalt_model</span><span class="o">=</span><span class="n">fixed_homalt_ver</span><span class="o">.</span><span class="n">contains</span><span class="p">(</span><span class="n">project_meta_expr</span><span class="o">.</span><span class="n">gatk_version</span><span class="p">),</span>
+    <span class="p">)</span>
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">annotate</span><span class="p">(</span><span class="n">project_meta</span><span class="o">=</span><span class="n">project_meta_expr</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">ht</span></div>
+
+
+<div class="viewcode-block" id="get_sex_imputation_ht"><a class="viewcode-back" href="../../../../api_reference/v4/sample_qc/create_sample_qc_metadata_ht.html#gnomad_qc.v4.sample_qc.create_sample_qc_metadata_ht.get_sex_imputation_ht">[docs]</a><span class="k">def</span> <span class="nf">get_sex_imputation_ht</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Load and reformat sex imputation Table for annotation on the combined meta Table.</span>
+
+<span class="sd">    :return: Reformatted sex imputation Table.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">sex</span><span class="o">.</span><span class="n">ht</span><span class="p">()</span>
+    <span class="n">impute_stats</span> <span class="o">=</span> <span class="p">[</span><span class="s2">&quot;f_stat&quot;</span><span class="p">,</span> <span class="s2">&quot;n_called&quot;</span><span class="p">,</span> <span class="s2">&quot;expected_homs&quot;</span><span class="p">,</span> <span class="s2">&quot;observed_homs&quot;</span><span class="p">]</span>
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">transmute</span><span class="p">(</span><span class="n">impute_sex_stats</span><span class="o">=</span><span class="n">hl</span><span class="o">.</span><span class="n">struct</span><span class="p">(</span><span class="o">**</span><span class="p">{</span><span class="n">x</span><span class="p">:</span> <span class="n">ht</span><span class="p">[</span><span class="n">x</span><span class="p">]</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">impute_stats</span><span class="p">}))</span>
+
+    <span class="k">return</span> <span class="n">ht</span></div>
+
+
+<div class="viewcode-block" id="get_hard_filters_ht"><a class="viewcode-back" href="../../../../api_reference/v4/sample_qc/create_sample_qc_metadata_ht.html#gnomad_qc.v4.sample_qc.create_sample_qc_metadata_ht.get_hard_filters_ht">[docs]</a><span class="k">def</span> <span class="nf">get_hard_filters_ht</span><span class="p">(</span><span class="n">ht</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Load and reformat hard-filters Table for annotation on the combined meta Table.</span>
+
+<span class="sd">    :param: Input HT to add hard-filter annotations to.</span>
+<span class="sd">    :return: Reformatted hard-filters Table.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="c1"># Get hard filtered samples before sex imputation.</span>
+    <span class="n">hf_no_sex_s</span> <span class="o">=</span> <span class="n">hl</span><span class="o">.</span><span class="n">literal</span><span class="p">(</span><span class="n">hard_filtered_samples_no_sex</span><span class="o">.</span><span class="n">ht</span><span class="p">()</span><span class="o">.</span><span class="n">s</span><span class="o">.</span><span class="n">collect</span><span class="p">())</span>
+
+    <span class="n">hf_ht</span> <span class="o">=</span> <span class="n">hard_filtered_samples</span><span class="o">.</span><span class="n">ht</span><span class="p">()</span>
+    <span class="n">hf_ht</span> <span class="o">=</span> <span class="n">hf_ht</span><span class="o">.</span><span class="n">annotate</span><span class="p">(</span><span class="n">hf_no_sex</span><span class="o">=</span><span class="n">hf_no_sex_s</span><span class="o">.</span><span class="n">contains</span><span class="p">(</span><span class="n">hf_ht</span><span class="o">.</span><span class="n">s</span><span class="p">))</span>
+
+    <span class="n">hf_explode_ht</span> <span class="o">=</span> <span class="n">hf_ht</span><span class="o">.</span><span class="n">explode</span><span class="p">(</span><span class="n">hf_ht</span><span class="o">.</span><span class="n">hard_filters</span><span class="p">)</span>
+    <span class="n">filters</span> <span class="o">=</span> <span class="n">hf_explode_ht</span><span class="o">.</span><span class="n">aggregate</span><span class="p">(</span>
+        <span class="n">hl</span><span class="o">.</span><span class="n">agg</span><span class="o">.</span><span class="n">group_by</span><span class="p">(</span>
+            <span class="n">hl</span><span class="o">.</span><span class="n">if_else</span><span class="p">(</span><span class="n">hf_explode_ht</span><span class="o">.</span><span class="n">hf_no_sex</span><span class="p">,</span> <span class="s2">&quot;hf_no_sex&quot;</span><span class="p">,</span> <span class="s2">&quot;hf_sex&quot;</span><span class="p">),</span>
+            <span class="n">hl</span><span class="o">.</span><span class="n">agg</span><span class="o">.</span><span class="n">collect_as_set</span><span class="p">(</span><span class="n">hf_explode_ht</span><span class="o">.</span><span class="n">hard_filters</span><span class="p">),</span>
+        <span class="p">)</span>
+    <span class="p">)</span>
+
+    <span class="n">hf</span> <span class="o">=</span> <span class="n">hf_ht</span><span class="p">[</span><span class="n">ht</span><span class="o">.</span><span class="n">key</span><span class="p">]</span>
+    <span class="n">hf_expr</span> <span class="o">=</span> <span class="n">hf</span><span class="o">.</span><span class="n">hard_filters</span>
+
+    <span class="c1"># If the sample doesn&#39;t have chimera data, it can&#39;t be filtered based on chimeras,</span>
+    <span class="c1"># so it should have a missing value instead of False.</span>
+    <span class="n">no_chimera_expr</span> <span class="o">=</span> <span class="n">hl</span><span class="o">.</span><span class="n">is_missing</span><span class="p">(</span><span class="n">project_meta</span><span class="o">.</span><span class="n">ht</span><span class="p">()[</span><span class="n">ht</span><span class="o">.</span><span class="n">key</span><span class="p">]</span><span class="o">.</span><span class="n">bam_metrics</span><span class="o">.</span><span class="n">chimeras_rate</span><span class="p">)</span>
+    <span class="n">ann_expr</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="s2">&quot;chimera&quot;</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">if_else</span><span class="p">(</span>
+            <span class="n">no_chimera_expr</span><span class="p">,</span>
+            <span class="n">hl</span><span class="o">.</span><span class="n">missing</span><span class="p">(</span><span class="n">hl</span><span class="o">.</span><span class="n">tbool</span><span class="p">),</span>
+            <span class="n">hl</span><span class="o">.</span><span class="n">or_else</span><span class="p">(</span><span class="n">hf_expr</span><span class="o">.</span><span class="n">contains</span><span class="p">(</span><span class="s2">&quot;chimera&quot;</span><span class="p">),</span> <span class="kc">False</span><span class="p">),</span>
+        <span class="p">)</span>
+    <span class="p">}</span>
+    <span class="k">for</span> <span class="n">f</span> <span class="ow">in</span> <span class="n">filters</span><span class="p">[</span><span class="s2">&quot;hf_no_sex&quot;</span><span class="p">]</span> <span class="o">-</span> <span class="p">{</span><span class="s2">&quot;chimera&quot;</span><span class="p">}:</span>
+        <span class="n">ann_expr</span><span class="p">[</span><span class="n">f</span><span class="p">]</span> <span class="o">=</span> <span class="n">hl</span><span class="o">.</span><span class="n">or_else</span><span class="p">(</span><span class="n">hf_expr</span><span class="o">.</span><span class="n">contains</span><span class="p">(</span><span class="n">f</span><span class="p">),</span> <span class="kc">False</span><span class="p">)</span>
+
+    <span class="c1"># If the sample was filtered before sex imputation, it should have a missing value</span>
+    <span class="c1"># for the sex imputation filters.</span>
+    <span class="k">for</span> <span class="n">f</span> <span class="ow">in</span> <span class="n">filters</span><span class="p">[</span><span class="s2">&quot;hf_sex&quot;</span><span class="p">]:</span>
+        <span class="n">ann_expr</span><span class="p">[</span><span class="n">f</span><span class="p">]</span> <span class="o">=</span> <span class="n">hl</span><span class="o">.</span><span class="n">if_else</span><span class="p">(</span>
+            <span class="n">hf</span><span class="o">.</span><span class="n">hf_no_sex</span><span class="p">,</span>
+            <span class="n">hl</span><span class="o">.</span><span class="n">missing</span><span class="p">(</span><span class="n">hl</span><span class="o">.</span><span class="n">tbool</span><span class="p">),</span>
+            <span class="n">hl</span><span class="o">.</span><span class="n">or_else</span><span class="p">(</span><span class="n">hf_expr</span><span class="o">.</span><span class="n">contains</span><span class="p">(</span><span class="n">f</span><span class="p">),</span> <span class="kc">False</span><span class="p">),</span>
+            <span class="n">missing_false</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+        <span class="p">)</span>
+
+    <span class="n">ann_expr</span><span class="p">[</span><span class="s2">&quot;hard_filters&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">hl</span><span class="o">.</span><span class="n">or_else</span><span class="p">(</span>
+        <span class="n">hf_expr</span><span class="p">,</span> <span class="n">hl</span><span class="o">.</span><span class="n">empty_set</span><span class="p">(</span><span class="n">hf_expr</span><span class="o">.</span><span class="n">dtype</span><span class="o">.</span><span class="n">element_type</span><span class="p">)</span>
+    <span class="p">)</span>
+    <span class="n">ann_expr</span><span class="p">[</span><span class="s2">&quot;hard_filtered&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">hl</span><span class="o">.</span><span class="n">or_else</span><span class="p">(</span><span class="n">hl</span><span class="o">.</span><span class="n">len</span><span class="p">(</span><span class="n">hf_expr</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">,</span> <span class="kc">False</span><span class="p">)</span>
+
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">annotate</span><span class="p">(</span><span class="o">**</span><span class="n">ann_expr</span><span class="p">)</span>
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">annotate_globals</span><span class="p">(</span><span class="o">**</span><span class="n">hf_ht</span><span class="o">.</span><span class="n">index_globals</span><span class="p">())</span>
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">checkpoint</span><span class="p">(</span><span class="n">new_temp_file</span><span class="p">(</span><span class="s2">&quot;hard_filters&quot;</span><span class="p">,</span> <span class="n">extension</span><span class="o">=</span><span class="s2">&quot;ht&quot;</span><span class="p">),</span> <span class="n">overwrite</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">ht</span></div>
+
+
+<div class="viewcode-block" id="get_relatedness_dict_ht"><a class="viewcode-back" href="../../../../api_reference/v4/sample_qc/create_sample_qc_metadata_ht.html#gnomad_qc.v4.sample_qc.create_sample_qc_metadata_ht.get_relatedness_dict_ht">[docs]</a><span class="k">def</span> <span class="nf">get_relatedness_dict_ht</span><span class="p">(</span>
+    <span class="n">ht</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">,</span>
+    <span class="n">filter_exprs</span><span class="p">:</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">hl</span><span class="o">.</span><span class="n">expr</span><span class="o">.</span><span class="n">BooleanExpression</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Parse relatedness Table to get every relationship (except UNRELATED) per sample.</span>
+
+<span class="sd">    Return Table keyed by sample with all sample relationships in dictionary where the</span>
+<span class="sd">    key is the relationship and the value is a set of all samples with that</span>
+<span class="sd">    relationship to the given sample.</span>
+
+<span class="sd">    :param ht: Table with inferred relationship information. Keyed by sample pair (i, j).</span>
+<span class="sd">    :param filter_exprs: Optional dictionary of filter expressions to apply to `ht`</span>
+<span class="sd">        before creating the &#39;relationships&#39; annotations. Keyed by the postfix to add to</span>
+<span class="sd">        &#39;relationships&#39; as the annotation label, and with boolean expressions as the</span>
+<span class="sd">        values. By default, no additional filtering is applied, and a single</span>
+<span class="sd">        &#39;relationships&#39; annotation is created.</span>
+<span class="sd">    :return: Table keyed by sample (s) with all relationships annotated as a dict.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="n">filter_exprs</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">filter_exprs</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;&quot;</span><span class="p">:</span> <span class="kc">True</span><span class="p">}</span>
+
+    <span class="c1"># Add annotations for the relationship of each item in filter_expr.</span>
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">annotate</span><span class="p">(</span>
+        <span class="o">**</span><span class="p">{</span>
+            <span class="sa">f</span><span class="s2">&quot;_relationship</span><span class="si">{</span><span class="n">label</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">or_missing</span><span class="p">(</span><span class="n">expr</span><span class="p">,</span> <span class="n">ht</span><span class="o">.</span><span class="n">relationship</span><span class="p">)</span>
+            <span class="k">for</span> <span class="n">label</span><span class="p">,</span> <span class="n">expr</span> <span class="ow">in</span> <span class="n">filter_exprs</span><span class="o">.</span><span class="n">items</span><span class="p">()</span>
+        <span class="p">}</span>
+    <span class="p">)</span>
+    <span class="n">relationship_labels</span> <span class="o">=</span> <span class="p">[</span><span class="sa">f</span><span class="s2">&quot;_relationship</span><span class="si">{</span><span class="n">label</span><span class="si">}</span><span class="s2">&quot;</span> <span class="k">for</span> <span class="n">label</span> <span class="ow">in</span> <span class="n">filter_exprs</span><span class="p">]</span>
+
+    <span class="c1"># Filter to only pairs that are related (second-degree or closer).</span>
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">ht</span><span class="o">.</span><span class="n">relationship</span> <span class="o">!=</span> <span class="n">UNRELATED</span><span class="p">)</span>
+
+    <span class="c1"># Build a Table of relationships duplicating the info for each pair. Pair (i, j)</span>
+    <span class="c1"># will have two rows, one for (s: i.s, pair: j.s) and one for (s: j.s, pair: i.s).</span>
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">select</span><span class="p">(</span><span class="o">*</span><span class="n">relationship_labels</span><span class="p">,</span> <span class="n">s</span><span class="o">=</span><span class="n">ht</span><span class="o">.</span><span class="n">i</span><span class="o">.</span><span class="n">s</span><span class="p">,</span> <span class="n">pair</span><span class="o">=</span><span class="n">ht</span><span class="o">.</span><span class="n">j</span><span class="o">.</span><span class="n">s</span><span class="p">)</span><span class="o">.</span><span class="n">union</span><span class="p">(</span>
+        <span class="n">ht</span><span class="o">.</span><span class="n">select</span><span class="p">(</span><span class="o">*</span><span class="n">relationship_labels</span><span class="p">,</span> <span class="n">s</span><span class="o">=</span><span class="n">ht</span><span class="o">.</span><span class="n">j</span><span class="o">.</span><span class="n">s</span><span class="p">,</span> <span class="n">pair</span><span class="o">=</span><span class="n">ht</span><span class="o">.</span><span class="n">i</span><span class="o">.</span><span class="n">s</span><span class="p">)</span>
+    <span class="p">)</span>
+
+    <span class="c1"># Group the Table by the sample name (s) and aggregate to get a relationships</span>
+    <span class="c1"># dictionary per sample. The dictionary is built by grouping the relationship</span>
+    <span class="c1"># annotation (becomes the key) and collecting the set of all samples (value) with</span>
+    <span class="c1"># each relationship. Each item in filter_expr has its own annotation.</span>
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">group_by</span><span class="p">(</span><span class="n">ht</span><span class="o">.</span><span class="n">s</span><span class="p">)</span><span class="o">.</span><span class="n">aggregate</span><span class="p">(</span>
+        <span class="o">**</span><span class="p">{</span>
+            <span class="sa">f</span><span class="s2">&quot;relationships</span><span class="si">{</span><span class="n">label</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">agg</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span>
+                <span class="n">hl</span><span class="o">.</span><span class="n">is_defined</span><span class="p">(</span><span class="n">ht</span><span class="p">[</span><span class="sa">f</span><span class="s2">&quot;_relationship</span><span class="si">{</span><span class="n">label</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">]),</span>
+                <span class="n">hl</span><span class="o">.</span><span class="n">agg</span><span class="o">.</span><span class="n">group_by</span><span class="p">(</span>
+                    <span class="n">ht</span><span class="p">[</span><span class="sa">f</span><span class="s2">&quot;_relationship</span><span class="si">{</span><span class="n">label</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">],</span> <span class="n">hl</span><span class="o">.</span><span class="n">agg</span><span class="o">.</span><span class="n">collect_as_set</span><span class="p">(</span><span class="n">ht</span><span class="o">.</span><span class="n">pair</span><span class="p">)</span>
+                <span class="p">),</span>
+            <span class="p">)</span>
+            <span class="k">for</span> <span class="n">label</span> <span class="ow">in</span> <span class="n">filter_exprs</span>
+        <span class="p">}</span>
+    <span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">ht</span></div>
+
+
+<div class="viewcode-block" id="get_relationship_filter_expr"><a class="viewcode-back" href="../../../../api_reference/v4/sample_qc/create_sample_qc_metadata_ht.html#gnomad_qc.v4.sample_qc.create_sample_qc_metadata_ht.get_relationship_filter_expr">[docs]</a><span class="k">def</span> <span class="nf">get_relationship_filter_expr</span><span class="p">(</span>
+    <span class="n">hard_filtered_expr</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">expr</span><span class="o">.</span><span class="n">BooleanExpression</span><span class="p">,</span>
+    <span class="n">related_drop_expr</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">expr</span><span class="o">.</span><span class="n">BooleanExpression</span><span class="p">,</span>
+    <span class="n">relationship_set</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">expr</span><span class="o">.</span><span class="n">SetExpression</span><span class="p">,</span>
+    <span class="n">relationship</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">hl</span><span class="o">.</span><span class="n">expr</span><span class="o">.</span><span class="n">builders</span><span class="o">.</span><span class="n">CaseBuilder</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Return case statement to populate relatedness filters in sample_filters struct.</span>
+
+<span class="sd">    :param hard_filtered_expr: Boolean for whether sample was hard filtered.</span>
+<span class="sd">    :param related_drop_expr: Boolean for whether sample was filtered due to</span>
+<span class="sd">        relatedness.</span>
+<span class="sd">    :param relationship_set: Set containing all possible relationship strings for</span>
+<span class="sd">        sample.</span>
+<span class="sd">    :param relationship: Relationship to check for. One of DUPLICATE_OR_TWINS,</span>
+<span class="sd">        PARENT_CHILD, SIBLINGS, or SECOND_DEGREE_RELATIVES.</span>
+<span class="sd">    :return: Case statement used to populate sample_filters related filter field.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">return</span> <span class="p">(</span>
+        <span class="n">hl</span><span class="o">.</span><span class="n">case</span><span class="p">()</span>
+        <span class="o">.</span><span class="n">when</span><span class="p">(</span><span class="n">hard_filtered_expr</span><span class="p">,</span> <span class="n">hl</span><span class="o">.</span><span class="n">missing</span><span class="p">(</span><span class="n">hl</span><span class="o">.</span><span class="n">tbool</span><span class="p">))</span>
+        <span class="o">.</span><span class="n">when</span><span class="p">(</span><span class="n">relationship</span> <span class="o">==</span> <span class="n">SECOND_DEGREE_RELATIVES</span><span class="p">,</span> <span class="n">related_drop_expr</span><span class="p">)</span>
+        <span class="o">.</span><span class="n">when</span><span class="p">(</span>
+            <span class="n">hl</span><span class="o">.</span><span class="n">is_defined</span><span class="p">(</span><span class="n">relationship_set</span><span class="p">)</span> <span class="o">&amp;</span> <span class="n">related_drop_expr</span><span class="p">,</span>
+            <span class="n">relationship_set</span><span class="o">.</span><span class="n">contains</span><span class="p">(</span><span class="n">relationship</span><span class="p">),</span>
+        <span class="p">)</span>
+        <span class="o">.</span><span class="n">default</span><span class="p">(</span><span class="kc">False</span><span class="p">)</span>
+    <span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="annotate_relationships"><a class="viewcode-back" href="../../../../api_reference/v4/sample_qc/create_sample_qc_metadata_ht.html#gnomad_qc.v4.sample_qc.create_sample_qc_metadata_ht.annotate_relationships">[docs]</a><span class="k">def</span> <span class="nf">annotate_relationships</span><span class="p">(</span><span class="n">ht</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">,</span> <span class="n">outlier_filter_ht</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Get relatedness relationship annotations for the combined meta Table.</span>
+
+<span class="sd">    Table has the following annotations:</span>
+<span class="sd">        - relationships: A dictionary of all relationships (except UNRELATED) the</span>
+<span class="sd">          sample has with other samples in the dataset. The key is the relationship</span>
+<span class="sd">          and the value is a set of all samples with that relationship to the given</span>
+<span class="sd">          sample.</span>
+<span class="sd">        - gnomad_v3_duplicate: Sample is in the gnomAD v3.1 sample set that passed hard</span>
+<span class="sd">          filtering.</span>
+<span class="sd">        - gnomad_v3_release_duplicate: Sample is in the gnomAD v3.1 release.</span>
+
+<span class="sd">    :param ht: Sample QC filter Table to add relatedness filter annotations to.</span>
+<span class="sd">    :param outlier_filter_ht: Table with &#39;outlier_filtered&#39; annotation indicating if a</span>
+<span class="sd">        sample was filtered during outlier detection on sample QC metrics.</span>
+<span class="sd">    :return: Table with related filters added and Table with relationship and gnomad v3</span>
+<span class="sd">        overlap information.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">relatedness_inference_parameters</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">index_globals</span><span class="p">()</span>
+
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Creating gnomAD v3/v4 overlap annotation Table...&quot;</span><span class="p">)</span>
+    <span class="n">v3_duplicate_ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">ht</span><span class="o">.</span><span class="n">gnomad_v3_duplicate</span><span class="p">)</span>
+    <span class="n">v3_duplicate_ht</span> <span class="o">=</span> <span class="n">v3_duplicate_ht</span><span class="o">.</span><span class="n">key_by</span><span class="p">(</span>
+        <span class="n">s</span><span class="o">=</span><span class="n">hl</span><span class="o">.</span><span class="n">if_else</span><span class="p">(</span>
+            <span class="n">v3_duplicate_ht</span><span class="o">.</span><span class="n">i</span><span class="o">.</span><span class="n">data_type</span> <span class="o">==</span> <span class="s2">&quot;exomes&quot;</span><span class="p">,</span>
+            <span class="n">v3_duplicate_ht</span><span class="o">.</span><span class="n">i</span><span class="o">.</span><span class="n">s</span><span class="p">,</span>
+            <span class="n">v3_duplicate_ht</span><span class="o">.</span><span class="n">j</span><span class="o">.</span><span class="n">s</span><span class="p">,</span>
+        <span class="p">)</span>
+    <span class="p">)</span>
+
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Aggregating sample relationship information...&quot;</span><span class="p">)</span>
+    <span class="c1"># Filter to only exome-exome pairs passing hard filtering (all pairs in the</span>
+    <span class="c1"># relatedness Table pass hard filtering) for &#39;relationships&#39; annotation and to only</span>
+    <span class="c1"># exome-exome pairs passing both hard-filtering and outlier filtering for</span>
+    <span class="c1"># &#39;relationships_high_quality&#39; annotation.</span>
+    <span class="n">exome_filter_expr</span> <span class="o">=</span> <span class="p">(</span><span class="n">ht</span><span class="o">.</span><span class="n">i</span><span class="o">.</span><span class="n">data_type</span> <span class="o">==</span> <span class="s2">&quot;exomes&quot;</span><span class="p">)</span> <span class="o">&amp;</span> <span class="p">(</span><span class="n">ht</span><span class="o">.</span><span class="n">j</span><span class="o">.</span><span class="n">data_type</span> <span class="o">==</span> <span class="s2">&quot;exomes&quot;</span><span class="p">)</span>
+    <span class="n">filter_expr</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="s2">&quot;&quot;</span><span class="p">:</span> <span class="n">exome_filter_expr</span><span class="p">,</span>
+        <span class="s2">&quot;_high_quality&quot;</span><span class="p">:</span> <span class="p">(</span>
+            <span class="n">exome_filter_expr</span>
+            <span class="o">&amp;</span> <span class="o">~</span><span class="n">outlier_filter_ht</span><span class="p">[</span><span class="n">ht</span><span class="o">.</span><span class="n">i</span><span class="o">.</span><span class="n">s</span><span class="p">]</span><span class="o">.</span><span class="n">outlier_filtered</span>
+            <span class="o">&amp;</span> <span class="o">~</span><span class="n">outlier_filter_ht</span><span class="p">[</span><span class="n">ht</span><span class="o">.</span><span class="n">j</span><span class="o">.</span><span class="n">s</span><span class="p">]</span><span class="o">.</span><span class="n">outlier_filtered</span>
+        <span class="p">),</span>
+    <span class="p">}</span>
+    <span class="n">rel_dict_ht</span> <span class="o">=</span> <span class="n">get_relatedness_dict_ht</span><span class="p">(</span><span class="n">ht</span><span class="p">,</span> <span class="n">filter_expr</span><span class="p">)</span>
+
+    <span class="c1"># Use the outlier HT samples as a base HT to annotate the relatedness info on</span>
+    <span class="c1"># because it includes all samples that pass hard filters, which is what was used</span>
+    <span class="c1"># in relatedness inference. rel_dict_ht only includes samples with relatedness info,</span>
+    <span class="c1"># and we want to make sure all samples that went through relatedness inference have</span>
+    <span class="c1"># empty relationship dictionaries, and are False for v3 duplicate bools.</span>
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">outlier_filter_ht</span><span class="o">.</span><span class="n">select</span><span class="p">()</span>
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">annotate</span><span class="p">(</span>
+        <span class="o">**</span><span class="p">{</span>
+            <span class="n">r</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">bind</span><span class="p">(</span>
+                <span class="k">lambda</span> <span class="n">x</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">or_else</span><span class="p">(</span>
+                    <span class="n">x</span><span class="p">,</span> <span class="n">hl</span><span class="o">.</span><span class="n">empty_dict</span><span class="p">(</span><span class="n">x</span><span class="o">.</span><span class="n">dtype</span><span class="o">.</span><span class="n">key_type</span><span class="p">,</span> <span class="n">x</span><span class="o">.</span><span class="n">dtype</span><span class="o">.</span><span class="n">value_type</span><span class="p">)</span>
+                <span class="p">),</span>
+                <span class="n">rel_dict_ht</span><span class="p">[</span><span class="n">ht</span><span class="o">.</span><span class="n">key</span><span class="p">][</span><span class="n">r</span><span class="p">],</span>
+            <span class="p">)</span>
+            <span class="k">for</span> <span class="n">r</span> <span class="ow">in</span> <span class="n">rel_dict_ht</span><span class="o">.</span><span class="n">row_value</span>
+        <span class="p">},</span>
+        <span class="o">**</span><span class="p">{</span>
+            <span class="n">r</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">or_else</span><span class="p">(</span><span class="n">v3_duplicate_ht</span><span class="p">[</span><span class="n">ht</span><span class="o">.</span><span class="n">key</span><span class="p">][</span><span class="n">r</span><span class="p">],</span> <span class="kc">False</span><span class="p">)</span>
+            <span class="k">for</span> <span class="n">r</span> <span class="ow">in</span> <span class="p">[</span><span class="s2">&quot;gnomad_v3_duplicate&quot;</span><span class="p">,</span> <span class="s2">&quot;gnomad_v3_release_duplicate&quot;</span><span class="p">]</span>
+        <span class="p">},</span>
+    <span class="p">)</span>
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">select_globals</span><span class="p">(</span><span class="o">**</span><span class="n">relatedness_inference_parameters</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">ht</span></div>
+
+
+<div class="viewcode-block" id="annotate_relatedness_filters"><a class="viewcode-back" href="../../../../api_reference/v4/sample_qc/create_sample_qc_metadata_ht.html#gnomad_qc.v4.sample_qc.create_sample_qc_metadata_ht.annotate_relatedness_filters">[docs]</a><span class="k">def</span> <span class="nf">annotate_relatedness_filters</span><span class="p">(</span>
+    <span class="n">ht</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">,</span>
+    <span class="n">relationship_ht</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">,</span>
+    <span class="n">hard_filtered_expr</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">expr</span><span class="o">.</span><span class="n">BooleanExpression</span><span class="p">,</span>
+    <span class="n">outlier_filtered_expr</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">expr</span><span class="o">.</span><span class="n">BooleanExpression</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Get relatedness filtering Table for the combined meta Table.</span>
+
+<span class="sd">    Add the following related filter boolean annotations to the input `ht` under a</span>
+<span class="sd">    `relatedness_filters` struct:</span>
+
+<span class="sd">        - related: Whether the sample was filtered for second-degree (or closer)</span>
+<span class="sd">          relatedness in the ancestry inference PCA.</span>
+<span class="sd">        - duplicate_or_twin: Whether the filtered sample has a duplicate or twin among</span>
+<span class="sd">          all samples that are not hard-filtered.</span>
+<span class="sd">        - parent_child: Whether the filtered sample has a parent or child among all</span>
+<span class="sd">          samples that are not hard-filtered.</span>
+<span class="sd">        - sibling: Whether the filtered sample has a sibling among all samples that are</span>
+<span class="sd">          not hard-filtered.</span>
+<span class="sd">        - Any sample in `ht` that is hard-filtered will have a missing value for these</span>
+<span class="sd">          annotations.</span>
+
+<span class="sd">    These related filter annotations are also provided for release filtered samples</span>
+<span class="sd">    added to the input `ht` under a `release_relatedness_filters` struct:</span>
+
+<span class="sd">        - related: Whether the release filtered sample was filtered for</span>
+<span class="sd">          second-degree (or closer) relatedness in the final release.</span>
+<span class="sd">        - duplicate_or_twin: Whether the release filtered sample has a</span>
+<span class="sd">          duplicate or twin among all samples that are not hard-filtered or</span>
+<span class="sd">          outlier-filtered.</span>
+<span class="sd">        - parent_child: Whether the release filtered sample has a parent or</span>
+<span class="sd">          child among all samples that are not hard-filtered or outlier-filtered.</span>
+<span class="sd">        - sibling: Whether the release filtered sample has a sibling among all</span>
+<span class="sd">          samples that are not hard-filtered or outlier-filtered.</span>
+<span class="sd">        - Any sample in `ht` that is hard-filtered or outlier-filtered will have a</span>
+<span class="sd">          missing value for these annotations.</span>
+
+<span class="sd">    :param ht: Sample QC filter Table to add relatedness filter annotations to.</span>
+<span class="sd">    :param relationship_ht: Table with relationships annotations.</span>
+<span class="sd">    :param hard_filtered_expr: Boolean Expression indicating whether the sample was</span>
+<span class="sd">        hard filtered.</span>
+<span class="sd">    :param outlier_filtered_expr: Boolean Expression indicating whether the sample was</span>
+<span class="sd">        outlier filtered.</span>
+<span class="sd">    :return: Table with related filters added and Table with relationship and gnomad v3</span>
+<span class="sd">        overlap information.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">rel_dict</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="s2">&quot;related&quot;</span><span class="p">:</span> <span class="n">SECOND_DEGREE_RELATIVES</span><span class="p">,</span>
+        <span class="s2">&quot;duplicate_or_twin&quot;</span><span class="p">:</span> <span class="n">DUPLICATE_OR_TWINS</span><span class="p">,</span>
+        <span class="s2">&quot;parent_child&quot;</span><span class="p">:</span> <span class="n">PARENT_CHILD</span><span class="p">,</span>
+        <span class="s2">&quot;sibling&quot;</span><span class="p">:</span> <span class="n">SIBLINGS</span><span class="p">,</span>
+    <span class="p">}</span>
+    <span class="n">relationships</span> <span class="o">=</span> <span class="n">relationship_ht</span><span class="p">[</span><span class="n">ht</span><span class="o">.</span><span class="n">key</span><span class="p">]</span>
+    <span class="n">relatedness_filters_ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">annotate</span><span class="p">(</span>
+        <span class="n">relatedness_filters</span><span class="o">=</span><span class="n">hl</span><span class="o">.</span><span class="n">struct</span><span class="p">(</span>
+            <span class="o">**</span><span class="p">{</span>
+                <span class="n">rel</span><span class="p">:</span> <span class="n">get_relationship_filter_expr</span><span class="p">(</span>
+                    <span class="n">hard_filtered_expr</span><span class="p">,</span>
+                    <span class="n">hl</span><span class="o">.</span><span class="n">is_defined</span><span class="p">(</span><span class="n">related_samples_to_drop</span><span class="p">(</span><span class="n">release</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span><span class="o">.</span><span class="n">ht</span><span class="p">()[</span><span class="n">ht</span><span class="o">.</span><span class="n">key</span><span class="p">]),</span>
+                    <span class="n">relationships</span><span class="o">.</span><span class="n">relationships</span><span class="p">,</span>
+                    <span class="n">rel_val</span><span class="p">,</span>
+                <span class="p">)</span>
+                <span class="k">for</span> <span class="n">rel</span><span class="p">,</span> <span class="n">rel_val</span> <span class="ow">in</span> <span class="n">rel_dict</span><span class="o">.</span><span class="n">items</span><span class="p">()</span>
+            <span class="p">}</span>
+        <span class="p">),</span>
+        <span class="n">release_relatedness_filters</span><span class="o">=</span><span class="n">hl</span><span class="o">.</span><span class="n">struct</span><span class="p">(</span>
+            <span class="o">**</span><span class="p">{</span>
+                <span class="n">rel</span><span class="p">:</span> <span class="n">get_relationship_filter_expr</span><span class="p">(</span>
+                    <span class="n">hard_filtered_expr</span> <span class="o">|</span> <span class="n">outlier_filtered_expr</span><span class="p">,</span>
+                    <span class="n">hl</span><span class="o">.</span><span class="n">is_defined</span><span class="p">(</span><span class="n">related_samples_to_drop</span><span class="p">(</span><span class="n">release</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span><span class="o">.</span><span class="n">ht</span><span class="p">()[</span><span class="n">ht</span><span class="o">.</span><span class="n">key</span><span class="p">]),</span>
+                    <span class="n">relationships</span><span class="o">.</span><span class="n">relationships_high_quality</span><span class="p">,</span>
+                    <span class="n">rel_val</span><span class="p">,</span>
+                <span class="p">)</span>
+                <span class="k">for</span> <span class="n">rel</span><span class="p">,</span> <span class="n">rel_val</span> <span class="ow">in</span> <span class="n">rel_dict</span><span class="o">.</span><span class="n">items</span><span class="p">()</span>
+            <span class="p">}</span>
+        <span class="p">),</span>
+    <span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">relatedness_filters_ht</span></div>
+
+
+<div class="viewcode-block" id="add_annotations"><a class="viewcode-back" href="../../../../api_reference/v4/sample_qc/create_sample_qc_metadata_ht.html#gnomad_qc.v4.sample_qc.create_sample_qc_metadata_ht.add_annotations">[docs]</a><span class="k">def</span> <span class="nf">add_annotations</span><span class="p">(</span>
+    <span class="n">base_ht</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">,</span>
+    <span class="n">ann_ht</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">,</span>
+    <span class="n">ann_label</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="n">ann_top_level</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+    <span class="n">global_top_level</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+    <span class="n">base_ht_missing</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">]]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">ann_ht_missing</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">]]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">sample_count_match</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">:</span>
+<span class="w">    </span><span class="sa">r</span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Annotate `base_ht` with contents of `ann_ht` and optionally check that sample counts match.</span>
+
+<span class="sd">    :param base_ht: Table to annotate.</span>
+<span class="sd">    :param ann_ht: Table with annotations to add to `base_ht`.</span>
+<span class="sd">    :param ann_label: Label to use for Struct annotation of `ann_ht` on `base_ht` if</span>
+<span class="sd">        `ann_top_level` is True. Also used and for logging message describing</span>
+<span class="sd">        annotations being added.</span>
+<span class="sd">    :param ann_top_level: Whether to add all annotations on `ann_ht` to the top level</span>
+<span class="sd">        of `base_ht` instead of grouping them under a new annotation, `ann_label`.</span>
+<span class="sd">    :param global_top_level: Whether to add all global annotations on `ann_ht` to the</span>
+<span class="sd">        top level instead of grouping them under a new annotation,</span>
+<span class="sd">        &quot;`ann_label`\_parameters&quot;.</span>
+<span class="sd">    :param base_ht_missing: Optional list of approved samples missing from `base_ht`,</span>
+<span class="sd">        but present in `ann_ht`.</span>
+<span class="sd">    :param ann_ht_missing: Optional list of approved samples missing from `ann_ht`, but</span>
+<span class="sd">        present in `base_ht`.</span>
+<span class="sd">    :param sample_count_match: Check whether the sample counts match in the two input</span>
+<span class="sd">        tables. Default is True.</span>
+<span class="sd">    :return: Table with additional annotations.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;</span><span class="se">\n\n</span><span class="s2">Annotating with the </span><span class="si">%s</span><span class="s2"> Table.&quot;</span><span class="p">,</span> <span class="n">ann_label</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">_sample_check</span><span class="p">(</span>
+        <span class="n">ht1</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">,</span>
+        <span class="n">ht2</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">,</span>
+        <span class="n">approved_missing</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">],</span>
+        <span class="n">ht1_label</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+        <span class="n">ht2_label</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Report samples found in `ht1` but not in `ht2` or the `approved_missing` list.</span>
+
+<span class="sd">        :param ht1: Input Table.</span>
+<span class="sd">        :param ht2: Input Table to compare to samples in `ht1`.</span>
+<span class="sd">        :param approved_missing: List of approved samples that are missing from `ht2`.</span>
+<span class="sd">        :param ht1_label: Label to use as reference to `ht1` in logging message.</span>
+<span class="sd">        :param ht2_label: Label to use as reference to `ht2` in logging message.</span>
+<span class="sd">        :return: None.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">missing</span> <span class="o">=</span> <span class="n">ht1</span><span class="o">.</span><span class="n">anti_join</span><span class="p">(</span><span class="n">ht2</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">approved_missing</span><span class="p">:</span>
+            <span class="n">missing</span> <span class="o">=</span> <span class="n">missing</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span>
+                <span class="o">~</span><span class="n">hl</span><span class="o">.</span><span class="n">literal</span><span class="p">(</span><span class="nb">set</span><span class="p">(</span><span class="n">approved_missing</span><span class="p">))</span><span class="o">.</span><span class="n">contains</span><span class="p">(</span><span class="n">missing</span><span class="o">.</span><span class="n">s</span><span class="p">)</span>
+            <span class="p">)</span>
+        <span class="k">if</span> <span class="n">missing</span><span class="o">.</span><span class="n">count</span><span class="p">()</span> <span class="o">!=</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s2">&quot;The following </span><span class="si">{</span><span class="n">missing</span><span class="o">.</span><span class="n">count</span><span class="p">()</span><span class="si">}</span><span class="s2"> samples are found in the </span><span class="si">{</span><span class="n">ht1_label</span><span class="si">}</span><span class="s2"> &quot;</span>
+                <span class="sa">f</span><span class="s2">&quot;Table, but are not found in the </span><span class="si">{</span><span class="n">ht2_label</span><span class="si">}</span><span class="s2"> Table or in the approved &quot;</span>
+                <span class="s2">&quot;missing list:&quot;</span>
+            <span class="p">)</span>
+            <span class="n">missing</span><span class="o">.</span><span class="n">select</span><span class="p">()</span><span class="o">.</span><span class="n">show</span><span class="p">(</span><span class="n">n</span><span class="o">=-</span><span class="mi">1</span><span class="p">)</span>
+        <span class="k">elif</span> <span class="n">approved_missing</span><span class="p">:</span>
+            <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s2">&quot;All samples found in the </span><span class="si">{</span><span class="n">ht1_label</span><span class="si">}</span><span class="s2"> Table, but not found in the &quot;</span>
+                <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">ht2_label</span><span class="si">}</span><span class="s2"> Table, are in the approved missing list.&quot;</span>
+            <span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">sample_count_match</span><span class="p">:</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">compare_row_counts</span><span class="p">(</span><span class="n">base_ht</span><span class="p">,</span> <span class="n">ann_ht</span><span class="p">):</span>
+            <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="s2">&quot;Sample counts in Tables do not match!&quot;</span><span class="p">)</span>
+            <span class="n">_sample_check</span><span class="p">(</span><span class="n">base_ht</span><span class="p">,</span> <span class="n">ann_ht</span><span class="p">,</span> <span class="n">ann_ht_missing</span><span class="p">,</span> <span class="s2">&quot;input&quot;</span><span class="p">,</span> <span class="n">ann_label</span><span class="p">)</span>
+            <span class="n">_sample_check</span><span class="p">(</span><span class="n">ann_ht</span><span class="p">,</span> <span class="n">base_ht</span><span class="p">,</span> <span class="n">base_ht_missing</span><span class="p">,</span> <span class="n">ann_label</span><span class="p">,</span> <span class="s2">&quot;input&quot;</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Sample counts match.&quot;</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;No sample count check requested.&quot;</span><span class="p">)</span>
+
+    <span class="n">ann</span> <span class="o">=</span> <span class="n">ann_ht</span><span class="p">[</span><span class="n">base_ht</span><span class="o">.</span><span class="n">key</span><span class="p">]</span>
+    <span class="n">global_ann</span> <span class="o">=</span> <span class="n">ann_ht</span><span class="o">.</span><span class="n">index_globals</span><span class="p">()</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">ann_top_level</span><span class="p">:</span>
+        <span class="n">ann</span> <span class="o">=</span> <span class="p">{</span><span class="n">ann_label</span><span class="p">:</span> <span class="n">ann_ht</span><span class="p">[</span><span class="n">base_ht</span><span class="o">.</span><span class="n">key</span><span class="p">]}</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">global_top_level</span><span class="p">:</span>
+        <span class="n">global_ann</span> <span class="o">=</span> <span class="p">{</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">ann_label</span><span class="si">}</span><span class="s2">_parameters&quot;</span><span class="p">:</span> <span class="n">ann_ht</span><span class="o">.</span><span class="n">index_globals</span><span class="p">()}</span>
+
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">base_ht</span><span class="o">.</span><span class="n">annotate</span><span class="p">(</span><span class="o">**</span><span class="n">ann</span><span class="p">)</span>
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">annotate_globals</span><span class="p">(</span><span class="o">**</span><span class="n">global_ann</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">ht</span></div>
+
+
+<div class="viewcode-block" id="get_sample_filter_ht"><a class="viewcode-back" href="../../../../api_reference/v4/sample_qc/create_sample_qc_metadata_ht.html#gnomad_qc.v4.sample_qc.create_sample_qc_metadata_ht.get_sample_filter_ht">[docs]</a><span class="k">def</span> <span class="nf">get_sample_filter_ht</span><span class="p">(</span><span class="n">base_ht</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">,</span> <span class="n">relationship_ht</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Combine sample filters into a single Table to be added to the metadata Table.</span>
+
+<span class="sd">    Includes hard-filters, sample QC outlier filters, and relatedness filters.</span>
+
+<span class="sd">    :param base_ht: Input Table to add annotations to.</span>
+<span class="sd">    :param relationship_ht: Table with relationships annotations.</span>
+<span class="sd">    :return: Table with hard filter metric annotations added.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Combining sample filters Tables for &#39;sample_filters&#39; struct.&quot;</span><span class="p">)</span>
+    <span class="c1"># Get list of UKB samples that should be removed.</span>
+    <span class="n">ukb_remove</span> <span class="o">=</span> <span class="n">hl</span><span class="o">.</span><span class="n">import_table</span><span class="p">(</span><span class="n">all_ukb_samples_to_remove</span><span class="p">,</span> <span class="n">no_header</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span><span class="o">.</span><span class="n">f0</span><span class="o">.</span><span class="n">collect</span><span class="p">()</span>
+    <span class="c1"># Get list of hard filtered samples with sex imputation.</span>
+    <span class="n">hf_s</span> <span class="o">=</span> <span class="n">hard_filtered_samples</span><span class="o">.</span><span class="n">ht</span><span class="p">()</span><span class="o">.</span><span class="n">s</span><span class="o">.</span><span class="n">collect</span><span class="p">()</span>
+    <span class="c1"># Get list of unreleasable samples, the outlier filtering Table only includes</span>
+    <span class="c1"># releasable samples.</span>
+    <span class="n">meta_ht</span> <span class="o">=</span> <span class="n">project_meta</span><span class="o">.</span><span class="n">ht</span><span class="p">()</span>
+    <span class="n">unreleasable_s</span> <span class="o">=</span> <span class="n">meta_ht</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="o">~</span><span class="n">meta_ht</span><span class="o">.</span><span class="n">project_meta</span><span class="o">.</span><span class="n">releasable</span><span class="p">)</span><span class="o">.</span><span class="n">s</span><span class="o">.</span><span class="n">collect</span><span class="p">()</span>
+
+    <span class="n">hard_filters_ht</span> <span class="o">=</span> <span class="n">get_hard_filters_ht</span><span class="p">(</span><span class="n">base_ht</span><span class="p">)</span>
+    <span class="n">outlier_filters_ht</span> <span class="o">=</span> <span class="n">finalized_outlier_filtering</span><span class="p">()</span><span class="o">.</span><span class="n">ht</span><span class="p">()</span>
+    <span class="n">relatedness_filters_ht</span> <span class="o">=</span> <span class="n">annotate_relatedness_filters</span><span class="p">(</span>
+        <span class="n">ht</span><span class="o">=</span><span class="n">base_ht</span><span class="p">,</span>
+        <span class="n">relationship_ht</span><span class="o">=</span><span class="n">relationship_ht</span><span class="p">,</span>
+        <span class="n">hard_filtered_expr</span><span class="o">=</span><span class="n">hard_filters_ht</span><span class="p">[</span><span class="n">base_ht</span><span class="o">.</span><span class="n">key</span><span class="p">]</span><span class="o">.</span><span class="n">hard_filtered</span><span class="p">,</span>
+        <span class="n">outlier_filtered_expr</span><span class="o">=</span><span class="n">outlier_filters_ht</span><span class="p">[</span><span class="n">base_ht</span><span class="o">.</span><span class="n">key</span><span class="p">]</span><span class="o">.</span><span class="n">outlier_filtered</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">sample_filters</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="s2">&quot;hard_filters&quot;</span><span class="p">:</span> <span class="p">{</span>
+            <span class="s2">&quot;ann_ht&quot;</span><span class="p">:</span> <span class="n">hard_filters_ht</span><span class="p">,</span>
+            <span class="s2">&quot;global_top_level&quot;</span><span class="p">:</span> <span class="kc">True</span><span class="p">,</span>
+        <span class="p">},</span>
+        <span class="s2">&quot;outlier_detection&quot;</span><span class="p">:</span> <span class="p">{</span>
+            <span class="s2">&quot;ann_ht&quot;</span><span class="p">:</span> <span class="n">outlier_filters_ht</span><span class="p">,</span>
+            <span class="s2">&quot;base_ht_missing&quot;</span><span class="p">:</span> <span class="n">ukb_remove</span><span class="p">,</span>
+            <span class="s2">&quot;ann_ht_missing&quot;</span><span class="p">:</span> <span class="n">hf_s</span> <span class="o">+</span> <span class="n">unreleasable_s</span><span class="p">,</span>
+        <span class="p">},</span>
+        <span class="s2">&quot;relatedness_filters&quot;</span><span class="p">:</span> <span class="p">{</span>
+            <span class="s2">&quot;ann_ht&quot;</span><span class="p">:</span> <span class="n">relatedness_filters_ht</span><span class="p">,</span>
+            <span class="s2">&quot;global_top_level&quot;</span><span class="p">:</span> <span class="kc">True</span><span class="p">,</span>
+        <span class="p">},</span>
+    <span class="p">}</span>
+
+    <span class="n">sample_filters</span> <span class="o">=</span> <span class="p">[</span>
+        <span class="p">{</span><span class="o">**</span><span class="n">ann_params</span><span class="p">,</span> <span class="o">**</span><span class="p">{</span><span class="s2">&quot;ann_label&quot;</span><span class="p">:</span> <span class="n">ann</span><span class="p">,</span> <span class="s2">&quot;ann_top_level&quot;</span><span class="p">:</span> <span class="kc">True</span><span class="p">}}</span>
+        <span class="k">for</span> <span class="n">ann</span><span class="p">,</span> <span class="n">ann_params</span> <span class="ow">in</span> <span class="n">sample_filters</span><span class="o">.</span><span class="n">items</span><span class="p">()</span>
+    <span class="p">]</span>
+    <span class="n">sample_filters_ht</span> <span class="o">=</span> <span class="n">reduce</span><span class="p">(</span>
+        <span class="k">lambda</span> <span class="n">ht</span><span class="p">,</span> <span class="n">ann_params</span><span class="p">:</span> <span class="n">add_annotations</span><span class="p">(</span><span class="n">ht</span><span class="p">,</span> <span class="o">**</span><span class="n">ann_params</span><span class="p">),</span>
+        <span class="p">[</span><span class="n">base_ht</span><span class="p">]</span> <span class="o">+</span> <span class="n">sample_filters</span><span class="p">,</span>
+    <span class="p">)</span>
+
+    <span class="c1"># Annotate control samples that are used in variant QC, but not included in the</span>
+    <span class="c1"># release.</span>
+    <span class="n">control_samples</span> <span class="o">=</span> <span class="n">hl</span><span class="o">.</span><span class="n">literal</span><span class="p">({</span><span class="n">v</span><span class="p">[</span><span class="s2">&quot;s&quot;</span><span class="p">]</span> <span class="k">for</span> <span class="n">k</span><span class="p">,</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">TRUTH_SAMPLES</span><span class="o">.</span><span class="n">items</span><span class="p">()})</span>
+    <span class="c1"># Annotate samples in the ELGH2 project. They should be excluded from the</span>
+    <span class="c1"># high_quality and release samples because we identified that they do not have the</span>
+    <span class="c1"># full set of &#39;AS&#39; annotations in &#39;gvcf_info&#39; so we need to exclude them from</span>
+    <span class="c1"># variant QC and release.</span>
+    <span class="n">sample_filters_ht</span> <span class="o">=</span> <span class="n">sample_filters_ht</span><span class="o">.</span><span class="n">annotate</span><span class="p">(</span>
+        <span class="n">control</span><span class="o">=</span><span class="p">(</span><span class="n">control_samples</span><span class="o">.</span><span class="n">contains</span><span class="p">(</span><span class="n">sample_filters_ht</span><span class="o">.</span><span class="n">s</span><span class="p">)),</span>
+        <span class="n">elgh2_project</span><span class="o">=</span><span class="n">hl</span><span class="o">.</span><span class="n">coalesce</span><span class="p">(</span>
+            <span class="n">meta_ht</span><span class="p">[</span><span class="n">sample_filters_ht</span><span class="o">.</span><span class="n">key</span><span class="p">]</span><span class="o">.</span><span class="n">project_meta</span><span class="o">.</span><span class="n">project</span> <span class="o">==</span> <span class="s2">&quot;elgh2&quot;</span><span class="p">,</span> <span class="kc">False</span>
+        <span class="p">),</span>
+    <span class="p">)</span>
+    <span class="n">sample_filters_ht</span> <span class="o">=</span> <span class="n">sample_filters_ht</span><span class="o">.</span><span class="n">checkpoint</span><span class="p">(</span>
+        <span class="n">new_temp_file</span><span class="p">(</span><span class="s2">&quot;sample_filters&quot;</span><span class="p">,</span> <span class="n">extension</span><span class="o">=</span><span class="s2">&quot;ht&quot;</span><span class="p">),</span> <span class="n">overwrite</span><span class="o">=</span><span class="kc">True</span>
+    <span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">sample_filters_ht</span></div>
+
+
+<div class="viewcode-block" id="get_hard_filter_metric_ht"><a class="viewcode-back" href="../../../../api_reference/v4/sample_qc/create_sample_qc_metadata_ht.html#gnomad_qc.v4.sample_qc.create_sample_qc_metadata_ht.get_hard_filter_metric_ht">[docs]</a><span class="k">def</span> <span class="nf">get_hard_filter_metric_ht</span><span class="p">(</span><span class="n">base_ht</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Combine sample contamination, chr20 mean DP, and QC MT callrate into a single Table.</span>
+
+<span class="sd">    :param base_ht: Input Table to add annotations to.</span>
+<span class="sd">    :return: Table with hard filter metric annotations added.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Combining hard-filter metric Tables for &#39;hard_filter_metrics&#39; struct.&quot;</span><span class="p">)</span>
+
+    <span class="c1"># NOTE: Forgot to drop the `gq_thresholds` in the sample_chr20_mean_dp code.</span>
+    <span class="c1"># NOTE: Bi-allelic sample QC was used for hard-filtering instead of the under</span>
+    <span class="c1"># three alt alleles sample QC metrics which were used for outlier detection</span>
+    <span class="c1"># because we realized the large sample size significantly decreases the number of</span>
+    <span class="c1"># bi-allelic variants.</span>
+    <span class="n">hard_filter_metrics</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="s2">&quot;contamination_approximation&quot;</span><span class="p">:</span> <span class="n">contamination</span><span class="o">.</span><span class="n">ht</span><span class="p">(),</span>
+        <span class="s2">&quot;chr20_sample_mean_dp&quot;</span><span class="p">:</span> <span class="n">sample_chr20_mean_dp</span><span class="o">.</span><span class="n">ht</span><span class="p">()</span><span class="o">.</span><span class="n">drop</span><span class="p">(</span><span class="s2">&quot;gq_thresholds&quot;</span><span class="p">),</span>
+        <span class="s2">&quot;sample_qc_mt_callrate&quot;</span><span class="p">:</span> <span class="n">sample_qc_mt_callrate</span><span class="o">.</span><span class="n">ht</span><span class="p">(),</span>
+        <span class="s2">&quot;bi_allelic_sample_qc&quot;</span><span class="p">:</span> <span class="n">get_sample_qc</span><span class="p">(</span><span class="s2">&quot;bi_allelic&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">ht</span><span class="p">(),</span>
+    <span class="p">}</span>
+    <span class="n">hard_filter_metrics</span> <span class="o">=</span> <span class="p">[</span>
+        <span class="p">{</span>
+            <span class="s2">&quot;ann_ht&quot;</span><span class="p">:</span> <span class="n">ann_ht</span><span class="p">,</span>
+            <span class="s2">&quot;ann_label&quot;</span><span class="p">:</span> <span class="n">ann</span><span class="p">,</span>
+            <span class="s2">&quot;ann_top_level&quot;</span><span class="p">:</span> <span class="kc">False</span> <span class="k">if</span> <span class="n">ann</span> <span class="o">==</span> <span class="s2">&quot;bi_allelic_sample_qc&quot;</span> <span class="k">else</span> <span class="kc">True</span><span class="p">,</span>
+        <span class="p">}</span>
+        <span class="k">for</span> <span class="n">ann</span><span class="p">,</span> <span class="n">ann_ht</span> <span class="ow">in</span> <span class="n">hard_filter_metrics</span><span class="o">.</span><span class="n">items</span><span class="p">()</span>
+    <span class="p">]</span>
+    <span class="n">hard_filter_metrics_ht</span> <span class="o">=</span> <span class="n">reduce</span><span class="p">(</span>
+        <span class="k">lambda</span> <span class="n">ht</span><span class="p">,</span> <span class="n">ann_params</span><span class="p">:</span> <span class="n">add_annotations</span><span class="p">(</span><span class="n">ht</span><span class="p">,</span> <span class="o">**</span><span class="n">ann_params</span><span class="p">),</span>
+        <span class="p">[</span><span class="n">base_ht</span><span class="p">]</span> <span class="o">+</span> <span class="n">hard_filter_metrics</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">hard_filter_metrics_ht</span> <span class="o">=</span> <span class="n">hard_filter_metrics_ht</span><span class="o">.</span><span class="n">checkpoint</span><span class="p">(</span>
+        <span class="n">new_temp_file</span><span class="p">(</span><span class="s2">&quot;hard_filter_metrics&quot;</span><span class="p">,</span> <span class="n">extension</span><span class="o">=</span><span class="s2">&quot;ht&quot;</span><span class="p">),</span> <span class="n">overwrite</span><span class="o">=</span><span class="kc">True</span>
+    <span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">hard_filter_metrics_ht</span></div>
+
+
+<div class="viewcode-block" id="get_sample_qc_meta_ht"><a class="viewcode-back" href="../../../../api_reference/v4/sample_qc/create_sample_qc_metadata_ht.html#gnomad_qc.v4.sample_qc.create_sample_qc_metadata_ht.get_sample_qc_meta_ht">[docs]</a><span class="k">def</span> <span class="nf">get_sample_qc_meta_ht</span><span class="p">(</span><span class="n">base_ht</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Combine all sample QC metadata Tables into a single Table.</span>
+
+<span class="sd">    :param base_ht: Input Table to add all sample QC annotations to.</span>
+<span class="sd">    :return: Table with all sample QC annotation Tables added to `base_ht`.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="c1"># Get list of UKB samples that should be removed.</span>
+    <span class="n">ukb_remove</span> <span class="o">=</span> <span class="n">hl</span><span class="o">.</span><span class="n">import_table</span><span class="p">(</span><span class="n">all_ukb_samples_to_remove</span><span class="p">,</span> <span class="n">no_header</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span><span class="o">.</span><span class="n">f0</span><span class="o">.</span><span class="n">collect</span><span class="p">()</span>
+    <span class="c1"># Get list of hard filtered samples before sex imputation.</span>
+    <span class="n">hf_no_sex_s</span> <span class="o">=</span> <span class="n">hard_filtered_samples_no_sex</span><span class="o">.</span><span class="n">ht</span><span class="p">()</span><span class="o">.</span><span class="n">s</span><span class="o">.</span><span class="n">collect</span><span class="p">()</span>
+    <span class="c1"># Get list of hard filtered samples with sex imputation.</span>
+    <span class="n">hf_s</span> <span class="o">=</span> <span class="n">hard_filtered_samples</span><span class="o">.</span><span class="n">ht</span><span class="p">()</span><span class="o">.</span><span class="n">s</span><span class="o">.</span><span class="n">collect</span><span class="p">()</span>
+    <span class="c1"># Get list of v3 samples (expected in relatedness and pop).</span>
+    <span class="n">v3_s</span> <span class="o">=</span> <span class="n">joint_qc_meta</span><span class="o">.</span><span class="n">ht</span><span class="p">()</span><span class="o">.</span><span class="n">s</span><span class="o">.</span><span class="n">collect</span><span class="p">()</span>
+
+    <span class="n">hard_filter_metrics_ht</span> <span class="o">=</span> <span class="n">get_hard_filter_metric_ht</span><span class="p">(</span><span class="n">base_ht</span><span class="p">)</span>
+    <span class="n">relatedness_inference_ht</span> <span class="o">=</span> <span class="n">annotate_relationships</span><span class="p">(</span>
+        <span class="n">relatedness</span><span class="p">()</span><span class="o">.</span><span class="n">ht</span><span class="p">(),</span> <span class="n">finalized_outlier_filtering</span><span class="p">()</span><span class="o">.</span><span class="n">ht</span><span class="p">()</span>
+    <span class="p">)</span>
+    <span class="n">sample_filters_ht</span> <span class="o">=</span> <span class="n">get_sample_filter_ht</span><span class="p">(</span><span class="n">base_ht</span><span class="p">,</span> <span class="n">relatedness_inference_ht</span><span class="p">)</span>
+
+    <span class="n">sample_qc_meta</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="s2">&quot;project_meta&quot;</span><span class="p">:</span> <span class="p">{</span>
+            <span class="s2">&quot;ann_ht&quot;</span><span class="p">:</span> <span class="n">get_project_meta</span><span class="p">(),</span>
+            <span class="s2">&quot;ann_top_level&quot;</span><span class="p">:</span> <span class="kc">True</span><span class="p">,</span>
+            <span class="s2">&quot;global_top_level&quot;</span><span class="p">:</span> <span class="kc">True</span><span class="p">,</span>
+            <span class="c1"># Note: 71 samples are found in the project meta HT, but are not found in</span>
+            <span class="c1">#  the loaded VDS. They overlap with the UKB withheld samples indicating</span>
+            <span class="c1">#  they were not removed when the project metadata HT was created.</span>
+            <span class="s2">&quot;base_ht_missing&quot;</span><span class="p">:</span> <span class="n">ukb_remove</span><span class="p">,</span>
+        <span class="p">},</span>
+        <span class="s2">&quot;sample_qc&quot;</span><span class="p">:</span> <span class="p">{</span>
+            <span class="s2">&quot;ann_ht&quot;</span><span class="p">:</span> <span class="n">get_sample_qc</span><span class="p">(</span><span class="s2">&quot;under_three_alt_alleles&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">ht</span><span class="p">(),</span>
+            <span class="c1"># Note: the withdrawn UKB list was updated after the sample QC HT creation,</span>
+            <span class="c1">#  so the sample QC HT has 5 samples more in it than the loaded VDS.</span>
+            <span class="s2">&quot;base_ht_missing&quot;</span><span class="p">:</span> <span class="n">ukb_remove</span><span class="p">,</span>
+        <span class="p">},</span>
+        <span class="s2">&quot;platform_inference&quot;</span><span class="p">:</span> <span class="p">{</span>
+            <span class="c1"># Note: Forgot to drop `gq_thresholds` in the platform_inference code.</span>
+            <span class="s2">&quot;ann_ht&quot;</span><span class="p">:</span> <span class="n">platform</span><span class="o">.</span><span class="n">ht</span><span class="p">()</span><span class="o">.</span><span class="n">drop</span><span class="p">(</span><span class="s2">&quot;gq_thresholds&quot;</span><span class="p">),</span>
+            <span class="s2">&quot;ann_ht_missing&quot;</span><span class="p">:</span> <span class="n">hf_no_sex_s</span><span class="p">,</span>
+        <span class="p">},</span>
+        <span class="s2">&quot;sex_imputation&quot;</span><span class="p">:</span> <span class="p">{</span>
+            <span class="c1"># Note: Forgot to drop `is_female` in the sex_inference code.</span>
+            <span class="s2">&quot;ann_ht&quot;</span><span class="p">:</span> <span class="n">get_sex_imputation_ht</span><span class="p">()</span><span class="o">.</span><span class="n">drop</span><span class="p">(</span><span class="s2">&quot;is_female&quot;</span><span class="p">),</span>
+            <span class="s2">&quot;ann_ht_missing&quot;</span><span class="p">:</span> <span class="n">hf_no_sex_s</span><span class="p">,</span>
+        <span class="p">},</span>
+        <span class="s2">&quot;hard_filter_metrics&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;ann_ht&quot;</span><span class="p">:</span> <span class="n">hard_filter_metrics_ht</span><span class="p">},</span>
+        <span class="s2">&quot;population_inference&quot;</span><span class="p">:</span> <span class="p">{</span>
+            <span class="s2">&quot;ann_ht&quot;</span><span class="p">:</span> <span class="n">get_pop_ht</span><span class="p">()</span><span class="o">.</span><span class="n">ht</span><span class="p">(),</span>
+            <span class="s2">&quot;base_ht_missing&quot;</span><span class="p">:</span> <span class="n">v3_s</span><span class="p">,</span>
+            <span class="s2">&quot;ann_ht_missing&quot;</span><span class="p">:</span> <span class="n">hf_s</span><span class="p">,</span>
+        <span class="p">},</span>
+        <span class="s2">&quot;relatedness_inference&quot;</span><span class="p">:</span> <span class="p">{</span>
+            <span class="s2">&quot;ann_ht&quot;</span><span class="p">:</span> <span class="n">relatedness_inference_ht</span><span class="p">,</span>
+            <span class="s2">&quot;sample_count_match&quot;</span><span class="p">:</span> <span class="kc">False</span><span class="p">,</span>
+        <span class="p">},</span>
+        <span class="s2">&quot;sample_filters&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;ann_ht&quot;</span><span class="p">:</span> <span class="n">sample_filters_ht</span><span class="p">},</span>
+    <span class="p">}</span>
+
+    <span class="n">sample_qc_meta</span> <span class="o">=</span> <span class="p">[</span>
+        <span class="p">{</span><span class="o">**</span><span class="n">ann_params</span><span class="p">,</span> <span class="o">**</span><span class="p">{</span><span class="s2">&quot;ann_label&quot;</span><span class="p">:</span> <span class="n">ann</span><span class="p">}}</span>
+        <span class="k">for</span> <span class="n">ann</span><span class="p">,</span> <span class="n">ann_params</span> <span class="ow">in</span> <span class="n">sample_qc_meta</span><span class="o">.</span><span class="n">items</span><span class="p">()</span>
+    <span class="p">]</span>
+    <span class="n">sample_qc_meta_ht</span> <span class="o">=</span> <span class="n">reduce</span><span class="p">(</span>
+        <span class="k">lambda</span> <span class="n">ht</span><span class="p">,</span> <span class="n">ann_params</span><span class="p">:</span> <span class="n">add_annotations</span><span class="p">(</span><span class="n">ht</span><span class="p">,</span> <span class="o">**</span><span class="n">ann_params</span><span class="p">),</span>
+        <span class="p">[</span><span class="n">base_ht</span><span class="p">]</span> <span class="o">+</span> <span class="n">sample_qc_meta</span><span class="p">,</span>
+    <span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">sample_qc_meta_ht</span></div>
+
+
+<div class="viewcode-block" id="main"><a class="viewcode-back" href="../../../../api_reference/v4/sample_qc/create_sample_qc_metadata_ht.html#gnomad_qc.v4.sample_qc.create_sample_qc_metadata_ht.main">[docs]</a><span class="k">def</span> <span class="nf">main</span><span class="p">(</span><span class="n">args</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Merge the output of all sample QC modules into a single Table.&quot;&quot;&quot;</span>
+    <span class="n">hl</span><span class="o">.</span><span class="n">init</span><span class="p">(</span>
+        <span class="n">log</span><span class="o">=</span><span class="s2">&quot;/sample_metadata.log&quot;</span><span class="p">,</span>
+        <span class="n">default_reference</span><span class="o">=</span><span class="s2">&quot;GRCh38&quot;</span><span class="p">,</span>
+        <span class="n">tmp_dir</span><span class="o">=</span><span class="s2">&quot;gs://gnomad-tmp-4day&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Loading the VDS columns to begin creation of the meta HT.&quot;</span><span class="p">)</span>
+    <span class="n">vds</span> <span class="o">=</span> <span class="n">get_gnomad_v4_vds</span><span class="p">(</span><span class="n">remove_hard_filtered_samples</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">get_sample_qc_meta_ht</span><span class="p">(</span><span class="n">vds</span><span class="o">.</span><span class="n">variant_data</span><span class="o">.</span><span class="n">cols</span><span class="p">()</span><span class="o">.</span><span class="n">select</span><span class="p">()</span><span class="o">.</span><span class="n">select_globals</span><span class="p">())</span>
+
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;</span><span class="se">\n\n</span><span class="s2">Annotating high_quality field and releasable field.&quot;</span><span class="p">)</span>
+    <span class="c1"># Excluding samples in the ELGH2 project from the high_quality and release</span>
+    <span class="c1"># samples because we identified that they do not have the full set of &#39;AS&#39;</span>
+    <span class="c1"># annotations in &#39;gvcf_info&#39; so we need to exclude them from variant QC and release.</span>
+    <span class="n">hq_expr</span> <span class="o">=</span> <span class="p">(</span>
+        <span class="o">~</span><span class="n">ht</span><span class="o">.</span><span class="n">sample_filters</span><span class="o">.</span><span class="n">hard_filtered</span>
+        <span class="o">&amp;</span> <span class="o">~</span><span class="n">ht</span><span class="o">.</span><span class="n">sample_filters</span><span class="o">.</span><span class="n">outlier_filtered</span>
+        <span class="o">&amp;</span> <span class="o">~</span><span class="n">ht</span><span class="o">.</span><span class="n">sample_filters</span><span class="o">.</span><span class="n">elgh2_project</span>
+    <span class="p">)</span>
+
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">annotate</span><span class="p">(</span>
+        <span class="n">high_quality</span><span class="o">=</span><span class="n">hq_expr</span><span class="p">,</span>
+        <span class="n">release</span><span class="o">=</span><span class="p">(</span>
+            <span class="n">ht</span><span class="o">.</span><span class="n">project_meta</span><span class="o">.</span><span class="n">releasable</span>
+            <span class="o">&amp;</span> <span class="n">hq_expr</span>
+            <span class="o">&amp;</span> <span class="o">~</span><span class="n">ht</span><span class="o">.</span><span class="n">sample_filters</span><span class="o">.</span><span class="n">release_relatedness_filters</span><span class="o">.</span><span class="n">related</span>
+            <span class="o">&amp;</span> <span class="o">~</span><span class="n">ht</span><span class="o">.</span><span class="n">sample_filters</span><span class="o">.</span><span class="n">control</span>
+        <span class="p">),</span>
+    <span class="p">)</span>
+
+    <span class="c1"># Add descriptions or the global and sample annotations to the Table globals.</span>
+    <span class="k">with</span> <span class="n">hl</span><span class="o">.</span><span class="n">hadoop_open</span><span class="p">(</span><span class="n">get_sample_qc_field_def_json_path</span><span class="p">(),</span> <span class="s2">&quot;r&quot;</span><span class="p">)</span> <span class="k">as</span> <span class="n">d</span><span class="p">:</span>
+        <span class="n">sample_qc_descriptions</span> <span class="o">=</span> <span class="n">json</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="n">d</span><span class="p">)</span>
+
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">select_globals</span><span class="p">(</span>
+        <span class="n">global_annotation_descriptions</span><span class="o">=</span><span class="n">convert_heterogeneous_dict_to_struct</span><span class="p">(</span>
+            <span class="n">sample_qc_descriptions</span><span class="p">[</span><span class="s2">&quot;globals&quot;</span><span class="p">]</span>
+        <span class="p">),</span>
+        <span class="n">sample_annotation_descriptions</span><span class="o">=</span><span class="n">convert_heterogeneous_dict_to_struct</span><span class="p">(</span>
+            <span class="n">sample_qc_descriptions</span><span class="p">[</span><span class="s2">&quot;rows&quot;</span><span class="p">]</span>
+        <span class="p">),</span>
+        <span class="o">**</span><span class="n">ht</span><span class="o">.</span><span class="n">index_globals</span><span class="p">(),</span>
+        <span class="n">date</span><span class="o">=</span><span class="n">datetime</span><span class="o">.</span><span class="n">now</span><span class="p">()</span><span class="o">.</span><span class="n">isoformat</span><span class="p">(),</span>
+    <span class="p">)</span>
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">checkpoint</span><span class="p">(</span><span class="n">meta</span><span class="p">()</span><span class="o">.</span><span class="n">path</span><span class="p">,</span> <span class="n">overwrite</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">overwrite</span><span class="p">)</span>
+
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span>
+        <span class="s2">&quot;Release sample count: </span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">ht</span><span class="o">.</span><span class="n">aggregate</span><span class="p">(</span><span class="n">hl</span><span class="o">.</span><span class="n">agg</span><span class="o">.</span><span class="n">count_where</span><span class="p">(</span><span class="n">ht</span><span class="o">.</span><span class="n">release</span><span class="p">))</span>
+    <span class="p">)</span>
+    <span class="n">ht</span><span class="o">.</span><span class="n">describe</span><span class="p">()</span>
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Final sample count: </span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">ht</span><span class="o">.</span><span class="n">count</span><span class="p">())</span></div>
+
+
+<span class="k">def</span> <span class="nf">get_script_argument_parser</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="n">argparse</span><span class="o">.</span><span class="n">ArgumentParser</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Get script argument parser.&quot;&quot;&quot;</span>
+    <span class="n">parser</span> <span class="o">=</span> <span class="n">argparse</span><span class="o">.</span><span class="n">ArgumentParser</span><span class="p">()</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--overwrite&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Overwrite all data from this subset (default: False)&quot;</span><span class="p">,</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--slack-channel&quot;</span><span class="p">,</span> <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Slack channel to post results and notifications to.&quot;</span>
+    <span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">parser</span>
+
+
+<span class="k">if</span> <span class="vm">__name__</span> <span class="o">==</span> <span class="s2">&quot;__main__&quot;</span><span class="p">:</span>
+    <span class="n">parser</span> <span class="o">=</span> <span class="n">get_script_argument_parser</span><span class="p">()</span>
+    <span class="n">args</span> <span class="o">=</span> <span class="n">parser</span><span class="o">.</span><span class="n">parse_args</span><span class="p">()</span>
+
+    <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">slack_channel</span><span class="p">:</span>
+        <span class="k">with</span> <span class="n">slack_notifications</span><span class="p">(</span><span class="n">slack_token</span><span class="p">,</span> <span class="n">args</span><span class="o">.</span><span class="n">slack_channel</span><span class="p">):</span>
+            <span class="n">main</span><span class="p">(</span><span class="n">args</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">main</span><span class="p">(</span><span class="n">args</span><span class="p">)</span>
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p></p>
+  </div>
+
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

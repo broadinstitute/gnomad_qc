@@ -1,0 +1,21 @@
+gnomad_qc.v4.create_release.create_de_novo_release
+==================================================
+
+Script to create release de novo HT for v4 exomes.
+
+
+
+
+.. argparse::
+   :ref: gnomad_qc.v4.create_release.create_de_novo_release.get_script_argument_parser
+   :prog: gnomad_qc.v4.create_release.create_de_novo_release.py
+
+
+
+Module Functions
+****************
+
+.. gnomad_automodulesummary:: gnomad_qc.v4.create_release.create_de_novo_release
+
+.. automodule:: gnomad_qc.v4.create_release.create_de_novo_release
+    :exclude-members: get_script_argument_parser
