@@ -1047,8 +1047,7 @@ def join_hts(
             _intervals=partition_intervals,
             test=test,
             base_ht_filter=base_ht.select(),
-        )
-        for table in tables
+        ) for table in tables
     ]
 
     if use_annotate:

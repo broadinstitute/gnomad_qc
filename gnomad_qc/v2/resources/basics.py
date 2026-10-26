@@ -578,7 +578,9 @@ def cpg_sites_ht_path():
 REFERENCE_DATA = {
     "GRCh37": {
         "vep_config": "gs://hail-common/vep/vep/vep85-loftee-gcloud.json",
-        "all_possible": "gs://gcp-public-data--gnomad/papers/2019-flagship-lof/v1.0/context/Homo_sapiens_assembly19.fasta.snps_only.vep_20181129.ht",
+        "all_possible": (
+            "gs://gcp-public-data--gnomad/papers/2019-flagship-lof/v1.0/context/Homo_sapiens_assembly19.fasta.snps_only.vep_20181129.ht"
+        ),
         "methylation": (
             "gs://gcp-public-data--gnomad/resources/methylation/methylation.ht"
         ),
