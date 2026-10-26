@@ -120,7 +120,6 @@ from gnomad_qc.v5.annotations.batch_fanout import (
     chunk_read_intervals,
     combine_suffix,
     group_path,
-    interval_from_list,
     interval_to_list,
     list_present_chunk_indices,
     load_chunk_layout,

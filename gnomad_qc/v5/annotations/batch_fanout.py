@@ -346,12 +346,13 @@ def split_intervals(
     intervals: Sequence[hl.utils.Interval], n: int
 ) -> List[hl.utils.Interval]:
     """
-    Tile each half-open interval into ``n`` equal position slices.
+    Tile each interval into ``n`` equal position slices.
 
     ``read_vds`` makes one partition per interval it is given, so a region read as
     one interval lands in one partition and its whole aggregation runs on one core.
-    The slices tile the input exactly, so no locus is dropped or counted twice; an
-    interval of at most ``n`` positions is kept whole.
+    The slices tile the input exactly, so no locus is dropped or counted twice: the
+    first slice keeps the input's start bound, the last keeps its end bound, and the
+    cuts between are half-open. An interval of at most ``n`` positions is kept whole.
 
     The slices are plain position cuts. A reference block that starts before a slice
     and extends into it belongs to the earlier slice, so a consumer that reads
@@ -359,7 +360,7 @@ def split_intervals(
     ``_expand_leading_edges`` in compute_coverage.py). Variant rows have no such
     overlap.
 
-    :param intervals: Half-open locus intervals.
+    :param intervals: Locus intervals.
     :param n: Slices per interval; ``<= 1`` returns the input unchanged.
     :return: The slices, in order.
     """
@@ -378,8 +379,8 @@ def split_intervals(
             hl.Interval(
                 hl.Locus(contig, bounds[i], reference_genome=rg),
                 hl.Locus(contig, bounds[i + 1], reference_genome=rg),
-                includes_start=True,
-                includes_end=False,
+                includes_start=iv.includes_start if i == 0 else True,
+                includes_end=iv.includes_end if i == n - 1 else False,
             )
             for i in range(n)
         )
@@ -449,7 +450,6 @@ def load_chunk_layout(path: str) -> Dict[str, Any]:
         index, with intervals in :func:`interval_to_list` form, and
         ``reference_genome`` names their reference genome; the writer may store
         more keys beside them.
-    :raises FileNotFoundError: if the layout has not been written.
     """
     if not file_exists(path):
         raise FileNotFoundError(
@@ -473,7 +473,8 @@ def fold_chunk_layout(data: Dict[str, Any], n_chunks: Optional[int]) -> Dict[str
     :param data: Parsed chunk layout.
     :param n_chunks: Target chunk count. None, or at least the current count, returns
         the layout unchanged.
-    :return: Layout with the folded ``chunks``; the other keys are kept.
+    :return: Layout with the folded ``chunks``. The other keys are kept as written
+        and describe the layout before folding.
     """
     n_input = len(data["chunks"])
     if n_chunks is None or n_chunks >= n_input:
@@ -504,10 +505,9 @@ def chunk_read_intervals(data: Dict[str, Any], idx: int) -> List[hl.utils.Interv
     Return one chunk's read intervals from a layout.
 
     :param data: Parsed chunk layout.
-    :param idx: Chunk index, as the orchestrator dispatched it.
+    :param idx: Chunk index, as the orchestrator dispatched it. An index outside the
+        layout means the fan-out and the layout are out of sync.
     :return: Locus intervals of chunk ``idx``.
-    :raises ValueError: if ``idx`` is outside the layout, which means the fan-out and
-        the layout are out of sync.
     """
     chunks = data["chunks"]
     if not 0 <= idx < len(chunks):
@@ -708,9 +708,13 @@ def dispatch_in_waves(
     """
     Submit pending chunks in sequential waves and report the ones that did not land.
 
-    Waves cap how many relays, and so how many nested QoB drivers, run at once. A
-    batch run does not raise when a job fails, so the chunk directory is listed
-    again after each wave to find the chunks that did not land.
+    Waves run one at a time. They cap how many relays, and so how many nested QoB
+    drivers, run at once, and Hail Batch's process-global progress display crashes
+    on concurrent ``batch.run()`` calls, so waves must not be submitted in parallel.
+    The binding capacity is the shared Hail Batch service's worker pool, not the
+    billing project's own GCP quota. A batch run does not raise when a job fails, so
+    the chunk directory is listed again after each wave to find the chunks that did
+    not land.
 
     After the last wave, the chunks still missing are re-dispatched up to
     ``retry_passes`` times. This is safe where Batch-level attempts are not: by the
@@ -887,6 +891,7 @@ def run_chunk_fanout(
     if not pending:
         return []
     run_id = new_run_id()
+    logger.info("Fan-out run id: %s (stamped into the failed-chunk manifest).", run_id)
 
     def submit_wave(wave: List[int], label: Optional[str]) -> Optional[int]:
         return submit(
@@ -901,7 +906,7 @@ def run_chunk_fanout(
             ht_path, intervals_hash, failed, n_sent, run_id, commit, app_name, records
         )
 
-    failed, _records = dispatch_in_waves(
+    failed, records = dispatch_in_waves(
         pending,
         wave_size,
         submit_wave=submit_wave,
@@ -914,11 +919,13 @@ def run_chunk_fanout(
         return []
     if failed:
         logger.warning(
-            "Fan-out finished with %d of %d dispatched chunk(s) missing; see %s. Rerun"
-            " the fan-out to retry them.",
+            "Fan-out finished with %d of %d dispatched chunk(s) missing after %d relay"
+            " job(s) in total; see %s (run_id=%s). Rerun the fan-out to retry them.",
             len(failed),
             len(pending),
+            sum(r["n_dispatched"] for r in records),
             failed_chunks_path(ht_path, intervals_hash),
+            run_id,
         )
     else:
         logger.info(
