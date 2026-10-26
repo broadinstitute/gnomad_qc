@@ -126,8 +126,10 @@ def compute_sample_qc() -> hl.Table:
     # Remove annotations that cannot be computed from the sparse format
     sample_qc_ht = sample_qc_ht.annotate(
         **{
-            x: sample_qc_ht[x].drop(
-                "n_called", "n_not_called", "n_filtered", "call_rate"
+            x: (
+                sample_qc_ht[x].drop(
+                    "n_called", "n_not_called", "n_filtered", "call_rate"
+                )
             )
             for x in sample_qc_ht.row_value
         }

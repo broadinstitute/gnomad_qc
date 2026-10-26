@@ -12,6 +12,7 @@ and one of the following tests comparing the two frequencies:
 
 The Table is written out to the location of the more recent of the two gnomAD versions being compared.
 """
+
 import argparse
 import logging
 from typing import List

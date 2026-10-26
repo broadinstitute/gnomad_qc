@@ -91,8 +91,7 @@ def split_intervals(
     # Modes other than INTERVAL_SUBDIVISION will produce an unpredicted number
     # of intervals. But we have to expect exactly the `scatter_count` number of
     # output files because our workflow is not dynamic.
-    j.command(
-        f"""set -e
+    j.command(f"""set -e
     gatk --java-options "-Xms{java_mem}g" SplitIntervals \\
       -L {calling_interval_path} \\
       --interval-padding {interval_padding} \\
@@ -101,8 +100,7 @@ def split_intervals(
       -R {utils['ref_fasta']} \\
       --gcs-project-for-requester-pays {gcp_billing_project} \\
       -mode INTERVAL_SUBDIVISION
-      """
-    )
+      """)
 
     return j
 
@@ -176,8 +174,7 @@ def snps_variant_recalibrator_create_model(
     tranche_cmdl = " ".join([f"-tranche {v}" for v in SNP_RECALIBRATION_TRANCHE_VALUES])
     an_cmdl = " ".join([f"-an {v}" for v in features])
 
-    j.command(
-        f"""set -euo pipefail
+    j.command(f"""set -euo pipefail
         gatk --java-options "-Xms{java_mem}g -XX:+UseParallelGC -XX:ParallelGCThreads={ncpu-2}" \\
           VariantRecalibrator \\
           -V {sites_only_vcf} \\
@@ -202,8 +199,7 @@ def snps_variant_recalibrator_create_model(
           ls $(dirname {j.snp_rscript})
           ln {j.snp_rscript}.pdf {j.snp_rscript_pdf}
           ln {j.tranches}.pdf {j.tranches_pdf}
-          """
-    )
+          """)
 
     if out_bucket:
         b.write_output(
@@ -395,8 +391,7 @@ def indels_variant_recalibrator_create_model(
     )
     an_cmdl = " ".join([f"-an {v}" for v in features])
 
-    j.command(
-        f"""set -euo pipefail
+    j.command(f"""set -euo pipefail
         gatk --java-options "-Xms{java_mem}g -XX:+UseParallelGC -XX:ParallelGCThreads={ncpu-2}" \\
           VariantRecalibrator \\
           --gcs-project-for-requester-pays {gcp_billing_project} \\
@@ -419,8 +414,7 @@ def indels_variant_recalibrator_create_model(
           --rscript-file {j.indel_rscript}
           ls $(dirname {j.indel_rscript})
           ln {j.indel_rscript}.pdf {j.indel_rscript_pdf}
-        """
-    )
+        """)
 
     if out_bucket:
         b.write_output(
@@ -578,15 +572,13 @@ def gather_tranches(
     j.storage(f"{disk_size}G")
 
     inputs_cmdl = " ".join([f"--input {t}" for t in tranches])
-    j.command(
-        f"""set -euo pipefail
+    j.command(f"""set -euo pipefail
         gatk --java-options "-Xms6g" \\
           GatherTranches \\
           --gcs-project-for-requester-pays {gcp_billing_project} \\
           --mode {mode} \\
           {inputs_cmdl} \\
-          --output {j.out_tranches}"""
-    )
+          --output {j.out_tranches}""")
 
     return j
 
@@ -663,8 +655,7 @@ def apply_recalibration(
         intermediate_vcf={"vcf.gz": "{root}.vcf.gz", "vcf.gz.tbi": "{root}.vcf.gz.tbi"},
     )
 
-    j.command(
-        f"""set -euo pipefail
+    j.command(f"""set -euo pipefail
         gatk --java-options "-Xms5g" \\
           ApplyVQSR \\
           -O tmp.indel.recalibrated.vcf \\
@@ -689,23 +680,20 @@ def apply_recalibration(
           --create-output-variant-index true \\
           {f'-L {interval} ' if interval else ''} \\
           {'--use-allele-specific-annotations ' if use_as_annotations else ''} \\
-          -mode SNP"""
-    )
+          -mode SNP""")
 
     # NOTE: An INDEL at the beginning of a chunk will overlap with the previous chunk
     #  and will cause issues when trying to merge. This makes sure the INDEL is ONLY
     #  in ONE of two consecutive chunks (not both).
     if interval and not overlap_skip:
         # Overwrite VCF with overlap issue addressed.
-        j.command(
-            f"""
+        j.command(f"""
                 cat {interval} | grep -Ev "^@" > tmp.interval
                 interval=$(cat tmp.interval | awk 'NR == 1 {{c=$1; s=$2}} END {{ print c":"s"-"$1":"$3}}')
                 bcftools view -t $interval {j.output_vcf['vcf.gz']} --output-file {j.output_vcf['vcf.gz']} --output-type z
                 tabix -f {j.output_vcf['vcf.gz']}
                 df -h; pwd; du -sh $(dirname {j.output_vcf['vcf.gz']})
-            """
-        )
+            """)
 
     if out_bucket:
         b.write_output(j.output_vcf, f"{outpath}{filename}")
@@ -745,8 +733,7 @@ def gather_vcfs(
     )
 
     input_cmdl = " ".join([f'--input {v["vcf.gz"]}' for v in input_vcfs])
-    j.command(
-        f"""set -euo pipefail
+    j.command(f"""set -euo pipefail
         # --ignore-safety-checks makes a big performance difference so we include it in our invocation.
         # This argument disables expensive checks that the file headers contain the same set of
         # genotyped samples and that files are in order by position of first record.
@@ -761,8 +748,7 @@ def gather_vcfs(
           --output {j.output_vcf['vcf.gz']} \\
           --tmp-dir `pwd`/tmp
 
-        tabix {j.output_vcf['vcf.gz']}"""
-    )
+        tabix {j.output_vcf['vcf.gz']}""")
     if out_bucket:
         b.write_output(j.output_vcf, f"{out_bucket}{filename}")
     return j

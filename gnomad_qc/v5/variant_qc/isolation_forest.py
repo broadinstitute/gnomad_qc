@@ -136,8 +136,7 @@ def extract_variant_annotations_job(
             "vcf.gz.tbi": "{root}.vcf.gz.tbi",
         }
     )
-    j.command(
-        f"""set -euo pipefail
+    j.command(f"""set -euo pipefail
         gatk --java-options "-Xmx6G" ExtractVariantAnnotations \\
             -V {sites_only_vcf} \\
             -O {j.extract} \\
@@ -147,8 +146,7 @@ def extract_variant_annotations_job(
             -XL {exclude_intervals} \\
             --gcs-project-for-requester-pays {gcp_billing_project} \\
             {resource_args}
-        """
-    )
+        """)
     b.write_output(j.extract, out_root)
     return j
 
@@ -194,16 +192,14 @@ def train_variant_annotations_model_job(
         if hyperparameters_json
         else ""
     )
-    j.command(
-        f"""set -euo pipefail
+    j.command(f"""set -euo pipefail
         gatk --java-options "-Xmx6G" TrainVariantAnnotationsModel \\
             --annotations-hdf5 {annotations_hdf5} \\
             -O {j.model} \\
             --mode {mode} \\
             --model-backend PYTHON_IFOREST \\
             --gcs-project-for-requester-pays {gcp_billing_project}{hp_arg}
-        """
-    )
+        """)
     b.write_output(j.model, out_root)
     return j
 
@@ -237,8 +233,7 @@ def split_intervals_job(
             for idx in range(scatter_count)
         }
     )
-    j.command(
-        f"""set -euo pipefail
+    j.command(f"""set -euo pipefail
         gatk --java-options "-Xms3g" SplitIntervals \\
             -R {REFERENCE_RESOURCES['ref_fasta']} \\
             {calling_intervals_args} \\
@@ -248,8 +243,7 @@ def split_intervals_job(
             --interval-merging-rule OVERLAPPING_ONLY \\
             -mode INTERVAL_SUBDIVISION \\
             --gcs-project-for-requester-pays {gcp_billing_project}
-        """
-    )
+        """)
     return j
 
 
@@ -309,8 +303,7 @@ def score_variant_annotations_job(
             "vcf.gz.tbi": "{root}.vcf.gz.tbi",
         }
     )
-    j.command(
-        f"""set -euo pipefail
+    j.command(f"""set -euo pipefail
         gatk --java-options "-Xmx6G" ScoreVariantAnnotations \\
             -V {sites_only_vcf} \\
             -O {j.output_score} \\
@@ -323,8 +316,7 @@ def score_variant_annotations_job(
             --variant-output-filtering STARTS_IN \\
             --gcs-project-for-requester-pays {gcp_billing_project} \\
             {resource_args}
-        """
-    )
+        """)
     b.write_output(j.output_score, out_root)
     return j
 
@@ -461,7 +453,9 @@ def isolation_forest_workflow(
                 **{
                     f"{m}.scorer.pkl": f"{model_root}.{m}.scorer.pkl",
                     f"{m}.trainingScores.hdf5": f"{model_root}.{m}.trainingScores.hdf5",
-                    f"{m}.calibrationScores.hdf5": f"{model_root}.{m}.calibrationScores.hdf5",
+                    f"{m}.calibrationScores.hdf5": (
+                        f"{model_root}.{m}.calibrationScores.hdf5"
+                    ),
                 }
             )
             # A read-in group localizes as a directory ({group}/model.{m}.scorer.pkl),

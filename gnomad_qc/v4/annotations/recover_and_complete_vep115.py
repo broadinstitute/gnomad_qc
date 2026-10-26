@@ -928,15 +928,11 @@ def main(args) -> None:
 
     # Step 1: Copy partial HT.
     if args.copy_partial_ht:
-        logger.info(
-            LOGGER_HEADER_TEMPLATE.format(
-                message=f"""
+        logger.info(LOGGER_HEADER_TEMPLATE.format(message=f"""
                 Step 1: Copying entire partial HT directory...
                     Source: {args.partial_ht}
                     Destination: {args.temp_partial_ht}
-                """
-            )
-        )
+                """))
         copy_partial_ht(args.partial_ht, args.temp_partial_ht)
         logger.info(
             LOGGER_HEADER_TEMPLATE.format(
@@ -954,16 +950,12 @@ def main(args) -> None:
         partition_counts, partition_bounds, part_file_names = (
             extract_partition_metadata_and_save(args.temp_partial_ht)
         )
-        logger.info(
-            LOGGER_HEADER_TEMPLATE.format(
-                message=f"""
+        logger.info(LOGGER_HEADER_TEMPLATE.format(message=f"""
                 ✓ Step 2 complete: Metadata extracted
                     Total variants: {sum(partition_counts)}
                     Total partitions: {len(partition_counts)}
                     Output path: {args.temp_partial_ht}
-                """
-            )
-        )
+                """))
 
     # Step 3: Reconstruct partial HT.
     if args.reconstruct_partial_ht:
@@ -985,15 +977,11 @@ def main(args) -> None:
             partition_bounds,
             part_file_names,
         )
-        logger.info(
-            LOGGER_HEADER_TEMPLATE.format(
-                message=f"""
+        logger.info(LOGGER_HEADER_TEMPLATE.format(message=f"""
                 ✓ Step 3 complete: Partial HT reconstructed
                     Total variants: {partition_counts}
                     Output path: {args.temp_partial_ht}
-                """
-            )
-        )
+                """))
 
     # Step 4: Filter context HT to variants missing VEP.
     if args.filter_context_ht_to_missing_vep:
@@ -1007,15 +995,11 @@ def main(args) -> None:
         ht = get_variants_that_need_vep(context_ht, partial_vep_ht)
         ht = filter_problematic_variants(ht)
         ht = ht.checkpoint(args.revep_needed_ht, overwrite=args.overwrite)
-        logger.info(
-            LOGGER_HEADER_TEMPLATE.format(
-                message=f"""
+        logger.info(LOGGER_HEADER_TEMPLATE.format(message=f"""
                 ✓ Step 4 complete: Missing VEP variants identified
                     Total variants: {ht.count():,}
                     Output path: {args.revep_needed_ht}
-                """
-            )
-        )
+                """))
 
     # Step 5: Run VEP on remaining variants.
     if args.run_vep_on_remaining:
@@ -1037,15 +1021,11 @@ def main(args) -> None:
         )
         ht = run_vep_on_remaining(ht)
         ht = ht.checkpoint(args.revep_done_ht, overwrite=args.overwrite)
-        logger.info(
-            LOGGER_HEADER_TEMPLATE.format(
-                message=f"""
+        logger.info(LOGGER_HEADER_TEMPLATE.format(message=f"""
                 ✓ Step 5 complete: VEP run on remaining variants
                     Total variants: {ht.count():,}
                     Output path: {args.revep_done_ht}
-                """
-            )
-        )
+                """))
 
     # Step 6: Run VEP on chr18 centromere variants.
     if args.run_vep_on_centromere:
@@ -1068,15 +1048,11 @@ def main(args) -> None:
         ht = filter_to_centromere_variants(ht).cache().naive_coalesce(10)
         ht = run_vep_on_centromere(ht)
         ht = ht.checkpoint(args.centromere_revep_done_ht, overwrite=args.overwrite)
-        logger.info(
-            LOGGER_HEADER_TEMPLATE.format(
-                message=f"""
+        logger.info(LOGGER_HEADER_TEMPLATE.format(message=f"""
                 ✓ Step 6 complete: VEP run on chr18 centromere variants
                     Total variants: {ht.count():,}
                     Output path: {args.centromere_revep_done_ht}
-                """
-            )
-        )
+                """))
 
     # Step 7: Write final HT.
     if args.write_final_ht:
@@ -1092,15 +1068,11 @@ def main(args) -> None:
             context_ht, partial_vep_ht, revep_ht, centromere_revep_ht
         )
         ht = ht.checkpoint(args.output, overwrite=args.overwrite)
-        logger.info(
-            LOGGER_HEADER_TEMPLATE.format(
-                message=f"""
+        logger.info(LOGGER_HEADER_TEMPLATE.format(message=f"""
                 ✓ Step 7 complete: Final HT written:
                     Total variants: {ht.count():,}
                     Output path: {args.output}
-                """
-            )
-        )
+                """))
 
     logger.info(
         LOGGER_HEADER_TEMPLATE.format(

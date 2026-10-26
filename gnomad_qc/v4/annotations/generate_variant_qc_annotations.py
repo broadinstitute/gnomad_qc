@@ -433,8 +433,10 @@ def split_info(info_ht: hl.Table) -> hl.Table:
     info_annotations_to_split = ["AC_info"] + [f"{m}_info" for m in INFO_METHODS]
     info_ht = info_ht.annotate(
         **{
-            a: info_ht[a].annotate(
-                **split_info_annotation(info_ht[a], info_ht.a_index),
+            a: (
+                info_ht[a].annotate(
+                    **split_info_annotation(info_ht[a], info_ht.a_index),
+                )
             )
             for a in info_annotations_to_split
         },

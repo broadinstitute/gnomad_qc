@@ -114,9 +114,7 @@ final_html = """
     padding: 5px;
   }
 </style>
-""" + "\n".join(
-    final_sections
-)
+""" + "\n".join(final_sections)
 
 # Write final output.
 with open("field_requirements.html", "w") as out:
