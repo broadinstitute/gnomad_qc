@@ -395,7 +395,9 @@ def _group_membership_ht_path(project: str, environment: str, test: bool) -> str
     return apply_path_suffix(path, "cells")
 
 
-def _gnomad_v5_merged_path(environment: str, coverage_type: str, test: bool) -> str:
+def _gnomad_v5_merged_path(
+    environment: str, coverage_type: str, test: bool, suffix: Optional[str] = None
+) -> str:
     """
     Return the gnomAD v5 merged (consent-drop-subtracted) coverage/AN HT path.
 
@@ -405,13 +407,16 @@ def _gnomad_v5_merged_path(environment: str, coverage_type: str, test: bool) -> 
     :param environment: Compute environment.
     :param coverage_type: "coverage" or "allele_number".
     :param test: If True, append ``_test``.
+    :param suffix: Optional suffix appended after ``_test``, so tagged test runs
+        keep their own merged tables.
     :return: GCS path to the gnomAD v5 merged HT.
     """
     name = "coverage" if coverage_type == "coverage" else "an"
-    return (
+    path = (
         f"{qc_temp_prefix(environment=environment)}"
         f"gnomad_v5_genomes_{name}{'_test' if test else ''}.ht"
     )
+    return apply_path_suffix(path, suffix)
 
 
 def _log_name_for_run(
@@ -654,6 +659,8 @@ def compute_all_release_stats_per_ref_site(
         reducible_aggs={"AN"},
         entry_agg_group_membership=entry_agg_group_membership,
         sex_karyotype_field=(None if sex_karyotype_field is None else "sex_karyotype"),
+        # v4.1's AN used the pre-0.9.1 het-ref AB reading, so the subtraction must too.
+        legacy_het_ab=project == "gnomad",
     )
 
     def _cov_stats(
@@ -2446,7 +2453,7 @@ def main(args):
         if args.merge_gnomad_coverage:
             logger.info("Building gnomAD v5 coverage HT (subtracting consent-drop)...")
             merged_gnomad_coverage_ht_path = _gnomad_v5_merged_path(
-                results_environment, "coverage", test
+                results_environment, "coverage", test, args.cov_and_an_output_suffix
             )
             check_resource_existence(
                 output_step_resources={
@@ -2494,7 +2501,10 @@ def main(args):
         if args.merge_gnomad_an:
             logger.info("Building gnomAD v5 AN HT (subtracting consent-drop)...")
             merged_gnomad_an_ht_path = _gnomad_v5_merged_path(
-                results_environment, "allele_number", test
+                results_environment,
+                "allele_number",
+                test,
+                args.cov_and_an_output_suffix,
             )
             check_resource_existence(
                 output_step_resources={
@@ -2536,7 +2546,7 @@ def main(args):
                 test=test, environment=results_environment
             )
             gnomad_coverage_ht_path = _gnomad_v5_merged_path(
-                results_environment, "coverage", test
+                results_environment, "coverage", test, args.cov_and_an_output_suffix
             )
             check_resource_existence(
                 input_step_resources={"gnomad_coverage_ht": [gnomad_coverage_ht_path]},
@@ -2568,7 +2578,10 @@ def main(args):
                 test=test, environment=results_environment
             )
             gnomad_an_ht_path = _gnomad_v5_merged_path(
-                results_environment, "allele_number", test
+                results_environment,
+                "allele_number",
+                test,
+                args.cov_and_an_output_suffix,
             )
             check_resource_existence(
                 input_step_resources={"gnomad_an_ht": [gnomad_an_ht_path]},
