@@ -790,10 +790,12 @@ def correct_for_high_ab_hets(ht: hl.Table, af_threshold: float = 0.01) -> hl.Tab
 
     # Add already computed 'ab_adjusted' histograms to the 'qual_hist_expr'.
     qual_hist_expr = {
-        f"ab_adjusted_{x}": ht[x].annotate(
-            ab_hist_alt=ht.high_ab_het_adjusted_ab_hists[
-                f"ab_hist_alt{'' if x.startswith('raw') else '_adj'}"
-            ]
+        f"ab_adjusted_{x}": (
+            ht[x].annotate(
+                ab_hist_alt=ht.high_ab_het_adjusted_ab_hists[
+                    f"ab_hist_alt{'' if x.startswith('raw') else '_adj'}"
+                ]
+            )
         )
         for x in FREQ_ROW_FIELDS
         if "qual_hist" in x

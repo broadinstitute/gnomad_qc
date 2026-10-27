@@ -120,7 +120,6 @@ from gnomad_qc.v5.annotations.batch_fanout import (
     chunk_read_intervals,
     combine_suffix,
     group_path,
-    interval_from_list,
     interval_to_list,
     list_present_chunk_indices,
     load_chunk_layout,
@@ -760,7 +759,7 @@ def _merge_coverage_fields(
     """
     merged_fields = {
         "sum_gnomad": ht[f"sum_{project_1}"] - ht[f"sum_{project_2}"],
-        "total_DP_gnomad": (ht[f"total_DP_{project_1}"] - ht[f"total_DP_{project_2}"]),
+        "total_DP_gnomad": ht[f"total_DP_{project_1}"] - ht[f"total_DP_{project_2}"],
     }
     merged_fields.update(
         {

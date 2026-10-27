@@ -770,12 +770,14 @@ def create_per_sample_counts_ht(
     ht = fill_missing_key_combinations(
         ht,
         {
-            "summary_stats": hl.range(hl.eval(hl.len(ht.filter_group_meta))).map(
-                lambda x: hl.struct(
-                    **{
-                        f: 0 if f.startswith("n_") else hl.missing(t)
-                        for f, t in ht.summary_stats.dtype.element_type.items()
-                    }
+            "summary_stats": (
+                hl.range(hl.eval(hl.len(ht.filter_group_meta))).map(
+                    lambda x: hl.struct(
+                        **{
+                            f: 0 if f.startswith("n_") else hl.missing(t)
+                            for f, t in ht.summary_stats.dtype.element_type.items()
+                        }
+                    )
                 )
             )
         },
