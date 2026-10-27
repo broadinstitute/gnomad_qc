@@ -2411,9 +2411,9 @@ def main(args):
             # within the 'adjust_vcf_incompatible_types' function.
             # Wrap each feature in a length-1 array so a missing value is written as
             # '.' instead of the field being omitted. GATK's allele-specific tools read
-            # '.' as NaN, but VariantRecalibrator (VQSR, GATK 4.2.6.1) crashes with an
-            # IndexOutOfBoundsException when the field is absent; the isolation forest
-            # handles both the same way.
+            # '.' as NaN, but VariantRecalibrator (VQSR) crashed with an
+            # IndexOutOfBoundsException when the field is absent on GATK 4.2.6.1 (not
+            # yet retested on 4.6.1.0); the isolation forest handles both the same way.
             info_ht = info_ht.annotate(
                 info=info_ht.info.annotate(
                     AS_SB_TABLE=hl.array(
