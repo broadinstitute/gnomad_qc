@@ -11,6 +11,7 @@ from hailtop.batch.job import Job
 
 from gnomad_qc.v5.resources.annotations import get_true_positive_vcf_path, info_vcf_path
 from gnomad_qc.v5.resources.variant_qc import (
+    GATK_IMAGE,
     VQSR_FEATURES,
     get_variant_qc_result,
     run_batch,
@@ -1195,14 +1196,10 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--gatk-image",
-        default=(
-            "us-central1-docker.pkg.dev/broad-mpg-gnomad/images/"
-            "gatk-bcftools:4.2.6.1-1.10.2"
-        ),
+        default=GATK_IMAGE,
         help=(
             "Docker image for every GATK job. Must also have bcftools and tabix, which"
-            " ApplyRecalibration uses to trim scattered VCFs to their interval. Built"
-            " from gnomad_qc/v5/variant_qc/Dockerfile."
+            " ApplyRecalibration uses to trim scattered VCFs to their interval."
         ),
         type=str,
     )

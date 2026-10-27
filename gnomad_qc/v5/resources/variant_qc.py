@@ -51,6 +51,14 @@ VQSR_FEATURES = {
 }
 """Features used by the v5 VQSR models, keyed by variant type."""
 
+GATK_IMAGE = "us.gcr.io/broad-gatk/gatk:4.6.1.0"
+"""
+GATK image for v5 Batch jobs.
+
+4.6.1.0 ships the conda env (scikit-learn, dill) needed for PYTHON_IFOREST and the
+bcftools/tabix that VQSR ApplyRecalibration uses to trim scattered VCFs.
+"""
+
 
 # GATK isolation forest resource VCFs, used as labeled training/calibration sets. SNP
 # and INDEL modes use different truth resources. These stay on the Broad references
