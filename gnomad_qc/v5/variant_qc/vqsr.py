@@ -151,7 +151,10 @@ def snps_variant_recalibrator_create_model(
     :param is_large_callset: Whether the dataset is huge. Used to set number of CPUs
         for the job.
     :param max_gaussians: Maximum number of Gaussians for the positive model.
-    :return: Job object with 2 outputs: j.model_file and j.snp_rscript_file.
+    :return: Job object with 2 outputs: j.model_file and j.snp_rscript. The plot
+        script is written but not run (``--dont-run-rscript``): GATK 4.6.1.0's R env
+        rejects its ``space = "rgb"`` call (gatk#8664), and the model is complete
+        before the plots.
     """
     j = b.new_job("VQSR: SNPsVariantRecalibratorCreateModel")
     j.image(gatk_image)
@@ -189,21 +192,13 @@ def snps_variant_recalibrator_create_model(
           -resource:1000G,known=false,training=true,truth=false,prior=10 {utils['one_thousand_genomes_resource_vcf']} \\
           -resource:dbsnp,known=true,training=false,truth=false,prior=7 {utils['dbsnp_resource_vcf']} \\
           {f'-resource:singletons,known=true,training=true,truth=true,prior=10 {singletons_resource_vcf}' if singletons_resource_vcf else ''} \\
-          --rscript-file {j.snp_rscript}
-          ls $(dirname {j.snp_rscript})
-          ln {j.snp_rscript}.pdf {j.snp_rscript_pdf}
-          ln {j.tranches}.pdf {j.tranches_pdf}
+          --rscript-file {j.snp_rscript} \\
+          --dont-run-rscript
           """)
 
     if out_bucket:
         b.write_output(
             j.snp_rscript, f"{out_bucket}model/SNPS/snps.features.build.RScript"
-        )
-        b.write_output(
-            j.snp_rscript_pdf, f"{out_bucket}model/SNPS/snps.features.build.pdf"
-        )
-        b.write_output(
-            j.tranches_pdf, f"{out_bucket}model/SNPS/snps.tranches.build.pdf"
         )
         b.write_output(j.model_file, f"{out_bucket}model/SNPS/snps.model.report")
 
@@ -361,8 +356,8 @@ def indels_variant_recalibrator_create_model(
     :param is_small_callset: Whether the dataset is small. Used to set number of CPUs
         for the job.
     :param max_gaussians: Maximum number of Gaussians for the positive model.
-    :return: Job object with 2 outputs: j.model_file and j.indel_rscript_file. The
-        latter is useful to produce the optional tranche plot.
+    :return: Job object with 2 outputs: j.model_file and j.indel_rscript. The plot
+        script is written but not run; see :func:`snps_variant_recalibrator_create_model`.
     """
     j = b.new_job("VQSR: INDELsVariantRecalibratorCreateModel")
     j.image(gatk_image)
@@ -401,17 +396,13 @@ def indels_variant_recalibrator_create_model(
           -resource:axiomPoly,known=false,training=true,truth=false,prior=10 {utils['axiom_poly_resource_vcf']} \\
           -resource:dbsnp,known=true,training=false,truth=false,prior=2 {utils['dbsnp_resource_vcf']} \\
           {f'-resource:singletons,known=true,training=true,truth=true,prior=10 {singletons_resource_vcf}' if singletons_resource_vcf else ''} \\
-          --rscript-file {j.indel_rscript}
-          ls $(dirname {j.indel_rscript})
-          ln {j.indel_rscript}.pdf {j.indel_rscript_pdf}
+          --rscript-file {j.indel_rscript} \\
+          --dont-run-rscript
         """)
 
     if out_bucket:
         b.write_output(
             j.indel_rscript, f"{out_bucket}model/INDELS/indels.features.build.RScript"
-        )
-        b.write_output(
-            j.indel_rscript_pdf, f"{out_bucket}model/INDELS/indels.features.build.pdf"
         )
         b.write_output(j.model_file, f"{out_bucket}model/INDELS/indels.model.report")
 
