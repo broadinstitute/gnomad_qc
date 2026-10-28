@@ -145,16 +145,17 @@ def snps_variant_recalibrator_create_model(
     :param features: List of features to be used in the SNP VQSR model.
     :param singletons_resource_vcf: Optional singletons VCF to be used in
         building the model.
-    :param out_bucket: Full path to output bucket to write model and plots to.
+    :param out_bucket: Full path to output bucket to write the model and R script to.
     :param is_small_callset: Whether the dataset is small. Used to set number of CPUs
         for the job.
     :param is_large_callset: Whether the dataset is huge. Used to set number of CPUs
         for the job.
     :param max_gaussians: Maximum number of Gaussians for the positive model.
-    :return: Job object with 2 outputs: j.model_file and j.snp_rscript. The plot
-        script is written but not run (``--dont-run-rscript``): GATK 4.6.1.0's R env
-        rejects its ``space = "rgb"`` call (gatk#8664), and the model is complete
-        before the plots.
+    :return: Job with outputs j.model_file, j.snp_rscript, j.recalibration, and
+        j.tranches; only the first two are written to ``out_bucket``. The plot script
+        is written but not run (``--dont-run-rscript``): GATK 4.6.1.0's R env rejects
+        its ``space = "rgb"`` call (gatk#8664), and the model is complete before the
+        plots.
     """
     j = b.new_job("VQSR: SNPsVariantRecalibratorCreateModel")
     j.image(gatk_image)
@@ -242,7 +243,7 @@ def snps_variant_recalibrator(
     :param sites_only_vcf: Sites only VCF file to be used to build the model.
     :param model_file: Model file to be applied.
     :param utils: Dictionary containing resources (file paths).
-    :param out_bucket: Full path to output bucket to write model and plots to.
+    :param out_bucket: Full path to output bucket to write the tranches to.
     :param tranche_idx: Index for the tranches file.
     :param use_as_annotations: If set, Allele-Specific variant recalibrator will be used.
     :param gcp_billing_project: GCP billing project for requester-pays buckets.
@@ -352,12 +353,13 @@ def indels_variant_recalibrator_create_model(
     :param features: List of features to be used in the INDEL VQSR model.
     :param singletons_resource_vcf: Optional singletons VCF to be used in building the
         model.
-    :param out_bucket: Full path to output bucket to write model and plots to.
+    :param out_bucket: Full path to output bucket to write the model and R script to.
     :param is_small_callset: Whether the dataset is small. Used to set number of CPUs
         for the job.
     :param max_gaussians: Maximum number of Gaussians for the positive model.
-    :return: Job object with 2 outputs: j.model_file and j.indel_rscript. The plot
-        script is written but not run; see :func:`snps_variant_recalibrator_create_model`.
+    :return: Job with outputs j.model_file, j.indel_rscript, j.recalibration, and
+        j.tranches; only the first two are written to ``out_bucket``. The plot script
+        is written but not run; see :func:`snps_variant_recalibrator_create_model`.
     """
     j = b.new_job("VQSR: INDELsVariantRecalibratorCreateModel")
     j.image(gatk_image)
@@ -446,7 +448,7 @@ def indels_variant_recalibrator(
     :param sites_only_vcf: Sites only VCF file to be used to build the model.
     :param model_file: Model file to be applied.
     :param utils: Dictionary containing resources (file paths).
-    :param out_bucket: Full path to output bucket to write model and plots to.
+    :param out_bucket: Full path to output bucket to write the tranches to.
     :param tranche_idx: Index for the tranches file.
     :param use_as_annotations: If set, Allele-Specific variant recalibrator will be used.
     :param gcp_billing_project: GCP billing project for requester-pays buckets.
@@ -773,7 +775,7 @@ def make_vqsr_jobs(
         our default and shard our VCF to launch jobs in a scattered mode.
     :param output_vcf_name: Name, without extension, to use for the output VCF file(s).
     :param utils: Dictionary containing resource files and parameters to be used in VQSR.
-    :param out_bucket: Path to write, plots, evaluation results, and recalibrated VCF to.
+    :param out_bucket: Path to write models, tranches, and the recalibrated VCF to.
     :param intervals: ResourceGroup object with intervals to scatter. Only read when
         is_large_callset is True; pass None otherwise.
     :param use_as_annotations: Whether to use allele-specific annotation for VQSR.
