@@ -675,7 +675,8 @@ def apply_recalibration(
         # targets format, so shards spanning contigs trim correctly.
         j.command(f"""
                 awk '!/^@/ {{print $1"\\t"$2"\\t"$3}}' {interval} > targets.tsv
-                bcftools view -T targets.tsv {j.output_vcf['vcf.gz']} --output-file {j.output_vcf['vcf.gz']} --output-type z
+                bcftools view -T targets.tsv {j.output_vcf['vcf.gz']} --output-file trimmed.vcf.gz --output-type z
+                mv trimmed.vcf.gz {j.output_vcf['vcf.gz']}
                 tabix -f {j.output_vcf['vcf.gz']}
             """)
 
