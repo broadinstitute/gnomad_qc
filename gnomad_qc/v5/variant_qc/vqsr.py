@@ -671,12 +671,12 @@ def apply_recalibration(
     #  in ONE of two consecutive chunks (not both).
     if interval and not overlap_skip:
         # Overwrite VCF with overlap issue addressed.
+        # interval_list rows (contig start end, 1-based inclusive) are bcftools' 3-column
+        # targets format, so shards spanning contigs trim correctly.
         j.command(f"""
-                cat {interval} | grep -Ev "^@" > tmp.interval
-                interval=$(cat tmp.interval | awk 'NR == 1 {{c=$1; s=$2}} END {{ print c":"s"-"$1":"$3}}')
-                bcftools view -t $interval {j.output_vcf['vcf.gz']} --output-file {j.output_vcf['vcf.gz']} --output-type z
+                awk '!/^@/ {{print $1"\\t"$2"\\t"$3}}' {interval} > targets.tsv
+                bcftools view -T targets.tsv {j.output_vcf['vcf.gz']} --output-file {j.output_vcf['vcf.gz']} --output-type z
                 tabix -f {j.output_vcf['vcf.gz']}
-                df -h; pwd; du -sh $(dirname {j.output_vcf['vcf.gz']})
             """)
 
     if out_bucket:
