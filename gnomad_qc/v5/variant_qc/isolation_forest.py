@@ -28,6 +28,7 @@ from gnomad_qc.v5.resources.basics import (
 )
 from gnomad_qc.v5.resources.constants import BATCH_TMP_BUCKET
 from gnomad_qc.v5.resources.variant_qc import (
+    GATK_IMAGE,
     REFERENCE_RESOURCES,
     VARIANT_QC_FEATURES,
     _validate_model_id,
@@ -40,9 +41,6 @@ from gnomad_qc.v5.variant_qc.import_variant_qc_vcf import import_variant_qc_vcf
 logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
 logger = logging.getLogger("isolation_forest")
 logger.setLevel(logging.INFO)
-
-DEFAULT_GATK_IMAGE = "us.gcr.io/broad-gatk/gatk:4.6.1.0"
-"""GATK image. 4.6.1.0 ships the conda env (scikit-learn, dill) needed for PYTHON_IFOREST."""
 
 
 def _resource_args(mode: str, singletons_vcf: Optional[str]) -> str:
@@ -1037,7 +1035,7 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
     gatk_args.add_argument(
         "--gatk-image",
         help="GATK docker image.",
-        default=DEFAULT_GATK_IMAGE,
+        default=GATK_IMAGE,
         type=str,
     )
     gatk_args.add_argument(
