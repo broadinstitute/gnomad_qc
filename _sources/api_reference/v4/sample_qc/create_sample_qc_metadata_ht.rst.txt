@@ -1,0 +1,21 @@
+gnomad_qc.v4.sample_qc.create_sample_qc_metadata_ht
+===================================================
+
+Script to merge the output of all sample QC modules into a single Table.
+
+
+
+
+.. argparse::
+   :ref: gnomad_qc.v4.sample_qc.create_sample_qc_metadata_ht.get_script_argument_parser
+   :prog: gnomad_qc.v4.sample_qc.create_sample_qc_metadata_ht.py
+
+
+
+Module Functions
+****************
+
+.. gnomad_automodulesummary:: gnomad_qc.v4.sample_qc.create_sample_qc_metadata_ht
+
+.. automodule:: gnomad_qc.v4.sample_qc.create_sample_qc_metadata_ht
+    :exclude-members: get_script_argument_parser

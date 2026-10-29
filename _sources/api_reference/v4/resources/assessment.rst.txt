@@ -1,0 +1,16 @@
+gnomad_qc.v4.resources.assessment
+=================================
+
+Script containing assessment related resources.
+
+
+
+
+
+Module Functions
+****************
+
+.. gnomad_automodulesummary:: gnomad_qc.v4.resources.assessment
+
+.. automodule:: gnomad_qc.v4.resources.assessment
+    :exclude-members: get_script_argument_parser

@@ -1,0 +1,12 @@
+gnomad_qc.analyses
+==================
+
+
+
+
+
+.. toctree::
+    :maxdepth: 2
+
+    compute_pext <compute_pext>
+    resources <resources>

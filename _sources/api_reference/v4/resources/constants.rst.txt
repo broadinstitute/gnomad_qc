@@ -1,0 +1,16 @@
+gnomad_qc.v4.resources.constants
+================================
+
+Script containing version and release constants.
+
+
+
+
+
+Module Functions
+****************
+
+.. gnomad_automodulesummary:: gnomad_qc.v4.resources.constants
+
+.. automodule:: gnomad_qc.v4.resources.constants
+    :exclude-members: get_script_argument_parser

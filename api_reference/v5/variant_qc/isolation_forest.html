@@ -1,0 +1,634 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+  <meta charset="utf-8" /><meta name="generator" content="Docutils 0.18.1: http://docutils.sourceforge.net/" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>gnomad_qc.v5.variant_qc.isolation_forest &mdash; gnomad_qc master documentation</title>
+      <link rel="stylesheet" href="../../../_static/pygments.css" type="text/css" />
+      <link rel="stylesheet" href="../../../_static/css/theme.css" type="text/css" />
+      <link rel="stylesheet" href="../../../_static/theme_overrides.css" type="text/css" />
+  <!--[if lt IE 9]>
+    <script src="../../../_static/js/html5shiv.min.js"></script>
+  <![endif]-->
+  
+        <script src="../../../_static/jquery.js"></script>
+        <script src="../../../_static/_sphinx_javascript_frameworks_compat.js"></script>
+        <script data-url_root="../../../" id="documentation_options" src="../../../_static/documentation_options.js"></script>
+        <script src="../../../_static/doctools.js"></script>
+        <script src="../../../_static/sphinx_highlight.js"></script>
+    <script src="../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" />
+    <link rel="next" title="gnomad_qc.v5.variant_qc.vqsr" href="vqsr.html" />
+    <link rel="prev" title="gnomad_qc.v5.variant_qc.import_variant_qc_vcf" href="import_variant_qc_vcf.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../index.html" class="icon icon-home">
+            gnomad_qc
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul class="current">
+<li class="toctree-l1 current"><a class="reference internal" href="../../index.html">API Reference</a><ul class="current">
+<li class="toctree-l2"><a class="reference internal" href="../../federated/index.html">federated</a></li>
+<li class="toctree-l2 current"><a class="reference internal" href="../index.html">v5</a><ul class="current">
+<li class="toctree-l3"><a class="reference internal" href="../annotations/index.html">annotations</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../resources/index.html">resources</a></li>
+<li class="toctree-l3 current"><a class="reference internal" href="index.html">variant_qc</a><ul class="current">
+<li class="toctree-l4"><a class="reference internal" href="create_truth_samples_vds.html">create_truth_samples_vds</a></li>
+<li class="toctree-l4"><a class="reference internal" href="create_vqsr_test_data.html">create_vqsr_test_data</a></li>
+<li class="toctree-l4"><a class="reference internal" href="import_variant_qc_vcf.html">import_variant_qc_vcf</a></li>
+<li class="toctree-l4 current"><a class="current reference internal" href="#">isolation_forest</a></li>
+<li class="toctree-l4"><a class="reference internal" href="vqsr.html">vqsr</a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../../analyses/index.html">analyses</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../v4/index.html">v4</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/broadinstitute/gnomad_qc/tags">Change Log</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../index.html">gnomad_qc</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../index.html">gnomad_qc</a></li>
+          <li class="breadcrumb-item"><a href="../index.html">gnomad_qc.v5</a></li>
+          <li class="breadcrumb-item"><a href="index.html">gnomad_qc.v5.variant_qc</a></li>
+      <li class="breadcrumb-item active">gnomad_qc.v5.variant_qc.isolation_forest</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="../../../_sources/api_reference/v5/variant_qc/isolation_forest.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="gnomad-qc-v5-variant-qc-isolation-forest">
+<h1>gnomad_qc.v5.variant_qc.isolation_forest<a class="headerlink" href="#gnomad-qc-v5-variant-qc-isolation-forest" title="Permalink to this heading"></a></h1>
+<p>Script to run the GATK isolation forest variant QC model on an AS-annotated sites VCF.</p>
+<p>SNPs and INDELs are modeled separately (GATK <code class="docutils literal notranslate"><span class="pre">--mode</span></code>): for each variant type the
+workflow runs ExtractVariantAnnotations -&gt; TrainVariantAnnotationsModel (PYTHON_IFOREST)
+-&gt; ScoreVariantAnnotations (scattered over intervals). The two per-mode scored VCFs are
+merged into a single result HT in the <code class="docutils literal notranslate"><span class="pre">--load-iforest</span></code> step.</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">usage</span><span class="p">:</span> <span class="n">gnomad_qc</span><span class="o">.</span><span class="n">v5</span><span class="o">.</span><span class="n">variant_qc</span><span class="o">.</span><span class="n">isolation_forest</span><span class="o">.</span><span class="n">py</span> <span class="p">[</span><span class="o">-</span><span class="n">h</span><span class="p">]</span> <span class="p">[</span><span class="o">-</span><span class="n">o</span><span class="p">]</span>
+                                                   <span class="p">[</span><span class="o">--</span><span class="n">environment</span> <span class="p">{</span><span class="n">rwb</span><span class="p">,</span><span class="n">batch</span><span class="p">}]</span>
+                                                   <span class="o">--</span><span class="n">model</span><span class="o">-</span><span class="nb">id</span> <span class="n">MODEL_ID</span>
+                                                   <span class="p">[</span><span class="o">--</span><span class="n">test</span><span class="p">]</span>
+                                                   <span class="p">[</span><span class="o">--</span><span class="n">test</span><span class="o">-</span><span class="n">chrom</span> <span class="n">TEST_CHROM</span> <span class="p">[</span><span class="n">TEST_CHROM</span> <span class="o">...</span><span class="p">]]</span>
+                                                   <span class="p">[</span><span class="o">--</span><span class="n">test</span><span class="o">-</span><span class="n">on</span><span class="o">-</span><span class="n">v4</span><span class="p">]</span>
+                                                   <span class="p">[</span><span class="o">--</span><span class="n">export</span><span class="o">-</span><span class="n">v4</span><span class="o">-</span><span class="n">test</span><span class="o">-</span><span class="n">vcf</span><span class="p">]</span>
+                                                   <span class="p">[</span><span class="o">--</span><span class="n">export</span><span class="o">-</span><span class="n">only</span><span class="p">]</span>
+                                                   <span class="o">--</span><span class="n">batch</span><span class="o">-</span><span class="n">billing</span><span class="o">-</span><span class="n">project</span>
+                                                   <span class="n">BATCH_BILLING_PROJECT</span>
+                                                   <span class="o">--</span><span class="n">gcp</span><span class="o">-</span><span class="n">billing</span><span class="o">-</span><span class="n">project</span>
+                                                   <span class="n">GCP_BILLING_PROJECT</span>
+                                                   <span class="p">[</span><span class="o">--</span><span class="n">batch</span><span class="o">-</span><span class="n">suffix</span> <span class="n">BATCH_SUFFIX</span><span class="p">]</span>
+                                                   <span class="p">[</span><span class="o">--</span><span class="n">app</span><span class="o">-</span><span class="n">name</span> <span class="n">APP_NAME</span><span class="p">]</span>
+                                                   <span class="p">[</span><span class="o">--</span><span class="n">driver</span><span class="o">-</span><span class="n">cores</span> <span class="n">DRIVER_CORES</span><span class="p">]</span>
+                                                   <span class="p">[</span><span class="o">--</span><span class="n">driver</span><span class="o">-</span><span class="n">memory</span> <span class="n">DRIVER_MEMORY</span><span class="p">]</span>
+                                                   <span class="p">[</span><span class="o">--</span><span class="n">worker</span><span class="o">-</span><span class="n">cores</span> <span class="n">WORKER_CORES</span><span class="p">]</span>
+                                                   <span class="p">[</span><span class="o">--</span><span class="n">worker</span><span class="o">-</span><span class="n">memory</span> <span class="n">WORKER_MEMORY</span><span class="p">]</span>
+                                                   <span class="p">[</span><span class="o">--</span><span class="n">gatk</span><span class="o">-</span><span class="n">image</span> <span class="n">GATK_IMAGE</span><span class="p">]</span>
+                                                   <span class="p">[</span><span class="o">--</span><span class="n">scatter</span><span class="o">-</span><span class="n">count</span> <span class="n">SCATTER_COUNT</span><span class="p">]</span>
+                                                   <span class="o">--</span><span class="n">out</span><span class="o">-</span><span class="n">vcf</span><span class="o">-</span><span class="n">name</span> <span class="n">OUT_VCF_NAME</span>
+                                                   <span class="p">[</span><span class="o">--</span><span class="n">hyperparameters</span><span class="o">-</span><span class="n">json</span> <span class="n">HYPERPARAMETERS_JSON</span><span class="p">]</span>
+                                                   <span class="p">[</span><span class="o">--</span><span class="n">transmitted</span><span class="o">-</span><span class="n">singletons</span><span class="p">]</span>
+                                                   <span class="p">[</span><span class="o">--</span><span class="n">sibling</span><span class="o">-</span><span class="n">singletons</span><span class="p">]</span>
+                                                   <span class="p">[</span><span class="o">--</span><span class="n">adj</span><span class="p">]</span> <span class="p">[</span><span class="o">--</span><span class="n">load</span><span class="o">-</span><span class="n">iforest</span><span class="p">]</span>
+                                                   <span class="p">[</span><span class="o">--</span><span class="n">load</span><span class="o">-</span><span class="n">only</span><span class="p">]</span>
+                                                   <span class="p">[</span><span class="o">--</span><span class="n">n</span><span class="o">-</span><span class="n">partitions</span> <span class="n">N_PARTITIONS</span><span class="p">]</span>
+                                                   <span class="p">[</span><span class="o">--</span><span class="n">header</span><span class="o">-</span><span class="n">path</span> <span class="n">HEADER_PATH</span><span class="p">]</span>
+                                                   <span class="p">[</span><span class="o">--</span><span class="n">array</span><span class="o">-</span><span class="n">elements</span><span class="o">-</span><span class="n">required</span><span class="p">]</span>
+</pre></div>
+</div>
+<section id="named-arguments">
+<h2>Named Arguments<a class="headerlink" href="#named-arguments" title="Permalink to this heading"></a></h2>
+<dl class="option-list">
+<dt><kbd>-o, --overwrite</kbd></dt>
+<dd><p>Whether to overwrite existing outputs (with –load-only, only overwrite the result HT).</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--environment</kbd></dt>
+<dd><p>Possible choices: rwb, batch</p>
+<p>Compute environment.</p>
+<p>Default: “batch”</p>
+</dd>
+<dt><kbd>--model-id</kbd></dt>
+<dd><p>Model ID for the isolation forest run. Must start with ‘if’ (e.g. if_test1).</p>
+</dd>
+</dl>
+</section>
+<section id="testing-options">
+<h2>testing options<a class="headerlink" href="#testing-options" title="Permalink to this heading"></a></h2>
+<dl class="option-list">
+<dt><kbd>--test</kbd></dt>
+<dd><p>Filter to –test-chrom and use a small scatter count for testing.</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--test-chrom</kbd></dt>
+<dd><p>Contig(s) to score under –test/–test-on-v4. Must match the contigs in the test info VCF.</p>
+<p>Default: [‘chr21’]</p>
+</dd>
+<dt><kbd>--test-on-v4</kbd></dt>
+<dd><p>Use gnomAD v4 sites/true-positive VCFs as inputs (v5 data unavailable).</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--export-v4-test-vcf</kbd></dt>
+<dd><p>Export the v4 split info HT filtered to –test-chrom as the –test-on-v4 sites VCF. Requires –test-on-v4.</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--export-only</kbd></dt>
+<dd><p>Stop after –export-v4-test-vcf instead of continuing to the Batch.</p>
+<p>Default: False</p>
+</dd>
+</dl>
+</section>
+<section id="batch/gcp-configuration">
+<h2>batch/GCP configuration<a class="headerlink" href="#batch/gcp-configuration" title="Permalink to this heading"></a></h2>
+<dl class="option-list">
+<dt><kbd>--batch-billing-project</kbd></dt>
+<dd><p>Hail Batch billing project.</p>
+</dd>
+<dt><kbd>--gcp-billing-project</kbd></dt>
+<dd><p>GCP billing project for requester-pays buckets.</p>
+</dd>
+<dt><kbd>--batch-suffix</kbd></dt>
+<dd><p>String to append to the Batch name.</p>
+<p>Default: “”</p>
+</dd>
+<dt><kbd>--app-name</kbd></dt>
+<dd><p>Job name for the batch/QoB backend.</p>
+</dd>
+<dt><kbd>--driver-cores</kbd></dt>
+<dd><p>Number of driver cores. The load step has been run with 4-8.</p>
+</dd>
+<dt><kbd>--driver-memory</kbd></dt>
+<dd><p>Driver memory. Must be ‘highmem’ for –load-iforest/–load-only.</p>
+</dd>
+<dt><kbd>--worker-cores</kbd></dt>
+<dd><p>Number of worker cores.</p>
+</dd>
+<dt><kbd>--worker-memory</kbd></dt>
+<dd><p>Worker memory.</p>
+</dd>
+</dl>
+</section>
+<section id="gatk-scoring">
+<h2>GATK scoring<a class="headerlink" href="#gatk-scoring" title="Permalink to this heading"></a></h2>
+<dl class="option-list">
+<dt><kbd>--gatk-image</kbd></dt>
+<dd><p>GATK docker image.</p>
+<p>Default: “us.gcr.io/broad-gatk/gatk:4.6.1.0”</p>
+</dd>
+<dt><kbd>--scatter-count</kbd></dt>
+<dd><p>Number of intervals to scatter scoring across.</p>
+<p>Default: 100</p>
+</dd>
+<dt><kbd>--out-vcf-name</kbd></dt>
+<dd><p>Base name for scored VCF shards.</p>
+</dd>
+<dt><kbd>--hyperparameters-json</kbd></dt>
+<dd><p>Optional GATK model hyperparameters JSON path.</p>
+</dd>
+</dl>
+</section>
+<section id="training/calibration-set">
+<h2>training/calibration set<a class="headerlink" href="#training/calibration-set" title="Permalink to this heading"></a></h2>
+<dl class="option-list">
+<dt><kbd>--transmitted-singletons</kbd></dt>
+<dd><p>Include transmitted singletons as a training/calibration set.</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--sibling-singletons</kbd></dt>
+<dd><p>Include sibling singletons as a training/calibration set.</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--adj</kbd></dt>
+<dd><p>Use adj genotypes for the true-positive singletons VCF.</p>
+<p>Default: False</p>
+</dd>
+</dl>
+</section>
+<section id="load-results-ht">
+<h2>load results HT<a class="headerlink" href="#load-results-ht" title="Permalink to this heading"></a></h2>
+<dl class="option-list">
+<dt><kbd>--load-iforest</kbd></dt>
+<dd><p>Merge the scored VCFs into a variant QC result HT.</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--load-only</kbd></dt>
+<dd><p>Skip the GATK Batch and only run the load step.</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--n-partitions</kbd></dt>
+<dd><p>Number of partitions for the result HT.</p>
+<p>Default: 5000</p>
+</dd>
+<dt><kbd>--header-path</kbd></dt>
+<dd><p>Optional header file to use when importing the scored VCFs.</p>
+</dd>
+<dt><kbd>--array-elements-required</kbd></dt>
+<dd><p>Set array_elements_required=True when importing the scored VCFs.</p>
+<p>Default: False</p>
+</dd>
+</dl>
+</section>
+<section id="module-functions">
+<h2>Module Functions<a class="headerlink" href="#module-functions" title="Permalink to this heading"></a></h2>
+<table class="autosummary longtable docutils align-default">
+<tbody>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v5.variant_qc.isolation_forest.extract_variant_annotations_job" title="gnomad_qc.v5.variant_qc.isolation_forest.extract_variant_annotations_job"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v5.variant_qc.isolation_forest.extract_variant_annotations_job</span></code></a>(b, ...)</p></td>
+<td><p>Run GATK ExtractVariantAnnotations for one variant type mode.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#gnomad_qc.v5.variant_qc.isolation_forest.train_variant_annotations_model_job" title="gnomad_qc.v5.variant_qc.isolation_forest.train_variant_annotations_model_job"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v5.variant_qc.isolation_forest.train_variant_annotations_model_job</span></code></a>(b, ...)</p></td>
+<td><p>Run GATK TrainVariantAnnotationsModel (PYTHON_IFOREST) for one variant type mode.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v5.variant_qc.isolation_forest.split_intervals_job" title="gnomad_qc.v5.variant_qc.isolation_forest.split_intervals_job"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v5.variant_qc.isolation_forest.split_intervals_job</span></code></a>(b, ...)</p></td>
+<td><p>Split the calling contigs into <code class="docutils literal notranslate"><span class="pre">scatter_count</span></code> intervals, excluding telomeres/centromeres.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#gnomad_qc.v5.variant_qc.isolation_forest.score_variant_annotations_job" title="gnomad_qc.v5.variant_qc.isolation_forest.score_variant_annotations_job"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v5.variant_qc.isolation_forest.score_variant_annotations_job</span></code></a>(b, ...)</p></td>
+<td><p>Run GATK ScoreVariantAnnotations for one variant type mode over one interval.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v5.variant_qc.isolation_forest.check_run_config" title="gnomad_qc.v5.variant_qc.isolation_forest.check_run_config"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v5.variant_qc.isolation_forest.check_run_config</span></code></a>(...)</p></td>
+<td><p>Guard reuse of outputs under <code class="docutils literal notranslate"><span class="pre">run_prefix</span></code> against a changed run configuration.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#gnomad_qc.v5.variant_qc.isolation_forest.isolation_forest_workflow" title="gnomad_qc.v5.variant_qc.isolation_forest.isolation_forest_workflow"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v5.variant_qc.isolation_forest.isolation_forest_workflow</span></code></a>(b, ...)</p></td>
+<td><p>Add the per-mode extract/train/score jobs (SNP and INDEL) to the Batch.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v5.variant_qc.isolation_forest.export_exclusion_intervals" title="gnomad_qc.v5.variant_qc.isolation_forest.export_exclusion_intervals"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v5.variant_qc.isolation_forest.export_exclusion_intervals</span></code></a>(...)</p></td>
+<td><p>Export telomere/centromere intervals to a GATK-readable <code class="docutils literal notranslate"><span class="pre">chr:start-end</span></code> file.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#gnomad_qc.v5.variant_qc.isolation_forest.export_v4_test_sites_vcf" title="gnomad_qc.v5.variant_qc.isolation_forest.export_v4_test_sites_vcf"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v5.variant_qc.isolation_forest.export_v4_test_sites_vcf</span></code></a>(...)</p></td>
+<td><p>Export the v4 split info HT, filtered to <code class="docutils literal notranslate"><span class="pre">contigs</span></code>, as a GATK-readable sites VCF.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v5.variant_qc.isolation_forest.merge_iforest_result" title="gnomad_qc.v5.variant_qc.isolation_forest.merge_iforest_result"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v5.variant_qc.isolation_forest.merge_iforest_result</span></code></a>(...)</p></td>
+<td><p>Merge the per-mode scored VCFs into a single variant QC result HT.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#gnomad_qc.v5.variant_qc.isolation_forest.reconcile_scored_sites" title="gnomad_qc.v5.variant_qc.isolation_forest.reconcile_scored_sites"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v5.variant_qc.isolation_forest.reconcile_scored_sites</span></code></a>(...)</p></td>
+<td><p>Raise if any input variant in the scored region is missing from the output or unscored.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v5.variant_qc.isolation_forest.main" title="gnomad_qc.v5.variant_qc.isolation_forest.main"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v5.variant_qc.isolation_forest.main</span></code></a>(args)</p></td>
+<td><p>Run the isolation forest variant QC workflow.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v5.variant_qc.isolation_forest.get_script_argument_parser</span></code>()</p></td>
+<td><p>Get script argument parser.</p></td>
+</tr>
+</tbody>
+</table>
+<span class="target" id="module-gnomad_qc.v5.variant_qc.isolation_forest"></span><p>Script to run the GATK isolation forest variant QC model on an AS-annotated sites VCF.</p>
+<p>SNPs and INDELs are modeled separately (GATK <code class="docutils literal notranslate"><span class="pre">--mode</span></code>): for each variant type the
+workflow runs ExtractVariantAnnotations -&gt; TrainVariantAnnotationsModel (PYTHON_IFOREST)
+-&gt; ScoreVariantAnnotations (scattered over intervals). The two per-mode scored VCFs are
+merged into a single result HT in the <code class="docutils literal notranslate"><span class="pre">--load-iforest</span></code> step.</p>
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v5.variant_qc.isolation_forest.extract_variant_annotations_job">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v5.variant_qc.isolation_forest.</span></span><span class="sig-name descname"><span class="pre">extract_variant_annotations_job</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">b</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">mode</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sites_only_vcf</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">features</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">resource_args</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">calling_intervals_args</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">exclude_intervals</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">out_root</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">gatk_image</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">gcp_billing_project</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v5/variant_qc/isolation_forest.html#extract_variant_annotations_job"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v5.variant_qc.isolation_forest.extract_variant_annotations_job" title="Permalink to this definition"></a></dt>
+<dd><p>Run GATK ExtractVariantAnnotations for one variant type mode.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>b</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">Batch</span></code>) – Batch to add the job to.</p></li>
+<li><p><strong>mode</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Variant type mode, ‘SNP’ or ‘INDEL’.</p></li>
+<li><p><strong>sites_only_vcf</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – AS-annotated sites-only input VCF.</p></li>
+<li><p><strong>features</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">List</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>]) – Features to extract for this mode.</p></li>
+<li><p><strong>resource_args</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – GATK <code class="docutils literal notranslate"><span class="pre">--resource</span></code> args for the labeled sets.</p></li>
+<li><p><strong>calling_intervals_args</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – GATK <code class="docutils literal notranslate"><span class="pre">-L</span></code> args restricting the extracted sites.</p></li>
+<li><p><strong>exclude_intervals</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Telomere/centromere intervals excluded from the
+training/calibration set (<code class="docutils literal notranslate"><span class="pre">-XL</span></code>); these sites are not scored either.</p></li>
+<li><p><strong>out_root</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Output prefix (files written as <code class="docutils literal notranslate"><span class="pre">{out_root}.*</span></code>).</p></li>
+<li><p><strong>gatk_image</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – GATK docker image.</p></li>
+<li><p><strong>gcp_billing_project</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – GCP billing project for requester-pays buckets.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="xref py py-class docutils literal notranslate"><span class="pre">Job</span></code></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Job with output ResourceGroup <code class="docutils literal notranslate"><span class="pre">extract</span></code>.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v5.variant_qc.isolation_forest.train_variant_annotations_model_job">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v5.variant_qc.isolation_forest.</span></span><span class="sig-name descname"><span class="pre">train_variant_annotations_model_job</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">b</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">mode</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">annotations_hdf5</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">out_root</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">gatk_image</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">gcp_billing_project</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">hyperparameters_json</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v5/variant_qc/isolation_forest.html#train_variant_annotations_model_job"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v5.variant_qc.isolation_forest.train_variant_annotations_model_job" title="Permalink to this definition"></a></dt>
+<dd><p>Run GATK TrainVariantAnnotationsModel (PYTHON_IFOREST) for one variant type mode.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>b</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">Batch</span></code>) – Batch to add the job to.</p></li>
+<li><p><strong>mode</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Variant type mode, ‘SNP’ or ‘INDEL’.</p></li>
+<li><p><strong>annotations_hdf5</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">ResourceFile</span></code>) – Extracted annotations HDF5 from the extract step.</p></li>
+<li><p><strong>out_root</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Output prefix (files written as <code class="docutils literal notranslate"><span class="pre">{out_root}.{mode}.*</span></code>).</p></li>
+<li><p><strong>gatk_image</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – GATK docker image.</p></li>
+<li><p><strong>gcp_billing_project</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – GCP billing project for requester-pays buckets.</p></li>
+<li><p><strong>hyperparameters_json</strong> (<code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>]) – Optional model hyperparameters JSON path.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="xref py py-class docutils literal notranslate"><span class="pre">Job</span></code></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Job with output ResourceGroup <code class="docutils literal notranslate"><span class="pre">model</span></code>.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v5.variant_qc.isolation_forest.split_intervals_job">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v5.variant_qc.isolation_forest.</span></span><span class="sig-name descname"><span class="pre">split_intervals_job</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">b</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">calling_intervals_args</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">exclude_intervals</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">scatter_count</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">gatk_image</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">gcp_billing_project</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v5/variant_qc/isolation_forest.html#split_intervals_job"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v5.variant_qc.isolation_forest.split_intervals_job" title="Permalink to this definition"></a></dt>
+<dd><p>Split the calling contigs into <code class="docutils literal notranslate"><span class="pre">scatter_count</span></code> intervals, excluding telomeres/centromeres.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>b</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">Batch</span></code>) – Batch to add the job to.</p></li>
+<li><p><strong>calling_intervals_args</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – GATK <code class="docutils literal notranslate"><span class="pre">-L</span></code> args covering the calling contigs.</p></li>
+<li><p><strong>exclude_intervals</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Path to an intervals file to exclude (<code class="docutils literal notranslate"><span class="pre">-XL</span></code>).</p></li>
+<li><p><strong>scatter_count</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>) – Number of interval shards to produce.</p></li>
+<li><p><strong>gatk_image</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – GATK docker image.</p></li>
+<li><p><strong>gcp_billing_project</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – GCP billing project for requester-pays buckets.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="xref py py-class docutils literal notranslate"><span class="pre">Job</span></code></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Job with output ResourceGroup <code class="docutils literal notranslate"><span class="pre">intervals</span></code>.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v5.variant_qc.isolation_forest.score_variant_annotations_job">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v5.variant_qc.isolation_forest.</span></span><span class="sig-name descname"><span class="pre">score_variant_annotations_job</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">b</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">mode</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sites_only_vcf</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">features</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">extracted_vcf</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">model</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">resource_args</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">interval</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">idx</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">out_root</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">gatk_image</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">gcp_billing_project</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v5/variant_qc/isolation_forest.html#score_variant_annotations_job"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v5.variant_qc.isolation_forest.score_variant_annotations_job" title="Permalink to this definition"></a></dt>
+<dd><p>Run GATK ScoreVariantAnnotations for one variant type mode over one interval.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>b</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">Batch</span></code>) – Batch to add the job to.</p></li>
+<li><p><strong>mode</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Variant type mode, ‘SNP’ or ‘INDEL’.</p></li>
+<li><p><strong>sites_only_vcf</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – AS-annotated sites-only input VCF.</p></li>
+<li><p><strong>features</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">List</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>]) – Features for this mode (must match the trained model).</p></li>
+<li><p><strong>extracted_vcf</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">ResourceFile</span></code>) – Extracted training/calibration VCF from the extract step.</p></li>
+<li><p><strong>model</strong> (<code class="xref py py-data docutils literal notranslate"><span class="pre">Union</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">ResourceGroup</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>]) – <code class="docutils literal notranslate"><span class="pre">--model-prefix</span></code>: the trained model ResourceGroup from the train
+job, or a prefix string built from a read-in group (see
+<cite>isolation_forest_workflow</cite>).</p></li>
+<li><p><strong>resource_args</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – GATK <code class="docutils literal notranslate"><span class="pre">--resource</span></code> args for the labeled sets.</p></li>
+<li><p><strong>interval</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">ResourceFile</span></code>) – Interval file to restrict scoring to.</p></li>
+<li><p><strong>idx</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>) – Shard index, used to identify the job in the Batch.</p></li>
+<li><p><strong>out_root</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Output prefix (files written as <code class="docutils literal notranslate"><span class="pre">{out_root}.*</span></code>).</p></li>
+<li><p><strong>gatk_image</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – GATK docker image.</p></li>
+<li><p><strong>gcp_billing_project</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – GCP billing project for requester-pays buckets.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="xref py py-class docutils literal notranslate"><span class="pre">Job</span></code></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Job with output ResourceGroup <code class="docutils literal notranslate"><span class="pre">output_score</span></code>.</p>
+</dd>
+</dl>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>GATK traversal returns every record <em>overlapping</em> the shard interval, and the
+default output mode (ANYWHERE) writes all of them, so a deletion straddling a
+shard boundary is emitted by both neighbors. <code class="docutils literal notranslate"><span class="pre">--variant-output-filtering</span>
+<span class="pre">STARTS_IN</span></code> writes a record only if its start is in the interval, making
+emission exactly-once across shards. It also makes <code class="docutils literal notranslate"><span class="pre">-XL</span></code> start-based, which
+is the definition <cite>reconcile_scored_sites</cite> uses.</p>
+</div>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v5.variant_qc.isolation_forest.check_run_config">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v5.variant_qc.isolation_forest.</span></span><span class="sig-name descname"><span class="pre">check_run_config</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">run_prefix</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">config</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">overwrite</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">write</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v5/variant_qc/isolation_forest.html#check_run_config"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v5.variant_qc.isolation_forest.check_run_config" title="Permalink to this definition"></a></dt>
+<dd><p>Guard reuse of outputs under <code class="docutils literal notranslate"><span class="pre">run_prefix</span></code> against a changed run configuration.</p>
+<p>Extract/model/score outputs are reused by path alone, so a rerun with different
+contigs, scatter count, or inputs would silently reuse region- or split-mismatched
+files. Compare against the config recorded by the first run and raise on any
+difference unless <code class="docutils literal notranslate"><span class="pre">overwrite</span></code>.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>run_prefix</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – GCS prefix for this run’s GATK outputs.</p></li>
+<li><p><strong>config</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">Dict</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>, <code class="xref py py-data docutils literal notranslate"><span class="pre">Any</span></code>]) – Current run configuration.</p></li>
+<li><p><strong>overwrite</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether outputs are being overwritten. Skips the comparison
+only in the Batch step; –load-only reuses whatever is under <code class="docutils literal notranslate"><span class="pre">run_prefix</span></code>
+(its –overwrite only replaces the result HT), so it always compares.</p></li>
+<li><p><strong>write</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to record <code class="docutils literal notranslate"><span class="pre">config</span></code> (the Batch step; the load step only
+compares).</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>None.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v5.variant_qc.isolation_forest.isolation_forest_workflow">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v5.variant_qc.isolation_forest.</span></span><span class="sig-name descname"><span class="pre">isolation_forest_workflow</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">b</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sites_only_vcf</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">run_prefix</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">out_vcf_name</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">singletons_vcf</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">calling_intervals_args</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">exclude_intervals</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">scatter_count</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">gatk_image</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">gcp_billing_project</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">hyperparameters_json</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">overwrite</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v5/variant_qc/isolation_forest.html#isolation_forest_workflow"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v5.variant_qc.isolation_forest.isolation_forest_workflow" title="Permalink to this definition"></a></dt>
+<dd><p>Add the per-mode extract/train/score jobs (SNP and INDEL) to the Batch.</p>
+<p>Extract and train outputs are reused if they already exist (unless <code class="docutils literal notranslate"><span class="pre">overwrite</span></code>).</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>b</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">Batch</span></code>) – Batch to add jobs to.</p></li>
+<li><p><strong>sites_only_vcf</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – AS-annotated sites-only input VCF.</p></li>
+<li><p><strong>run_prefix</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – GCS prefix for this run’s GATK outputs.</p></li>
+<li><p><strong>out_vcf_name</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Base name for scored VCF shards.</p></li>
+<li><p><strong>singletons_vcf</strong> (<code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>]) – Optional true-positive singletons VCF.</p></li>
+<li><p><strong>calling_intervals_args</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – GATK <code class="docutils literal notranslate"><span class="pre">-L</span></code> args for the calling contigs.</p></li>
+<li><p><strong>exclude_intervals</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Path to the telomere/centromere exclusion intervals file.</p></li>
+<li><p><strong>scatter_count</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>) – Number of interval shards for scoring.</p></li>
+<li><p><strong>gatk_image</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – GATK docker image.</p></li>
+<li><p><strong>gcp_billing_project</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – GCP billing project for requester-pays buckets.</p></li>
+<li><p><strong>hyperparameters_json</strong> (<code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>]) – Optional model hyperparameters JSON path.</p></li>
+<li><p><strong>overwrite</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to rerun extract/train/score even if outputs exist.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>None.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v5.variant_qc.isolation_forest.export_exclusion_intervals">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v5.variant_qc.isolation_forest.</span></span><span class="sig-name descname"><span class="pre">export_exclusion_intervals</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">out_path</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v5/variant_qc/isolation_forest.html#export_exclusion_intervals"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v5.variant_qc.isolation_forest.export_exclusion_intervals" title="Permalink to this definition"></a></dt>
+<dd><p>Export telomere/centromere intervals to a GATK-readable <code class="docutils literal notranslate"><span class="pre">chr:start-end</span></code> file.</p>
+<p>Written to a stable path (not a temp file) so the same file used by GATK <code class="docutils literal notranslate"><span class="pre">-XL</span></code>
+can be read back during reconciliation to define the excluded region exactly.</p>
+<p><cite>telomeres_and_centromeres</cite> is a BED import, so its intervals are half-open
+<code class="docutils literal notranslate"><span class="pre">[start,</span> <span class="pre">end)</span></code>, while GATK reads <code class="docutils literal notranslate"><span class="pre">chr:start-end</span></code> as 1-based inclusive on both
+ends. Emit <code class="docutils literal notranslate"><span class="pre">end</span> <span class="pre">-</span> <span class="pre">1</span></code> so the file covers exactly the interval.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>out_path</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Destination path for the intervals file.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p><code class="docutils literal notranslate"><span class="pre">out_path</span></code>.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v5.variant_qc.isolation_forest.export_v4_test_sites_vcf">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v5.variant_qc.isolation_forest.</span></span><span class="sig-name descname"><span class="pre">export_v4_test_sites_vcf</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">contigs</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">out_path</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v5/variant_qc/isolation_forest.html#export_v4_test_sites_vcf"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v5.variant_qc.isolation_forest.export_v4_test_sites_vcf" title="Permalink to this definition"></a></dt>
+<dd><p>Export the v4 split info HT, filtered to <code class="docutils literal notranslate"><span class="pre">contigs</span></code>, as a GATK-readable sites VCF.</p>
+<p>v4’s <code class="docutils literal notranslate"><span class="pre">--export-split-info-vcf</span></code> output is misnamed: it is exported from the unsplit
+info HT, so it cannot stand in for the split v5 info VCF. Read the split info HT
+directly instead.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>contigs</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">List</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>]) – Contigs to keep.</p></li>
+<li><p><strong>out_path</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Destination VCF path.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>None.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v5.variant_qc.isolation_forest.merge_iforest_result">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v5.variant_qc.isolation_forest.</span></span><span class="sig-name descname"><span class="pre">merge_iforest_result</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">run_prefix</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">out_vcf_name</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">model_id</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">scatter_count</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">n_partitions</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">header_path</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">array_elements_required</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">transmitted_singletons</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sibling_singletons</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">adj</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v5/variant_qc/isolation_forest.html#merge_iforest_result"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v5.variant_qc.isolation_forest.merge_iforest_result" title="Permalink to this definition"></a></dt>
+<dd><p>Merge the per-mode scored VCFs into a single variant QC result HT.</p>
+<p>The SNP-pass VCF contributes SNP alleles and the INDEL-pass VCF contributes all
+non-SNP alleles, so the union covers every scored allele exactly once.</p>
+<p>Only the current run’s <code class="docutils literal notranslate"><span class="pre">scatter_count</span></code> shards are read (by explicit index), so a
+rerun with a smaller scatter count does not pick up stale shards from a prior run.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>run_prefix</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – GCS prefix for this run’s GATK outputs.</p></li>
+<li><p><strong>out_vcf_name</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Base name used for scored VCF shards.</p></li>
+<li><p><strong>model_id</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Isolation forest model ID (starts with <code class="docutils literal notranslate"><span class="pre">if_</span></code>).</p></li>
+<li><p><strong>scatter_count</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>) – Number of score shards per mode (must match the scoring run).</p></li>
+<li><p><strong>n_partitions</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>) – Number of partitions for the imported HTs.</p></li>
+<li><p><strong>header_path</strong> (<code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>]) – Optional VCF header file for import.</p></li>
+<li><p><strong>array_elements_required</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Value passed to hl.import_vcf.</p></li>
+<li><p><strong>transmitted_singletons</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether transmitted singletons were a training set.</p></li>
+<li><p><strong>sibling_singletons</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether sibling singletons were a training set.</p></li>
+<li><p><strong>adj</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether the singletons VCF used adj genotypes.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.139)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Merged variant QC result HT.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v5.variant_qc.isolation_forest.reconcile_scored_sites">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v5.variant_qc.isolation_forest.</span></span><span class="sig-name descname"><span class="pre">reconcile_scored_sites</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">sites_only_vcf</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">contigs</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">exclude_intervals_path</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">scored_ht</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">array_elements_required</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v5/variant_qc/isolation_forest.html#reconcile_scored_sites"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v5.variant_qc.isolation_forest.reconcile_scored_sites" title="Permalink to this definition"></a></dt>
+<dd><p>Raise if any input variant in the scored region is missing from the output or unscored.</p>
+<p>GATK writes every input record within its interval to the scored VCF, so any variant
+absent from the merged output was dropped (e.g. a truncated shard). GATK classifies
+every allele as either SNP or INDEL, so every variant should also carry a SCORE.</p>
+<p>Input and output are both split, so variants are compared on the full key.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>sites_only_vcf</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Input sites VCF that was scored.</p></li>
+<li><p><strong>contigs</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">List</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>]) – Calling contigs passed to GATK (<code class="docutils literal notranslate"><span class="pre">-L</span></code>).</p></li>
+<li><p><strong>exclude_intervals_path</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Telomere/centromere exclusion file passed to GATK
+(<code class="docutils literal notranslate"><span class="pre">-XL</span></code>).</p></li>
+<li><p><strong>scored_ht</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.139)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>) – Merged scored result HT.</p></li>
+<li><p><strong>array_elements_required</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Value passed to hl.import_vcf for the input.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>None.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v5.variant_qc.isolation_forest.main">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v5.variant_qc.isolation_forest.</span></span><span class="sig-name descname"><span class="pre">main</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">args</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v5/variant_qc/isolation_forest.html#main"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v5.variant_qc.isolation_forest.main" title="Permalink to this definition"></a></dt>
+<dd><p>Run the isolation forest variant QC workflow.</p>
+</dd></dl>
+
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="import_variant_qc_vcf.html" class="btn btn-neutral float-left" title="gnomad_qc.v5.variant_qc.import_variant_qc_vcf" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="vqsr.html" class="btn btn-neutral float-right" title="gnomad_qc.v5.variant_qc.vqsr" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p></p>
+  </div>
+
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>
