@@ -266,6 +266,38 @@ def get_freq(
     )
 
 
+def get_ac_homalt_and_hists(
+    version: str = CURRENT_ANNOTATION_VERSION,
+    data_type: str = "genomes",
+    test: bool = False,
+    data_set: str = "aou",
+    environment: str = "batch",
+    suffix: Optional[str] = None,
+) -> TableResource:
+    """
+    Get the per-dataset AC, homozygote count and histogram Table for v5.
+
+    AN and AF are added when the datasets are merged, from the all-sites AN release.
+
+    :param version: Version of annotation path to return.
+    :param data_type: Data type of annotation resource ("genomes" or "exomes").
+    :param test: Whether to use a tmp path for testing.
+    :param data_set: Data set of annotation resource. Must be "aou" or "gnomad".
+        Default is "aou".
+    :param environment: Environment to use. Default is "batch". Must be one of "rwb",
+        "batch", or "dataproc".
+    :param suffix: Optional suffix inserted before the ``.ht`` extension. Default is
+        None (no suffix).
+    :return: Hail Table with per-stratum AC and homozygote counts and histograms.
+    """
+    _validate_environment(environment, _ALL_ENVIRONMENTS)
+    assert data_set in ["aou", "gnomad"], "data_set must be either 'aou' or 'gnomad'"
+    suffix_str = f".{suffix}" if suffix else ""
+    return TableResource(
+        f"{_annotations_root(version, test, data_type, data_set, environment)}/{data_set}.genomes.v{version}.ac_homalt_and_hists{suffix_str}.ht"
+    )
+
+
 def get_aou_freq_chunk_path(
     chunk_idx: int,
     kind: str = "chunk",

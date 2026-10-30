@@ -382,8 +382,9 @@ def _group_membership_ht_path(project: str, environment: str, test: bool) -> str
     Return the path of the group_membership HT this script writes and reads.
 
     It is kept apart (``_cells`` suffix) from the HT at the ``group_membership``
-    resource path, which ``generate_frequency.py`` reads: the AoU HT here is
-    cell-reduced, and the gnomAD HT holds only the consent-drop samples.
+    resource path: the AoU HT here is cell-reduced, and the gnomAD HT holds only the
+    consent-drop samples. ``generate_frequency.py`` reads this HT too, so its counts
+    use the same strata and samples as the AN.
 
     :param project: "aou" or "gnomad".
     :param environment: Compute environment.
