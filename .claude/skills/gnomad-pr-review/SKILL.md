@@ -23,7 +23,7 @@ Any option given here answers the matching Phase 1 question, so don't ask it aga
 - **Plan first.** Size up the PR, then tell the user your plan and wait for a go-ahead before starting the review. If the plan changes along the way, tell them.
 - **Read-only.** Never post comments or reviews, never commit or push, never submit to Dataproc or Hail Batch, never run `hailctl`, and never write to GCS. Reading GCS (even small reads) also needs the user's OK first. All of Us or other individual-level data must never be read locally, ever.
 - **One agent per file, and the agents talk.** When one file uses another file's functions, the owning agents check the hand-off with each other.
-- **Ranked output with locations.** Every finding gets a priority, a file:line (at the PR head), the function name, and a draft PR comment.
+- **Ranked output with locations.** Every finding gets a priority, a file:line (at the review commit), the function name, and a draft PR comment.
 - **Draft comments are for the user to edit**, not final text. Write them in plain, direct language, as a human reviewer would, with no filler.
 - **Be direct and concise, in common language,** in chat and in the file.
 - **Check the High findings end to end** before calling the review done (Phase 6). The user expects this every time.
@@ -63,7 +63,7 @@ Set the model for each reviewer agent with the Agent tool's `model` parameter. W
    - `git fetch`, then run `git diff --stat origin/<base>...origin/<head>`.
    - Get the line count of each changed file at the PR head.
    - For big files, list the functions with `grep -n "^def "`.
-4. Check whether the local branch matches the PR head. Line numbers must match GitHub's.
+4. Check whether the local branch matches the PR head. If it's ahead (unpushed commits), offer to review it as is in Q1, and size it with `git diff --stat origin/<base>...HEAD`. Call the commit you review the *review commit*; every line number refers to it.
 5. Check the local environment: the Python and Hail version, and the gnomad_methods version and commit. Compare them with what the PR needs (CI config, requirements, any functions it imports from gnomad_methods).
    Pick the one gnomad_methods commit the PR will run with (usually `main`; a branch, if the PR depends on an unmerged gnomad_methods PR). Reviewers read only that copy; if the local checkout is on a different commit, make a `git worktree` at that commit.
 
@@ -78,7 +78,7 @@ Tell the user:
 - The cost: many agents, heavy on tokens, and it takes a while.
 
 Then ask, giving your recommended answer for each. Skip any question the invocation options already answered.
-1. **Checkout.** Fast-forward the local branch to the PR head, or use a separate worktree?
+1. **Checkout.** Fast-forward the local branch to the PR head, use a separate worktree at the PR head, or, if the local branch is ahead, review it as is? Reviewing local commits means line numbers match GitHub only after they're pushed.
 2. **Tests.** Static review only, or set up a separate venv and run the tests and local repros (local Spark, hand-built Tables only)?
 3. **Scope.** Everything, including tests, docs and config, or source code only?
 4. **Reviewer models.** The defaults (recommended), all Opus, all Fable, or set each part? In the plan, show which areas get which model under the defaults.
@@ -91,7 +91,7 @@ Wait for answers.
 
 ## Phase 2: Setup
 
-1. **Check out the PR head** the way the user chose. Record the short SHA; every line number refers to it.
+1. **Check out the review commit** the way the user chose. Record its short SHA.
 2. **Test environment**, if approved:
    - Create the venv in `{REVIEW_DIR}/venv` with `uv venv --python <CI's version>` (or `python -m venv` if uv isn't installed).
    - Install in the same order CI does, then check that `hl.version()` matches CI's Hail.
@@ -144,13 +144,14 @@ Don't trust agent output by itself; mistakes come back sounding just as confiden
 
 - Re-read the code at every cited line. Confirm line numbers with `grep -n`, and confirm in-diff status from the `git diff -U0` hunks.
 - **Run repros one JVM at a time.** Batch several into one script so Hail starts once. Print `RESULT ...` lines and grep for them.
+- **Run repros with `PYTHONPATH={GNOMAD_METHODS_PATH}:{REPO_PATH}`**, replacing any existing value, so they import the gnomad_methods copy the reviewers read. Print `gnomad.__path__` first and check that it starts there.
 - For CI claims, read the logs with `gh run view <id> --log-failed` (read-only). Check that the run's branch has the same tests and config as the PR.
 - **For "this test can't catch X" claims, break the code on purpose.** Monkeypatch the function with the logic removed (`inspect.getsource` → edit → `exec`), and show that the test still passes.
 - Drop or downgrade anything that doesn't hold, or whose trigger can't happen on real data or a normal run. List each dropped finding in a few words under "Considered, not raised". Fix wrong line numbers.
 
-## Phase 6: Check every High finding end to end (always)
+## Phase 6: Check every High finding end to end (always), and get second opinions
 
-The user asks for this after every review, so do it before presenting results. For each High finding:
+The user asks for this after every review, so do it before presenting results. Do steps 1–3 and 5 for each High finding. Do step 4 once, for every finding in second-opinion scope, even if there are no High findings.
 
 1. **Look for reasons it's wrong.**
    - Does other code (upstream, downstream, or in gnomad_methods) already handle it?
@@ -158,14 +159,14 @@ The user asks for this after every review, so do it before presenting results. F
    - Does the draft comment overstate the problem?
 
    Example from a past review: a finding said zero-observed transcripts newly get ranked. Main ranked them too; what was actually new was the missing flag and their inclusion in published thresholds. The draft had to be corrected.
-2. **Reproduce it through the real public functions, chained the way the pipeline chains them**, not only the helper where the bug lives.
+2. **Reproduce it through the real public functions, chained the way the pipeline chains them** (with Phase 5's `PYTHONPATH`), not only the helper where the bug lives.
    - Reuse test fixtures by importing the test module (add `tests/...` to `sys.path`).
    - Monkeypatch fixture constants to add the case you need.
    - Checkpoint intermediate Tables to `{REVIEW_DIR}/repros/` so a failed later step doesn't redo everything.
 3. **Test CI and runtime claims with controlled comparisons**, e.g. the same suite at two heap sizes, or on two Hail versions.
-4. **Second opinion (only if the user asked for one).** For each High finding (and each Medium finding that survived Phase 5, unless the scope is High only), start one fresh agent on a *different* model from the one that found it: the user's choice (Fable by default, or Sonnet) if an Opus agent found it, Opus if a Sonnet or Fable agent did. Medium findings don't get the end-to-end repro; add their "Second opinion" bullet under the Medium entry.
+4. **Second opinion (only if the user asked for one).** For every High finding and, unless the scope is High only, every Medium that survived Phase 5, start one fresh agent on a *different* model from the one that found it: the user's choice (Fable by default, or Sonnet) if an Opus agent found it, Opus if a Sonnet or Fable agent did. Medium findings don't get the end-to-end repro; add their "Second opinion" bullet under the Medium entry.
    - Launch them all in one message, with `subagent_type: general-purpose`.
-   - **Give it the code, not the conclusion.** Include the repo path, the PR head SHA, the file:line and function, and a neutral question about behavior. Don't include the finding, the draft comment, or what you expect. For example:
+   - **Give it the code, not the conclusion.** Include the repo path, the review commit SHA, the file:line and function, and a neutral question about behavior. Don't include the finding, the draft comment, or what you expect. For example:
      > In `get_exomes_observed_and_possible` (`constraint.py:434-541`), what do `observed_variants` and `possible_variants` come out as for an exome variant that has a non-empty filter set and AF 0.2, with `max_af=0.001`? Compare that with an unfiltered variant at the same AF. Trace through any gnomad_methods functions it calls, and answer with file:line evidence.
    - Point it to the "Hard rules" section of `{REVIEW_DIR}/brief.md`: read-only, no Hail, no GCS.
    - **If it disagrees, re-check the code yourself.** Report the disagreement to the user rather than quietly choosing a side.

@@ -1,6 +1,6 @@
 # PR #{PR} review: ranked findings with draft comments
 
-- Line numbers are at the PR head (`{HEAD_SHA_SHORT}`), so they match the "Files changed" tab on GitHub.
+- Line numbers are at `{HEAD_SHA_SHORT}`{, the PR head, so they match GitHub's "Files changed" tab | , N commits ahead of the PR head; they match GitHub once those are pushed}.
 - Models: coordinator {SESSION_MODEL}; reviewers {e.g. "Opus: core logic A/B/C, pipeline; Sonnet: resources, tests, docs/config"}; second opinion: {"no" / "yes, High and Medium" / "yes, High only"}, {<model> for Opus findings, Opus for the rest}.
 - "Comment on" is the line to anchor the inline comment. GitHub only takes inline comments on lines in the diff, so it may differ from the line where the problem is; "general comment" means the file isn't in the PR.
 - Tags:

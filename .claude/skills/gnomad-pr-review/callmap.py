@@ -31,7 +31,7 @@ import glob
 import os
 import subprocess
 import sys
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Set, Tuple
 
 
 def _norm(path: str) -> str:
@@ -78,6 +78,24 @@ def _dotted(node: ast.AST) -> Optional[str]:
         inner = _dotted(node.value)
         return f"{inner}.{node.attr}" if inner else None
     return None
+
+
+def _local_names(fn: ast.AST) -> Set[str]:
+    """Return a function's parameters and assigned names, skipping nested scopes."""
+    a = fn.args
+    names = {
+        x.arg for x in a.posonlyargs + a.args + a.kwonlyargs + [a.vararg, a.kwarg] if x
+    }
+    todo = list(ast.iter_child_nodes(fn))
+    while todo:
+        n = todo.pop()
+        if isinstance(n, ast.Name) and not isinstance(n.ctx, ast.Load):
+            names.add(n.id)
+        elif not isinstance(
+            n, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Lambda)
+        ):
+            todo.extend(ast.iter_child_nodes(n))
+    return names
 
 
 def _default_callers() -> List[str]:
@@ -196,13 +214,21 @@ def main() -> None:
         class V(ast.NodeVisitor):
             def __init__(self) -> None:
                 self.stack: List[Tuple[str, int]] = []
+                self.local_names: List[Set[str]] = []  # per enclosing function
 
             def _scope(self, n: ast.AST) -> None:
                 self.stack.append((n.name, n.lineno))
-                self.generic_visit(n)
+                self._visit_with_locals(n)
                 self.stack.pop()
 
+            def _visit_with_locals(self, n: ast.AST) -> None:
+                is_cls = isinstance(n, ast.ClassDef)
+                self.local_names.append(set() if is_cls else _local_names(n))
+                self.generic_visit(n)
+                self.local_names.pop()
+
             visit_FunctionDef = visit_AsyncFunctionDef = visit_ClassDef = _scope
+            visit_Lambda = _visit_with_locals
 
             def _use(self, dfile: str, name: str, lineno: int) -> None:
                 if (dfile, name) not in defs:
@@ -216,6 +242,11 @@ def main() -> None:
                 uses[(dfile, name)].append(f"{src}:{lineno}({where})")
 
             def visit_Name(self, n: ast.Name) -> None:
+                # Skip assignments, and locals that share a function's name.
+                if not isinstance(n.ctx, ast.Load) or any(
+                    n.id in s for s in self.local_names
+                ):
+                    return
                 if n.id in imported:
                     self._use(*imported[n.id], n.lineno)
                 elif src in area_set:

@@ -8,7 +8,7 @@ repo has none). Agents read the filled-in copy, not this template.
 
 ## The PR
 - {OWNER/REPO} PR #{PR}, "{TITLE}", author {AUTHOR}.
-- Repo: `{REPO_PATH}`. The working tree is checked out at the PR head, commit `{HEAD_SHA}`. Base is `origin/{BASE}`.
+- Repo: `{REPO_PATH}`. The working tree is at commit `{HEAD_SHA}`{, the PR head | , N unpushed commits ahead of the PR head}. Base is `origin/{BASE}`.
 - See the full diff of a file with `git diff origin/{BASE}...HEAD -- <path>`. See the old version with `git show origin/{BASE}:<path>`.
 - PR description: `gh pr view {PR}` (read-only). It lists the intended behavior changes. Anything that changes behavior but is NOT in the description is worth flagging.
 - Project conventions: `{REPO_PATH}/CLAUDE.md`.
@@ -71,7 +71,7 @@ Be honest. A short list of real problems beats a long list of guesses. Don't inf
 Don't report a problem that needs input the pipeline never gets (e.g. a field that is never missing upstream, a value outside what the data can hold). If you aren't sure whether it can happen, say so in "When it happens".
 
 ## Line numbers
-- Use line numbers in the working tree (the PR head). Name the function each line is in.
+- Use line numbers in the working tree (commit `{HEAD_SHA}`). Name the function each line is in.
 - Say whether the line is part of the PR diff. GitHub only accepts inline comments on lines in the diff. Check with `git diff origin/{BASE}...HEAD -U0 -- <path>` and read the `@@ -a,b +c,d @@` hunks: new lines c..c+d-1 are in the diff. If the line isn't in the diff, give the nearest line that is. Files not touched by the PR need a general PR comment.
 
 ## Report format (your final message)
