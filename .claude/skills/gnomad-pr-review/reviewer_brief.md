@@ -18,12 +18,12 @@ repo has none). Agents read the filled-in copy, not this template.
 - Do NOT run Dataproc, Hail Batch, hailctl, gcloud, or gsutil. Do not read from GCS.
 - Never read All of Us or other individual-level data, in any form.
 - Do NOT start Hail, Spark, or pytest. Several reviewers share one machine, and parallel JVMs exhaust its memory. The coordinator runs the tests and any repro scripts. If a bug can be proven with a small local Hail snippet that uses only hand-built Tables (`hl.Table.parallelize`), write the snippet in your report under "Repro" and the coordinator will run it.
-- You may run plain Python that doesn't start Hail, plus git, grep, and similar read-only tools. The review venv is at `{VENV}` ({VENV_DESCRIPTION}).
+- You may run plain Python that doesn't start Hail (`{PYTHON}`), plus git, grep, and similar read-only tools.
 
 ## Code outside this repo that the PR depends on (read it, don't guess)
-- gnomad_methods: `{GNOMAD_METHODS_PATH}` (check it is at the commit the PR needs; installed copy: `{VENV}/lib/python3.*/site-packages/gnomad/`).
+- gnomad_methods: `{GNOMAD_METHODS_PATH}`, at commit `{GNOMAD_METHODS_SHA}`. Read only this copy.
 - gnomad_qc: `{GNOMAD_QC_PATH}` (e.g. `resource_utils.py` for `PipelineResourceCollection`).
-- Hail source, for checking semantics: `{VENV}/lib/python3.*/site-packages/hail/`.
+- Hail source, for checking semantics: `{HAIL_SRC}` (Hail {HAIL_VERSION}).
 
 When your code calls a gnomad_methods (or other external) function, open it and check what it really does with the arguments passed: argument order, defaults, how it handles missing values, which index it uses, what fields it returns.
 
@@ -49,13 +49,14 @@ The coordinator sends you the agent IDs once everyone is running. Areas:
 4. **Cost on full data.** Extra shuffles, `.count()` used for logging, collecting big data to the driver, a missing checkpoint that makes Hail recompute a big pipeline, explode blowups, `order_by` on huge tables, no `naive_coalesce` after a heavy filter, hard-coded partition counts, `repartition()` on a large dataset.
 5. **Tests** that don't test what they claim, assert a wrong expected value, or pin a bug as correct. Ask "would this test still pass if the code were broken?" Common holes: every group has one row, so a scaling step is never exercised; symmetric values that hide a sign or mirroring bug; the same value in every group, so a wrong index passes; a fixture with a field the pipeline never produces.
 6. **Docs** that disagree with the code, or that describe code that isn't on this branch.
-7. **Maintainability.** Dead code, duplicated logic, misleading names, docstrings, or comments, wrong type annotations, violations of the CLAUDE.md conventions.
+7. **Maintainability.** Dead code, duplicated logic, misleading names, docstrings, or comments, wrong type annotations, violations of the CLAUDE.md conventions. Also new code that repeats an existing gnomad_qc or gnomad_methods helper, or that is much larger than the change needs; this counts in pipeline repos too.
 
 Do NOT report: formatting that black/isort handle, pure style taste with no real effect, or anything already raised in the existing PR comments at `{REVIEW_DIR}/existing_comments.md` (unless you have something materially new to add; then say so).
 
+In pipeline repos (gnomad_qc, gnomad-constraint), don't report Nits, and report a Low only if it has a real effect on cost or would lead a reader to misread the code. Style and maintainability taste don't count (CLAUDE.md: "Do not over-optimize for style"). In gnomad_methods, which is a library, report Low and Nit as usual.
+
 ## Priority levels
-- **Blocker**: wrong numbers in a released metric on the default path, or the pipeline crashes or writes to the wrong place on a normal run.
-- **High**: wrong results in a supported non-default path, wrong released output that users can't detect, overwrite or data-loss risk, a big cost problem, a CI break, or a test that pins a real bug as correct.
+- **High**: wrong numbers in a released metric, a crash or a write to the wrong place on a normal run, overwrite or data-loss risk, a big cost problem, a CI break, or a test that pins a real bug as correct.
 - **Medium**: edge-case bug, a misleading doc that could cause misuse, a missing test for risky logic, an undocumented behavior change.
 - **Low**: cleanup, clarity, a small cost improvement.
 - **Nit**: tiny.
@@ -66,6 +67,8 @@ Do NOT report: formatting that black/isort handle, pure style taste with no real
 - **Question**: depends on the author's intent. Phrase it as a question.
 
 Be honest. A short list of real problems beats a long list of guesses. Don't inflate priority.
+
+Don't report a problem that needs input the pipeline never gets (e.g. a field that is never missing upstream, a value outside what the data can hold). If you aren't sure whether it can happen, say so in "When it happens".
 
 ## Line numbers
 - Use line numbers in the working tree (the PR head). Name the function each line is in.
@@ -82,6 +85,7 @@ Then one block per finding, sorted by priority:
 - Confidence: Confirmed / Likely / Question
 - What: 1–3 plain sentences.
 - Why it matters: 1 sentence (what goes wrong, for whom).
+- When it happens: the real input, flag, or data that triggers it, and whether gnomAD data or a normal run actually has it.
 - Evidence: the path you traced (file:line → file:line). Quote at most 5 lines.
 - Repro (optional): a small local Hail snippet using only hand-built Tables.
 - Draft PR comment: 1–4 plain, direct sentences to the author, with a suggested fix. Written as a human reviewer. Common language, no jargon padding, no hedging filler.
