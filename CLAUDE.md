@@ -28,6 +28,9 @@ elegance, and don't let style polish displace attention from whether the step
 produces the right output at an acceptable cost. Formatting is enforced by
 tooling (below) — beyond that, leave it alone.
 
+**Smaller is better.** Reuse or update existing helpers and gnomad_methods
+where possible; every new line costs reviewer time.
+
 Two tightly coupled dependencies:
 
 - [gnomad_methods](https://github.com/broadinstitute/gnomad_methods) — shared
