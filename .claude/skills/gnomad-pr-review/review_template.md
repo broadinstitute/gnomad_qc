@@ -1,7 +1,7 @@
 # PR #{PR} review: ranked findings with draft comments
 
 - Line numbers are at `{HEAD_SHA_SHORT}`{, the PR head, so they match GitHub's "Files changed" tab | , N commits ahead of the PR head; they match GitHub once those are pushed}.
-- Models: coordinator {SESSION_MODEL}; reviewers {e.g. "Opus: core logic A/B/C, pipeline; Sonnet: resources, tests, docs/config"}; second opinion: {"no" / "yes, High and Medium" / "yes, High only"}, {<model> for Opus findings, Opus for the rest}.
+- Models: coordinator {SESSION_MODEL}; reviewers {e.g. "Opus: core logic A/B/C, pipeline; Sonnet: resources, tests, docs/config"}; second opinion: {"no" | "yes, <High and Medium | High only>: <model> for Opus findings, Opus for the rest"}.
 - "Comment on" is the line to anchor the inline comment. GitHub only takes inline comments on lines in the diff, so it may differ from the line where the problem is; "general comment" means the file isn't in the PR.
 - Tags:
   - **[ran]**: reproduced locally on Hail {HAIL_VERSION}.
@@ -15,8 +15,8 @@
 
 ### H1. {One-line claim: what is wrong and what it causes} [ran|code] [Q?]
 - **Where:** `{path}:{line}` (`{function}`). Comment on: `{line}`, or the nearest diff line, or "general comment"
-- **When it happens:** {the triggering input or flag, and how common it is}.
   - Related lines, if any: `:{line}` (`{function}`), with one phrase each on what happens there.
+- **When it happens:** {the triggering input or flag, and how common it is}.
 - **What:**
   - 2–5 bullets: the mechanism, and what `{BASE}` did instead.
   - **Verified end to end** ({the real functions chained, and the input used}): {what came out}.

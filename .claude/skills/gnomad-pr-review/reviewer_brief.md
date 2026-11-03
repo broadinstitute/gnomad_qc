@@ -2,8 +2,8 @@
 
 <!--
 Coordinator: copy this file to {REVIEW_DIR}/brief.md and fill in every {PLACEHOLDER}
-before launching agents. Delete sections that don't apply (e.g. "Tests" if the
-repo has none). Agents read the filled-in copy, not this template.
+before launching agents. Delete sections that don't apply (e.g. "Code outside
+this repo" if there is none). Agents read the filled-in copy, not this template.
 -->
 
 ## The PR
@@ -17,12 +17,12 @@ repo has none). Agents read the filled-in copy, not this template.
 - READ-ONLY. Do not edit, create, or delete files in any repo. Do not commit, push, or post anything to GitHub (no `gh pr comment`, `gh pr review`, `gh api -X POST/PATCH`).
 - Do NOT run Dataproc, Hail Batch, hailctl, gcloud, or gsutil. Do not read from GCS.
 - Never read All of Us or other individual-level data, in any form.
-- Do NOT start Hail, Spark, or pytest. Several reviewers share one machine, and parallel JVMs exhaust its memory. The coordinator runs the tests and any repro scripts. If a bug can be proven with a small local Hail snippet that uses only hand-built Tables (`hl.Table.parallelize`), write the snippet in your report under "Repro" and the coordinator will run it.
+- Do NOT start Hail, Spark, or pytest; parallel JVMs exhaust the shared machine's memory. If a snippet on hand-built Tables (`hl.Table.parallelize`) would prove a bug, put it under "Repro" and the coordinator will run it.
 - You may run plain Python that doesn't start Hail (`{PYTHON}`), plus git, grep, and similar read-only tools.
 
 ## Code outside this repo that the PR depends on (read it, don't guess)
 - gnomad_methods: `{GNOMAD_METHODS_PATH}`, at commit `{GNOMAD_METHODS_SHA}`. Read only this copy.
-- gnomad_qc: `{GNOMAD_QC_PATH}` (e.g. `resource_utils.py` for `PipelineResourceCollection`).
+- gnomad_qc: `{GNOMAD_QC_PATH}`.
 - Hail source, for checking semantics: `{HAIL_SRC}` (Hail {HAIL_VERSION}).
 
 When your code calls a gnomad_methods (or other external) function, open it and check what it really does with the arguments passed: argument order, defaults, how it handles missing values, which index it uses, what fields it returns.
@@ -36,7 +36,7 @@ The coordinator sends you the agent IDs once everyone is running. Areas:
 
 ## Talking to other reviewers
 - Use the SendMessage tool. Your plain text is not visible to other agents.
-- When your code depends on a function in someone else's area, read it yourself first. If the hand-off looks wrong (argument order, field names, schema, missing-value handling, units, index), send the owner one specific question with file:line, then keep working. Don't stop and wait for the answer.
+- When your code depends on a function in someone else's area, read it yourself first. If the hand-off looks wrong (argument order, field names, schema, missing-value handling, units, index), send the owner one specific question with file:line, then keep working.
 - When you find a likely bug in someone else's area, send it to the owner. Also list it in your report under "Cross-area findings".
 - When a peer asks you something, answer briefly and specifically with file:line, then go back to your work.
 - Message `main` (the coordinator) only for something that blocks you.
@@ -66,9 +66,7 @@ In pipeline repos (gnomad_qc, gnomad-constraint), don't report Nits, and report 
 - **Likely**: strong evidence, but one step is unverified (say which).
 - **Question**: depends on the author's intent. Phrase it as a question.
 
-Be honest. A short list of real problems beats a long list of guesses. Don't inflate priority.
-
-Don't report a problem that needs input the pipeline never gets (e.g. a field that is never missing upstream, a value outside what the data can hold). If you aren't sure whether it can happen, say so in "When it happens".
+Be honest. A short list of real problems beats a long list of guesses. Don't inflate priority. Don't report a problem that needs input the pipeline never gets (e.g. a field that is never missing upstream); if you can't tell whether it can happen, report it as a Question and say why in "When it happens".
 
 ## Line numbers
 - Use line numbers in the working tree (commit `{HEAD_SHA}`). Name the function each line is in.
@@ -88,7 +86,7 @@ Then one block per finding, sorted by priority:
 - When it happens: the real input, flag, or data that triggers it, and whether gnomAD data or a normal run actually has it.
 - Evidence: the path you traced (file:line → file:line). Quote at most 5 lines.
 - Repro (optional): a small local Hail snippet using only hand-built Tables.
-- Draft PR comment: 1–4 plain, direct sentences to the author, with a suggested fix. Written as a human reviewer. Common language, no jargon padding, no hedging filler.
+- Draft PR comment: 1–4 plain sentences to the author, with a suggested fix, written as a human reviewer would.
 ```
 
 After the findings:
