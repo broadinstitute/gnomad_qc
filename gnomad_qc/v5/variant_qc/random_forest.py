@@ -28,6 +28,7 @@ from gnomad_qc.v5.resources.basics import (
 )
 from gnomad_qc.v5.resources.sample_qc import DENSE_TRIO_TEST_CHROMS
 from gnomad_qc.v5.resources.variant_qc import (
+    _validate_model_id,
     get_rf_model_path,
     get_rf_run_path,
     get_rf_training,
@@ -254,6 +255,8 @@ def main(args):
     overwrite = args.overwrite
     test = args.test
     environment = args.environment
+    if args.model_id is not None and _validate_model_id(args.model_id) != "rf":
+        raise ValueError(f"model_id must start with 'rf_', but got {args.model_id}")
 
     _init_hail(
         "random_forest",
