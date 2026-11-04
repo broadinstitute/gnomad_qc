@@ -25,6 +25,8 @@ from gnomad_qc.v4.annotations.generate_variant_qc_annotations import (
 from gnomad_qc.v5.resources.annotations import get_variant_qc_annotations
 from gnomad_qc.v5.resources.basics import (
     _check_resource_existence,
+    _get_batch_resource_kwargs,
+    _init_hail,
     get_logging_path,
     qc_temp_prefix,
 )
@@ -251,56 +253,20 @@ def get_or_create_model_id(
     return model_id, rf_run_path
 
 
-def _initialize_hail(args) -> None:
-    """
-    Initialize Hail with appropriate configuration for the environment.
-
-    :param args: Parsed command-line arguments.
-    """
-    environment = args.environment
-    tmp_dir_days = args.tmp_dir_days
-
-    if environment == "batch":
-        batch_kwargs = {
-            "backend": "batch",
-            "log": get_logging_path("v5_random_forest", environment="batch"),
-            "tmp_dir": (
-                f"{qc_temp_prefix(environment='batch', days=tmp_dir_days)}random_forest"
-            ),
-            "gcs_requester_pays_configuration": args.gcp_billing_project,
-            "regions": ["us-central1"],
-        }
-        # Add optional batch configuration parameters.
-        for param in [
-            "app_name",
-            "driver_cores",
-            "driver_memory",
-            "worker_cores",
-            "worker_memory",
-        ]:
-            value = getattr(args, param, None)
-            if value is not None:
-                batch_kwargs[param] = value
-
-        hl.init(**batch_kwargs)
-    else:
-        hl.init(
-            log=get_logging_path(
-                "v5_random_forest",
-                environment=environment,
-            ),
-            tmp_dir=f"{qc_temp_prefix(environment=environment, days=tmp_dir_days)}random_forest",
-        )
-    hl.default_reference("GRCh38")
-
-
 def main(args):
     """Run random forest variant QC pipeline."""
-    _initialize_hail(args)
-
     overwrite = args.overwrite
     test = args.test
     environment = args.environment
+
+    _init_hail(
+        "random_forest",
+        environment=environment,
+        billing_project=args.gcp_billing_project,
+        tmp_dir_days=args.tmp_dir_days,
+        tmp_dir=f"{qc_temp_prefix(environment=environment, days=args.tmp_dir_days)}random_forest",
+        **_get_batch_resource_kwargs(args),
+    )
 
     model_id, rf_run_path = get_or_create_model_id(
         model_id=args.model_id,
@@ -409,10 +375,9 @@ def main(args):
             ht.group_by(*summary_cols).aggregate(n=hl.agg.count()).show(-1)
 
     finally:
-        logger.info("Copying log to logging bucket...")
-        hl.copy_log(
-            get_logging_path("variant_qc_random_forest", environment=environment)
-        )
+        if environment == "rwb":
+            logger.info("Copying log to logging bucket...")
+            hl.copy_log(get_logging_path("random_forest", environment=environment))
 
 
 def get_script_argument_parser() -> argparse.ArgumentParser:
