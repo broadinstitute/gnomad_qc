@@ -1,4 +1,10 @@
-"""Script to compute coverage statistics on gnomAD v4 exomes."""
+"""
+Script to compute coverage statistics on gnomAD v4 exomes.
+
+Provenance: the published v4.1 exome AN was produced with gnomad_methods before commit
+0e38c42e (adj read the reference depth for phased alt-first hets; fixed in 0.9.1) and
+Hail 0.2.122. See v4/README.md.
+"""
 
 import argparse
 import logging

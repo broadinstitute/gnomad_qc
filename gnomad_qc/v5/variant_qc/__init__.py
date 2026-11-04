@@ -1,1 +1,1 @@
-"""v5 variant QC module."""
+# noqa: D104

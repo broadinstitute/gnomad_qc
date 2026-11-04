@@ -159,8 +159,12 @@ def main(args):
         "test_v3_10k": (
             "gs://gnomad-vrs-io-finals/ht-inputs/ht-10k-TESTING-ONLY-repartition-50p.ht"
         ),
-        "test_v3_100k": "gs://gnomad-vrs-io-finals/ht-inputs/ht-100k-TESTING-ONLY-repartition-100p.ht",
-        "test_grch37": "gs://gnomad-vrs-io-finals/working-notebooks/scratch/downsample_and_downpart_with_ychr_grch37.ht",
+        "test_v3_100k": (
+            "gs://gnomad-vrs-io-finals/ht-inputs/ht-100k-TESTING-ONLY-repartition-100p.ht"
+        ),
+        "test_grch37": (
+            "gs://gnomad-vrs-io-finals/working-notebooks/scratch/downsample_and_downpart_with_ychr_grch37.ht"
+        ),
     }
 
     output_paths_dict = {
@@ -175,7 +179,9 @@ def main(args):
         "test_v3_100k": (
             f"gs://{working_bucket}/ht-outputs/{prefix}-Full-ht-100k-output.ht"
         ),
-        "test_grch37": "'gs://gnomad-vrs-io-finals/working-notebooks/scratch/grch37_final_output.ht",
+        "test_grch37": (
+            "'gs://gnomad-vrs-io-finals/working-notebooks/scratch/grch37_final_output.ht"
+        ),
     }
 
     # Read in Hail Table, partition, and export to sharded VCF

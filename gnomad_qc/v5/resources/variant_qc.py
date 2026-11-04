@@ -1,22 +1,101 @@
 """Script containing variant QC related resources for v5."""
 
-from gnomad.resources.resource_utils import TableResource, VersionedTableResource
+import hailtop.batch as hb
+from gnomad.resources.resource_utils import (
+    TableResource,
+    VariantDatasetResource,
+    VersionedTableResource,
+)
 
+from gnomad_qc.v5.resources.basics import (
+    _ALL_ENVIRONMENTS,
+    _get_base_bucket,
+    _validate_environment,
+    qc_temp_prefix,
+)
 from gnomad_qc.v5.resources.constants import (
     CURRENT_VARIANT_QC_RESULT_VERSION,
     CURRENT_VARIANT_QC_VERSION,
-    GNOMAD_BUCKET,
     VARIANT_QC_RESULT_VERSIONS,
     VARIANT_QC_VERSIONS,
-    WORKSPACE_BUCKET,
 )
+
+# Variant QC model features, keyed by variant type. GATK trains a separate model per
+# --mode, so SNPs/INDELs need their own lists. AS_MQ is dropped for indels (v4 genomes
+# VQSR convention); AS_pab_max is kept for both (tree-based, unlike Gaussian VQSR).
+VARIANT_QC_FEATURES = {
+    "snv": [
+        "AS_QD",
+        "AS_pab_max",
+        "AS_MQRankSum",
+        "AS_ReadPosRankSum",
+        "AS_FS",
+        "AS_SOR",
+        "AS_MQ",
+    ],
+    "indel": [
+        "AS_QD",
+        "AS_pab_max",
+        "AS_MQRankSum",
+        "AS_ReadPosRankSum",
+        "AS_FS",
+        "AS_SOR",
+    ],
+}
+"""Features used by the v5 variant QC models, keyed by variant type."""
+
+# VQSR fits a Gaussian mixture, which AS_pab_max was never used in (v4 convention);
+# the isolation forest keeps it. Everything else is shared.
+VQSR_FEATURES = {
+    variant_type: [f for f in features if f != "AS_pab_max"]
+    for variant_type, features in VARIANT_QC_FEATURES.items()
+}
+"""Features used by the v5 VQSR models, keyed by variant type."""
+
+GATK_IMAGE = "us.gcr.io/broad-gatk/gatk:4.6.1.0"
+"""
+GATK image for v5 Batch jobs.
+
+4.6.1.0 ships the conda env (scikit-learn, dill) needed for PYTHON_IFOREST and the
+bcftools/tabix that VQSR ApplyRecalibration uses to trim scattered VCFs.
+
+Pulls from us.gcr.io have timed out on fresh Batch workers (Batch 8450856; the retry
+succeeded). If that recurs, copy the image to us-central1-docker.pkg.dev/broad-mpg-gnomad/images
+(e.g. ``crane copy``) and point this at the mirror.
+"""
+
+
+# GATK isolation forest resource VCFs, used as labeled training/calibration sets. SNP
+# and INDEL modes use different truth resources. These stay on the Broad references
+# bucket rather than gnomad_methods: GATK needs indexed VCFs (and a FASTA with .fai/
+# .dict), but the gnomAD public bucket only serves Hail Table versions of hapmap/omni/
+# kgp/mills and has no Axiom Poly, dbSNP 138, or GATK-ready FASTA.
+REFERENCE_RESOURCES = {
+    "ref_fasta": (
+        "gs://gcp-public-data--broad-references/hg38/v0/Homo_sapiens_assembly38.fasta"
+    ),
+    "dbsnp": (
+        "gs://gcp-public-data--broad-references/hg38/v0/Homo_sapiens_assembly38.dbsnp138.vcf.gz"
+    ),
+    "hapmap": "gs://gcp-public-data--broad-references/hg38/v0/hapmap_3.3.hg38.vcf.gz",
+    "omni": "gs://gcp-public-data--broad-references/hg38/v0/1000G_omni2.5.hg38.vcf.gz",
+    "one_thousand_genomes": (
+        "gs://gcp-public-data--broad-references/hg38/v0/1000G_phase1.snps.high_confidence.hg38.vcf.gz"
+    ),
+    "mills": (
+        "gs://gcp-public-data--broad-references/hg38/v0/Mills_and_1000G_gold_standard.indels.hg38.vcf.gz"
+    ),
+    "axiom_poly": (
+        "gs://gcp-public-data--broad-references/hg38/v0/Axiom_Exome_Plus.genotypes.all_populations.poly.hg38.vcf.gz"
+    ),
+}
 
 
 def _variant_qc_root(
     version: str = CURRENT_VARIANT_QC_VERSION,
     test: bool = False,
     data_type: str = "genomes",
-    environment: str = "rwb",
+    environment: str = "dataproc",
 ) -> str:
     """
     Return path to variant QC root folder.
@@ -24,28 +103,156 @@ def _variant_qc_root(
     :param version: Version of variant QC path to return.
     :param test: Whether to use a tmp path for variant QC tests.
     :param data_type: Whether to return 'exomes' or 'genomes' data. Default is genomes.
-    :param environment: Environment to use. Default is "rwb". Must be one of "rwb",
-        "batch", or "dataproc".
+    :param environment: Environment to use. Default is "dataproc". Must be one of
+        "rwb", "batch", or "dataproc".
     :return: Root to variant QC path.
     """
-    if test:
-        return f"gs://gnomad-tmp/gnomad_v{version}_testing/variant_qc/{data_type}"
+    _validate_environment(environment, _ALL_ENVIRONMENTS)
+    path_suffix = f"variant_qc/{data_type}"
 
-    base_bucket = WORKSPACE_BUCKET if environment == "rwb" else GNOMAD_BUCKET
-    return f"gs://{base_bucket}/v{version}/variant_qc/{data_type}"
+    if test:
+        return (
+            f"{qc_temp_prefix(version=version, environment=environment)}{path_suffix}"
+        )
+
+    return f"gs://{_get_base_bucket(environment)}/v{version}/{path_suffix}"
+
+
+######################################################################
+# Truth sample resources
+######################################################################
+
+truth_samples_gvcf_paths = f"{_variant_qc_root(version='5.0', environment='batch')}/aou/truth_samples/truth_samples_gvcf_paths.tsv"
+"""
+Path to a single-column TSV listing the GCS path to each truth-sample gVCF (one per line).
+
+The truth samples are 8 Genomes-in-a-Bottle (GiaB) samples sequenced with the same protocol as the AoU v8 data.
+Their gVCFs are stored here: gs://fc-aou-datasets-controlled/v8/wgs/short_read/snpindel/aux/qc/control_samples/
+
+The sample IDs are intentionally not stored in this repo. The combiner therefore reads the gVCF paths from this
+manifest by known object paths rather than globbing the bucket.
+"""
+
+truth_samples_vds = VariantDatasetResource(
+    f"{_variant_qc_root(version='5.0', test=False, environment='batch')}/aou/truth_samples/truth_samples.vds",
+)
+"""
+VDS containing 8 GiaB samples.
+
+This resource does not need to be remade for future versions.
+"""
+
+
+def get_truth_samples_combiner_plan(test: bool = False) -> str:
+    """
+    Return the path to the truth-samples VDS combiner plan (combiner ``save_path``).
+
+    The plan lets a failed or interrupted combiner run be resumed. It is written to the
+    writable batch variant QC tree (or a temp path for tests).
+
+    Like `truth_samples_vds`, this resource does not need to be remade for future versions.
+
+    :param test: Whether to return a temporary test path. Default is False.
+    :return: Path to the combiner plan JSON.
+    """
+    if test:
+        return f"{qc_temp_prefix(environment='batch', days=4)}truth_samples_combiner_plan.json"
+
+    return f"{_variant_qc_root(version='5.0', environment='batch')}/aou/truth_samples/truth_samples_combiner_plan.json"
+
+
+######################################################################
+# Variant QC model / result resources
+######################################################################
+
+
+def _validate_model_id(model_id: str) -> str:
+    """
+    Validate a variant QC model ID and return its model type prefix.
+
+    :param model_id: Model ID. Must start with ``rf_``, ``vqsr_``, or ``if_``.
+    :return: Model type ('rf', 'vqsr', or 'if').
+    """
+    model_type = model_id.split("_")[0]
+    if model_type not in ["rf", "vqsr", "if"]:
+        raise ValueError(
+            f"Model ID must start with 'rf_', 'vqsr_', or 'if_', but got {model_id}"
+        )
+    return model_type
+
+
+def get_variant_qc_result(
+    model_id: str,
+    test: bool = False,
+    split: bool = True,
+    data_type: str = "genomes",
+    environment: str = "batch",
+) -> VersionedTableResource:
+    """
+    Get the results of variant QC filtering for a given run.
+
+    :param model_id: Model ID of variant QC run to load. Must start with ``rf_``,
+        ``vqsr_``, or ``if_``.
+    :param test: Whether to use a tmp path for variant QC tests.
+    :param split: Whether to return the split or unsplit variant QC result.
+    :param data_type: Whether to return 'exomes' or 'genomes' data. Default is genomes.
+    :param environment: Environment to use. Default is "batch". Must be one of "rwb",
+        "batch", or "dataproc".
+    :return: VersionedTableResource for variant QC results.
+    """
+    model_type = _validate_model_id(model_id)
+    return VersionedTableResource(
+        CURRENT_VARIANT_QC_RESULT_VERSION,
+        {
+            version: TableResource(
+                f"{_variant_qc_root(version, test=test, data_type=data_type, environment=environment)}/{model_type}/models/{model_id}/gnomad.{data_type}.v{version}.{model_type}_result{'' if split else '.unsplit'}.ht"
+            )
+            for version in VARIANT_QC_RESULT_VERSIONS
+        },
+    )
+
+
+def get_iforest_run_prefix(
+    model_id: str,
+    version: str = CURRENT_VARIANT_QC_RESULT_VERSION,
+    test: bool = False,
+    data_type: str = "genomes",
+    environment: str = "batch",
+) -> str:
+    """
+    Get the GCS prefix for an isolation forest run's GATK working/output files.
+
+    The isolation forest workflow writes its GATK intermediate outputs (extracted
+    annotations, trained model, scored VCFs) under this prefix, alongside the model's
+    result HT from :func:`get_variant_qc_result`.
+
+    :param model_id: Model ID of the isolation forest run. Must start with ``if_``.
+    :param version: Version of the variant QC result path to return.
+    :param test: Whether to use a tmp path for variant QC tests.
+    :param data_type: Whether to return 'exomes' or 'genomes' data. Default is genomes.
+    :param environment: Environment to use. Default is "batch". Must be one of "rwb",
+        "batch", or "dataproc".
+    :return: GCS prefix (no trailing slash) for the isolation forest run's files.
+    """
+    if _validate_model_id(model_id) != "if":
+        raise ValueError(f"model_id must start with 'if_', but got {model_id}")
+    root = _variant_qc_root(
+        version, test=test, data_type=data_type, environment=environment
+    )
+    return f"{root}/if/models/{model_id}"
 
 
 def get_rf_run_path(
     version: str = CURRENT_VARIANT_QC_VERSION,
     test: bool = False,
-    environment: str = "rwb",
+    environment: str = "batch",
 ) -> str:
     """
     Return the path to the json file containing the RF runs list.
 
     :param version: Version of RF path to return.
     :param test: Whether to return the test RF runs list.
-    :param environment: Environment to use. Default is "rwb". Must be one of "rwb",
+    :param environment: Environment to use. Default is "batch". Must be one of "rwb",
         "batch", or "dataproc".
     :return: Path to json file.
     """
@@ -56,7 +263,7 @@ def get_rf_model_path(
     model_id: str,
     version: str = CURRENT_VARIANT_QC_VERSION,
     test: bool = False,
-    environment: str = "rwb",
+    environment: str = "batch",
 ) -> str:
     """
     Get the path to the RF model for a given run.
@@ -64,7 +271,7 @@ def get_rf_model_path(
     :param model_id: RF run to load.
     :param version: Version of model path to return.
     :param test: Whether to use a tmp path for variant QC tests.
-    :param environment: Environment to use. Default is "rwb". Must be one of "rwb",
+    :param environment: Environment to use. Default is "batch". Must be one of "rwb",
         "batch", or "dataproc".
     :return: Path to the RF model.
     """
@@ -74,14 +281,14 @@ def get_rf_model_path(
 def get_rf_training(
     model_id: str,
     test: bool = False,
-    environment: str = "rwb",
+    environment: str = "batch",
 ) -> VersionedTableResource:
     """
     Get the training data for a given run.
 
     :param model_id: RF run to load.
     :param test: Whether to use a tmp path for variant QC tests.
-    :param environment: Environment to use. Default is "rwb". Must be one of "rwb",
+    :param environment: Environment to use. Default is "batch". Must be one of "rwb",
         "batch", or "dataproc".
     :return: VersionedTableResource for RF training data.
     """
@@ -96,45 +303,17 @@ def get_rf_training(
     )
 
 
-def get_variant_qc_result(
-    model_id: str,
-    test: bool = False,
-    environment: str = "rwb",
-) -> VersionedTableResource:
-    r"""
-    Get the results of variant QC filtering for a given run.
-
-    :param model_id: Model ID of variant QC run to load. Must start with 'rf\_'.
-    :param test: Whether to use a tmp path for variant QC tests.
-    :param environment: Environment to use. Default is "rwb". Must be one of "rwb",
-        "batch", or "dataproc".
-    :return: VersionedTableResource for variant QC results.
-    """
-    model_type = model_id.split("_")[0]
-    if model_type != "rf":
-        raise ValueError(f"Model ID must start with 'rf_', but found {model_id}")
-    return VersionedTableResource(
-        CURRENT_VARIANT_QC_RESULT_VERSION,
-        {
-            version: TableResource(
-                f"{_variant_qc_root(version, test=test, environment=environment)}/{model_type}/models/{model_id}/gnomad.genomes.v{version}.{model_type}_result.ht"
-            )
-            for version in VARIANT_QC_RESULT_VERSIONS
-        },
-    )
-
-
 def final_filter(
     data_type: str = "genomes",
     test: bool = False,
-    environment: str = "rwb",
+    environment: str = "batch",
 ) -> VersionedTableResource:
     """
     Get finalized variant QC filtering Table.
 
     :param data_type: Whether to return 'exomes' or 'genomes' data. Default is genomes.
     :param test: Whether to use a tmp path for variant QC tests. Default is False.
-    :param environment: Environment to use. Default is "rwb". Must be one of "rwb",
+    :param environment: Environment to use. Default is "batch". Must be one of "rwb",
         "batch", or "dataproc".
     :return: VersionedTableResource for final variant QC data.
     """
@@ -147,3 +326,20 @@ def final_filter(
             for version in VARIANT_QC_RESULT_VERSIONS
         },
     )
+
+
+def run_batch(b: hb.Batch, description: str) -> None:
+    """
+    Run a Batch to completion and raise if it did not succeed.
+
+    ``Batch.run`` waits but only prints the final state, so a failed batch would
+    otherwise fall through to the next step.
+
+    :param b: Batch to run.
+    :param description: Batch description used in the error message.
+    :return: None.
+    """
+    batch = b.run()
+    state = None if batch is None else batch.status()["state"]
+    if state != "success":
+        raise RuntimeError(f"{description} batch did not succeed (state: {state}).")
