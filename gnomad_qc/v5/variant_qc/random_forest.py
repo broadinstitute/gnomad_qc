@@ -404,7 +404,7 @@ def main(args):
                 RF_COLS["prediction"],
             ]
             ht = ht.select(*summary_cols, RF_COLS["probability"])
-            ht = ht.annotate_globals(rf_model_id=model_id)
+            ht = ht.annotate_globals(model_id=model_id)
             ht = ht.checkpoint(rf_result_ht_resource.path, overwrite=overwrite)
             ht.group_by(*summary_cols).aggregate(n=hl.agg.count()).show(-1)
 
