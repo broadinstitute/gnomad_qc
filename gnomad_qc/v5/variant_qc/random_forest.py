@@ -18,13 +18,16 @@ from gnomad.variant_qc.random_forest import (
     save_model,
 )
 
-from gnomad_qc.resource_utils import check_resource_existence
 from gnomad_qc.v4.annotations.generate_variant_qc_annotations import (
     INFO_FEATURES,
     NON_INFO_FEATURES,
 )
 from gnomad_qc.v5.resources.annotations import get_variant_qc_annotations
-from gnomad_qc.v5.resources.basics import get_logging_path, qc_temp_prefix
+from gnomad_qc.v5.resources.basics import (
+    _check_resource_existence,
+    get_logging_path,
+    qc_temp_prefix,
+)
 from gnomad_qc.v5.resources.variant_qc import (
     get_rf_model_path,
     get_rf_run_path,
@@ -318,11 +321,15 @@ def main(args):
 
         if args.train_rf:
             # Check input exists.
-            check_resource_existence(
-                input_resources={
-                    "variant_qc_annotations_ht": vqc_annotations_ht_resource
+            _check_resource_existence(
+                environment=environment,
+                input_step_resources={
+                    "variant_qc_annotations_ht": [vqc_annotations_ht_resource]
                 },
-                output_resources={"rf_training_ht": rf_training_ht_resource},
+                output_step_resources={
+                    "rf_training_ht": [rf_training_ht_resource],
+                    "rf_model": [rf_model_path],
+                },
                 overwrite=overwrite,
             )
 
@@ -355,9 +362,13 @@ def main(args):
 
         if args.apply_rf:
             # Check inputs exist.
-            check_resource_existence(
-                input_resources={"rf_training_ht": rf_training_ht_resource},
-                output_resources={"rf_result_ht": rf_result_ht_resource},
+            _check_resource_existence(
+                environment=environment,
+                input_step_resources={
+                    "rf_training_ht": [rf_training_ht_resource],
+                    "rf_model": [rf_model_path],
+                },
+                output_step_resources={"rf_result_ht": [rf_result_ht_resource]},
                 overwrite=overwrite,
             )
 
