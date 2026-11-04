@@ -8,7 +8,7 @@ from typing import Any, Dict, List, Tuple, Union
 
 import hail as hl
 from gnomad.resources.grch38.reference_data import telomeres_and_centromeres
-from gnomad.variant_qc.pipeline import train_rf_model
+from gnomad.variant_qc.pipeline import INFO_FEATURES, NON_INFO_FEATURES, train_rf_model
 from gnomad.variant_qc.random_forest import (
     apply_rf_model,
     get_rf_runs,
@@ -18,10 +18,6 @@ from gnomad.variant_qc.random_forest import (
     save_model,
 )
 
-from gnomad_qc.v4.annotations.generate_variant_qc_annotations import (
-    INFO_FEATURES,
-    NON_INFO_FEATURES,
-)
 from gnomad_qc.v5.resources.annotations import get_variant_qc_annotations
 from gnomad_qc.v5.resources.basics import (
     _check_resource_existence,
