@@ -28,6 +28,7 @@ from gnomad_qc.v5.resources.basics import (
     get_logging_path,
     qc_temp_prefix,
 )
+from gnomad_qc.v5.resources.sample_qc import DENSE_TRIO_TEST_CHROMS
 from gnomad_qc.v5.resources.variant_qc import (
     get_rf_model_path,
     get_rf_run_path,
@@ -97,8 +98,8 @@ def train_rf(
     Train random forest model using `train_rf_model`.
 
     :param ht: Table containing annotations needed for RF training.
-    :param test: Whether to filter the input Table to chr22 and `test_intervals` for
-        test purposes. Default is False.
+    :param test: Whether to filter the input Table to `DENSE_TRIO_TEST_CHROMS` and
+        `test_intervals` for test purposes. Default is False.
     :param features: List of features to use in the random forests model. When no
         `features` list is provided, the global FEATURES is used.
     :param fp_to_tp: Ratio of FPs to TPs for creating the RF model. If set to 0, all
@@ -129,9 +130,16 @@ def train_rf(
         ]
 
     if test:
-        logger.info("Filtering to chr22 and evaluation intervals for testing...")
-        chr22_interval = [hl.parse_locus_interval("chr22", reference_genome="GRCh38")]
-        ht = hl.filter_intervals(ht, chr22_interval + test_intervals)
+        # Test trio stats (singletons) exist only for DENSE_TRIO_TEST_CHROMS.
+        logger.info(
+            "Filtering to %s and evaluation intervals for testing...",
+            ", ".join(DENSE_TRIO_TEST_CHROMS),
+        )
+        test_chrom_intervals = [
+            hl.parse_locus_interval(c, reference_genome="GRCh38")
+            for c in DENSE_TRIO_TEST_CHROMS
+        ]
+        ht = hl.filter_intervals(ht, test_chrom_intervals + test_intervals)
 
     logger.info("Annotating true positives and false positives in HT...")
     fp_expr = ht.fail_hard_filters
@@ -418,8 +426,9 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--test",
         help=(
-            "If the dataset should be filtered to chr22 for testing (also filtered to "
-            "evaluation interval specified by --test-intervals)."
+            f"If the dataset should be filtered to {', '.join(DENSE_TRIO_TEST_CHROMS)}"
+            " for testing (also filtered to evaluation interval specified by"
+            " --test-intervals)."
         ),
         action="store_true",
     )
