@@ -1,0 +1,89 @@
+gnomad_qc.v5.annotations.compute_coverage
+=========================================
+
+
+Compute coverage, allele number, and quality histograms for gnomAD v5 genomes.
+
+v5 genomes = AoU v8 (new) + gnomAD v4 genomes minus the consent-drop set. This
+script computes per-reference-site AN per project, coverage (gnomAD only), and qual
+histograms (AoU only) and joins them into the v5 release HT/TSVs.
+
+Execution roles (mutually exclusive; dispatched by early return in ``main``):
+
+1. ORCHESTRATOR (``--use-batch-fanout`` / ``--merge-cov-chunks``): never
+   initializes Hail; submits a Hail Batch of relay jobs and returns. Used for
+   the prod-scale AoU compute.
+2. WORKER (``--run-chunk`` / ``--run-merge``): one relay container; initializes
+   Hail and runs exactly one chunk/merge unit. The chunk worker is what calls
+   ``compute_all_release_stats_per_ref_site``.
+3. IN-PROCESS PIPELINE (neither): the strict single-job compute (gnomAD
+   consent-drop, dev/test AoU), the setup writers, and the release assembly.
+
+A full prod AoU release is three separate invocations: fan-out compute,
+merge-cov-chunks, then the in-process assembly. The setup HTs (downsampling,
+group membership, sites, chunk intervals) are written by their own
+in-process invocations first; the fan-out reads them from disk. The AoU sample
+artifact JSONs (release samples, ID collisions) come from
+``create_sample_qc_metadata_ht.py --write-vds-sample-artifact-jsons`` and are
+read inside ``get_aou_vds``.
+
+Workflow::
+
+    1. (AoU) --write-aou-downsampling-ht
+    2. --write-group-membership-ht. AoU: one aggregation cell per distinct
+       membership pattern; every AN group is reconstructed by summing cells.
+       gnomAD: the consent-drop samples, one boolean per group.
+    3. --write-vep-context-sites: deduped, telomere/centromere/chrM-stripped
+       sites HT -- the definition of "every site the compute must cover".
+    4. Compute: --compute-all-cov-release-stats-ht (strict single job), or
+       --write-chunk-intervals, then --use-batch-fanout, then
+       --merge-cov-chunks. Chunk outputs are namespaced by a content hash of
+       the intervals JSON: rerunning the fan-out retries only missing chunks,
+       and a regenerated JSON (new layout, new hash) never mixes with old
+       chunks.
+    5. --validate-cov-and-an: the merged HT must cover every site exactly.
+    6. (gnomad) --merge-gnomad-coverage / --merge-gnomad-an: subtract the
+       consent-drop samples from the release HTs. AN: the samples in the v4
+       release, from the v4.1 AN release. Coverage: the samples in the v3.0
+       release, from the 3.0.1 coverage release (the only genomes coverage
+       ever computed; v4 reused it).
+    7. (aou) Release: --export-coverage-release-files (gnomAD-only; AoU
+       computes no coverage stats), --export-an-release-files,
+       --merge-qual-hists (gnomAD v4 hists reused as-is).
+
+Usage Examples::
+
+    # Per-chunk fan-out compute + merge (on batch). Run setup steps 1-3 +
+    # --write-chunk-intervals first; the fan-out reads those outputs:
+    python compute_coverage.py --project-name aou --environment batch \\
+        --use-batch-fanout --partitions-per-chunk 3
+    python compute_coverage.py --project-name aou --environment batch \\
+        --merge-cov-chunks --n-partitions 10000
+
+    # gnomAD v4 consent-drop subtraction (on dataproc):
+    hailctl dataproc submit cluster-name compute_coverage.py \\
+        --project-name gnomad --environment dataproc \\
+        --merge-gnomad-coverage --merge-gnomad-an
+
+    # AoU/gnomAD release assembly (on batch):
+    python compute_coverage.py --project-name aou --environment batch \\
+        --export-coverage-release-files --export-an-release-files \\
+        --merge-qual-hists
+
+
+
+
+
+.. argparse::
+   :ref: gnomad_qc.v5.annotations.compute_coverage.get_script_argument_parser
+   :prog: gnomad_qc.v5.annotations.compute_coverage.py
+
+
+
+Module Functions
+****************
+
+.. gnomad_automodulesummary:: gnomad_qc.v5.annotations.compute_coverage
+
+.. automodule:: gnomad_qc.v5.annotations.compute_coverage
+    :exclude-members: get_script_argument_parser

@@ -1,0 +1,553 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>gnomad_qc.analyses.compute_pext &mdash; gnomad_qc master documentation</title>
+      <link rel="stylesheet" href="../../../_static/pygments.css" type="text/css" />
+      <link rel="stylesheet" href="../../../_static/css/theme.css" type="text/css" />
+      <link rel="stylesheet" href="../../../_static/theme_overrides.css" type="text/css" />
+  <!--[if lt IE 9]>
+    <script src="../../../_static/js/html5shiv.min.js"></script>
+  <![endif]-->
+  
+        <script src="../../../_static/jquery.js"></script>
+        <script src="../../../_static/_sphinx_javascript_frameworks_compat.js"></script>
+        <script data-url_root="../../../" id="documentation_options" src="../../../_static/documentation_options.js"></script>
+        <script src="../../../_static/doctools.js"></script>
+        <script src="../../../_static/sphinx_highlight.js"></script>
+        <script src="https://unpkg.com/mermaid@10.2.0/dist/mermaid.min.js"></script>
+        <script>mermaid.initialize({startOnLoad:true});</script>
+    <script src="../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../index.html" class="icon icon-home">
+            gnomad_qc
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../api_reference/index.html">API Reference</a></li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/broadinstitute/gnomad_qc/tags">Change Log</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../index.html">gnomad_qc</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../index.html">Module code</a></li>
+      <li class="breadcrumb-item active">gnomad_qc.analyses.compute_pext</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for gnomad_qc.analyses.compute_pext</h1><div class="highlight"><pre>
+<span></span><span class="sd">&quot;&quot;&quot;Script to get release pext annotation files.&quot;&quot;&quot;</span>
+
+<span class="kn">import</span> <span class="nn">argparse</span>
+<span class="kn">import</span> <span class="nn">logging</span>
+<span class="kn">from</span> <span class="nn">typing</span> <span class="kn">import</span> <span class="n">Tuple</span>
+
+<span class="kn">import</span> <span class="nn">hail</span> <span class="k">as</span> <span class="nn">hl</span>
+<span class="kn">from</span> <span class="nn">gnomad.resources</span> <span class="kn">import</span> <span class="n">grch37</span> <span class="k">as</span> <span class="n">gnomad_grch37</span>
+<span class="kn">from</span> <span class="nn">gnomad.resources</span> <span class="kn">import</span> <span class="n">grch38</span> <span class="k">as</span> <span class="n">gnomad_grch38</span>
+<span class="kn">from</span> <span class="nn">gnomad.resources.grch37.gnomad</span> <span class="kn">import</span> <span class="n">public_release</span> <span class="k">as</span> <span class="n">gnomad_release_grch37</span>
+<span class="kn">from</span> <span class="nn">gnomad.resources.grch38.gnomad</span> <span class="kn">import</span> <span class="n">public_release</span> <span class="k">as</span> <span class="n">gnomad_release_grch38</span>
+<span class="kn">from</span> <span class="nn">gnomad.utils.reference_genome</span> <span class="kn">import</span> <span class="n">get_reference_genome</span>
+<span class="kn">from</span> <span class="nn">gnomad.utils.slack</span> <span class="kn">import</span> <span class="n">slack_notifications</span>
+<span class="kn">from</span> <span class="nn">gnomad.utils.transcript_annotation</span> <span class="kn">import</span> <span class="p">(</span>
+    <span class="n">clean_tissue_name_for_browser</span><span class="p">,</span>
+    <span class="n">create_tx_annotation_by_region</span><span class="p">,</span>
+    <span class="n">get_tissues_to_exclude</span><span class="p">,</span>
+    <span class="n">perform_tx_annotation_pipeline</span><span class="p">,</span>
+    <span class="n">summarize_transcript_expression</span><span class="p">,</span>
+<span class="p">)</span>
+<span class="kn">from</span> <span class="nn">hail.utils</span> <span class="kn">import</span> <span class="n">new_temp_file</span>
+
+<span class="kn">from</span> <span class="nn">gnomad_qc.analyses.resources</span> <span class="kn">import</span> <span class="n">get_pext</span>
+<span class="kn">from</span> <span class="nn">gnomad_qc.resource_utils</span> <span class="kn">import</span> <span class="p">(</span>
+    <span class="n">PipelineResourceCollection</span><span class="p">,</span>
+    <span class="n">PipelineStepResourceCollection</span><span class="p">,</span>
+<span class="p">)</span>
+<span class="kn">from</span> <span class="nn">gnomad_qc.slack_creds</span> <span class="kn">import</span> <span class="n">slack_token</span>
+
+<span class="n">logging</span><span class="o">.</span><span class="n">basicConfig</span><span class="p">(</span>
+    <span class="nb">format</span><span class="o">=</span><span class="s2">&quot;</span><span class="si">%(asctime)s</span><span class="s2"> (</span><span class="si">%(name)s</span><span class="s2"> </span><span class="si">%(lineno)s</span><span class="s2">): </span><span class="si">%(message)s</span><span class="s2">&quot;</span><span class="p">,</span>
+    <span class="n">datefmt</span><span class="o">=</span><span class="s2">&quot;%m/</span><span class="si">%d</span><span class="s2">/%Y %I:%M:%S %p&quot;</span><span class="p">,</span>
+<span class="p">)</span>
+<span class="n">logger</span> <span class="o">=</span> <span class="n">logging</span><span class="o">.</span><span class="n">getLogger</span><span class="p">(</span><span class="s2">&quot;pext&quot;</span><span class="p">)</span>
+<span class="n">logger</span><span class="o">.</span><span class="n">setLevel</span><span class="p">(</span><span class="n">logging</span><span class="o">.</span><span class="n">INFO</span><span class="p">)</span>
+
+
+<div class="viewcode-block" id="filter_to_test"><a class="viewcode-back" href="../../../api_reference/analyses/compute_pext.html#gnomad_qc.analyses.compute_pext.filter_to_test">[docs]</a><span class="k">def</span> <span class="nf">filter_to_test</span><span class="p">(</span>
+    <span class="n">ht</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">,</span>
+    <span class="n">tx_mt</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">MatrixTable</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Tuple</span><span class="p">[</span><span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">,</span> <span class="n">hl</span><span class="o">.</span><span class="n">MatrixTable</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Filter `ht` and `tx_mt` to a test set of genes.</span>
+
+<span class="sd">    Genes to filter to:</span>
+
+<span class="sd">        - APOE</span>
+<span class="sd">        - HTR2A</span>
+<span class="sd">        - C1orf170/PERM1</span>
+<span class="sd">        - TNFRSF25</span>
+<span class="sd">        - TNFRSF18</span>
+
+<span class="sd">    :param ht: VEP context HT to filter.</span>
+<span class="sd">    :param tx_mt: Transcript MT to filter.</span>
+<span class="sd">    :return: Filtered HT and MT.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">test_genes</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="s2">&quot;ENSG00000130203&quot;</span><span class="p">:</span> <span class="p">{</span>  <span class="c1"># APOE</span>
+            <span class="s2">&quot;GRCh37&quot;</span><span class="p">:</span> <span class="s2">&quot;19:45409011-45412650&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;GRCh38&quot;</span><span class="p">:</span> <span class="s2">&quot;chr19:44905791-44909393&quot;</span><span class="p">,</span>
+        <span class="p">},</span>
+        <span class="s2">&quot;ENSG00000102468&quot;</span><span class="p">:</span> <span class="p">{</span>  <span class="c1"># HTR2A</span>
+            <span class="s2">&quot;GRCh37&quot;</span><span class="p">:</span> <span class="s2">&quot;13:47405685-47471169&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;GRCh38&quot;</span><span class="p">:</span> <span class="s2">&quot;chr13:46831546-46897076&quot;</span><span class="p">,</span>
+        <span class="p">},</span>
+        <span class="s2">&quot;ENSG00000187642&quot;</span><span class="p">:</span> <span class="p">{</span>  <span class="c1"># C1orf170/PERM1</span>
+            <span class="s2">&quot;GRCh37&quot;</span><span class="p">:</span> <span class="s2">&quot;1:910579-917497&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;GRCh38&quot;</span><span class="p">:</span> <span class="s2">&quot;chr1:975204-982093&quot;</span><span class="p">,</span>
+        <span class="p">},</span>
+        <span class="s2">&quot;ENSG00000215788&quot;</span><span class="p">:</span> <span class="p">{</span>  <span class="c1"># TNFRSF25</span>
+            <span class="s2">&quot;GRCh37&quot;</span><span class="p">:</span> <span class="s2">&quot;1:6521211-6526255&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;GRCh38&quot;</span><span class="p">:</span> <span class="s2">&quot;chr1:6460786-6466175&quot;</span><span class="p">,</span>
+        <span class="p">},</span>
+        <span class="s2">&quot;ENSG00000186891&quot;</span><span class="p">:</span> <span class="p">{</span>  <span class="c1"># TNFRSF18</span>
+            <span class="s2">&quot;GRCh37&quot;</span><span class="p">:</span> <span class="s2">&quot;1:1138888-1142071&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;GRCh38&quot;</span><span class="p">:</span> <span class="s2">&quot;chr1:1203508-1206592&quot;</span><span class="p">,</span>
+        <span class="p">},</span>
+    <span class="p">}</span>
+
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span>
+        <span class="s2">&quot;Filtering VEP context Table to the following genes: </span><span class="si">%s</span><span class="s2">...&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;, &quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="nb">list</span><span class="p">(</span><span class="n">test_genes</span><span class="o">.</span><span class="n">keys</span><span class="p">())),</span>
+    <span class="p">)</span>
+
+    <span class="c1"># Get the reference genome build from the HT.</span>
+    <span class="n">build</span> <span class="o">=</span> <span class="n">get_reference_genome</span><span class="p">(</span><span class="n">ht</span><span class="o">.</span><span class="n">locus</span><span class="p">)</span><span class="o">.</span><span class="n">name</span>
+
+    <span class="n">test_intervals</span> <span class="o">=</span> <span class="p">[</span><span class="n">hl</span><span class="o">.</span><span class="n">parse_locus_interval</span><span class="p">(</span><span class="n">g</span><span class="p">[</span><span class="n">build</span><span class="p">])</span> <span class="k">for</span> <span class="n">g</span> <span class="ow">in</span> <span class="n">test_genes</span><span class="o">.</span><span class="n">values</span><span class="p">()]</span>
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">hl</span><span class="o">.</span><span class="n">filter_intervals</span><span class="p">(</span><span class="n">ht</span><span class="p">,</span> <span class="n">test_intervals</span><span class="p">)</span>
+
+    <span class="n">tx_mt</span> <span class="o">=</span> <span class="n">tx_mt</span><span class="o">.</span><span class="n">filter_rows</span><span class="p">(</span><span class="n">hl</span><span class="o">.</span><span class="n">literal</span><span class="p">(</span><span class="n">test_genes</span><span class="p">)</span><span class="o">.</span><span class="n">contains</span><span class="p">(</span><span class="n">tx_mt</span><span class="o">.</span><span class="n">gene_id</span><span class="p">))</span>
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span>
+        <span class="s2">&quot;Filter GTEx RSEM MatrixTable to </span><span class="si">%d</span><span class="s2"> transcripts in </span><span class="si">%d</span><span class="s2"> genes...&quot;</span><span class="p">,</span>
+        <span class="n">tx_mt</span><span class="o">.</span><span class="n">count</span><span class="p">()[</span><span class="mi">0</span><span class="p">],</span>
+        <span class="nb">len</span><span class="p">(</span><span class="n">test_genes</span><span class="p">),</span>
+    <span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">ht</span><span class="p">,</span> <span class="n">tx_mt</span></div>
+
+
+<div class="viewcode-block" id="get_pipeline_resources"><a class="viewcode-back" href="../../../api_reference/analyses/compute_pext.html#gnomad_qc.analyses.compute_pext.get_pipeline_resources">[docs]</a><span class="k">def</span> <span class="nf">get_pipeline_resources</span><span class="p">(</span>
+    <span class="n">test</span><span class="p">:</span> <span class="nb">bool</span><span class="p">,</span>
+    <span class="n">gtex_version</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="n">overwrite</span><span class="p">:</span> <span class="nb">bool</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">PipelineResourceCollection</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Get pipeline resources for pext annotation pipeline.</span>
+
+<span class="sd">    :param test: Whether to get resources for a test run.</span>
+<span class="sd">    :param gtex_version: GTEx version to get resources for. Must be one of &#39;v7&#39; or &#39;v10&#39;.</span>
+<span class="sd">    :param overwrite: Whether to overwrite existing data.</span>
+<span class="sd">    :return: Pipeline resource collection for pext annotation pipeline.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="n">gtex_version</span> <span class="o">==</span> <span class="s2">&quot;v7&quot;</span><span class="p">:</span>
+        <span class="n">gnomad_res</span> <span class="o">=</span> <span class="n">gnomad_grch37</span>
+        <span class="n">vep_version</span> <span class="o">=</span> <span class="s2">&quot;85&quot;</span>
+        <span class="n">gnomad_exomes</span> <span class="o">=</span> <span class="n">gnomad_release_grch37</span><span class="p">(</span><span class="s2">&quot;exomes&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">versions</span><span class="p">[</span><span class="s2">&quot;2.1.1&quot;</span><span class="p">]</span>
+        <span class="n">gnomad_genomes</span> <span class="o">=</span> <span class="n">gnomad_release_grch37</span><span class="p">(</span><span class="s2">&quot;genomes&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">versions</span><span class="p">[</span><span class="s2">&quot;2.1.1&quot;</span><span class="p">]</span>
+
+        <span class="c1"># TODO: Remove this once the GTEx v10 MT public resource is available.</span>
+        <span class="n">tx_mt</span> <span class="o">=</span> <span class="n">gnomad_res</span><span class="o">.</span><span class="n">gtex_rsem</span><span class="o">.</span><span class="n">versions</span><span class="p">[</span><span class="n">gtex_version</span><span class="p">]</span>
+    <span class="k">elif</span> <span class="n">gtex_version</span> <span class="o">==</span> <span class="s2">&quot;v10&quot;</span><span class="p">:</span>
+        <span class="n">gnomad_res</span> <span class="o">=</span> <span class="n">gnomad_grch38</span>
+        <span class="n">vep_version</span> <span class="o">=</span> <span class="s2">&quot;105&quot;</span>
+        <span class="n">gnomad_exomes</span> <span class="o">=</span> <span class="n">gnomad_release_grch38</span><span class="p">(</span><span class="s2">&quot;exomes&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">versions</span><span class="p">[</span><span class="s2">&quot;4.1&quot;</span><span class="p">]</span>
+        <span class="n">gnomad_genomes</span> <span class="o">=</span> <span class="n">gnomad_release_grch38</span><span class="p">(</span><span class="s2">&quot;genomes&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">versions</span><span class="p">[</span><span class="s2">&quot;4.1&quot;</span><span class="p">]</span>
+
+        <span class="c1"># TODO: Update to use the GTEx v10 MT public resource once it is available.</span>
+        <span class="kn">from</span> <span class="nn">gnomad.resources.resource_utils</span> <span class="kn">import</span> <span class="n">MatrixTableResource</span>
+
+        <span class="n">tx_mt</span> <span class="o">=</span> <span class="n">MatrixTableResource</span><span class="p">(</span>
+            <span class="s2">&quot;gs://gnomad/resources/grch38/gtex/gtex_rsem_v10.mt&quot;</span>
+        <span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;Invalid GTEx version&quot;</span><span class="p">)</span>
+
+    <span class="c1"># Initialize pipeline resource collection.</span>
+    <span class="n">per_sample_pipeline</span> <span class="o">=</span> <span class="n">PipelineResourceCollection</span><span class="p">(</span>
+        <span class="n">pipeline_name</span><span class="o">=</span><span class="s2">&quot;compute_pext&quot;</span><span class="p">,</span>
+        <span class="n">pipeline_resources</span><span class="o">=</span><span class="p">{</span>
+            <span class="s2">&quot;context HT&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;context_ht&quot;</span><span class="p">:</span> <span class="n">gnomad_res</span><span class="o">.</span><span class="n">vep_context</span><span class="o">.</span><span class="n">versions</span><span class="p">[</span><span class="n">vep_version</span><span class="p">]},</span>
+            <span class="c1"># TODO: Change to use gnomad_res.gtex_rsem.versions[gtex_version], once</span>
+            <span class="c1">#  the public version is available.</span>
+            <span class="s2">&quot;GTEx RSEM MT&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;tx_mt&quot;</span><span class="p">:</span> <span class="n">tx_mt</span><span class="p">},</span>
+        <span class="p">},</span>
+        <span class="n">overwrite</span><span class="o">=</span><span class="n">overwrite</span><span class="p">,</span>
+    <span class="p">)</span>
+
+    <span class="c1"># Create resource collection for each step of the pipeline.</span>
+    <span class="n">annotation_level</span> <span class="o">=</span> <span class="n">PipelineStepResourceCollection</span><span class="p">(</span>
+        <span class="s2">&quot;--annotation-level&quot;</span><span class="p">,</span>
+        <span class="n">output_resources</span><span class="o">=</span><span class="p">{</span>
+            <span class="s2">&quot;annotation_level_pext_ht&quot;</span><span class="p">:</span> <span class="n">get_pext</span><span class="p">(</span>
+                <span class="s2">&quot;annotation_level&quot;</span><span class="p">,</span> <span class="n">gtex_version</span><span class="p">,</span> <span class="n">test</span><span class="o">=</span><span class="n">test</span>
+            <span class="p">),</span>
+        <span class="p">},</span>
+    <span class="p">)</span>
+    <span class="n">base_level</span> <span class="o">=</span> <span class="n">PipelineStepResourceCollection</span><span class="p">(</span>
+        <span class="s2">&quot;--base-level&quot;</span><span class="p">,</span>
+        <span class="n">output_resources</span><span class="o">=</span><span class="p">{</span>
+            <span class="s2">&quot;base_pext_ht&quot;</span><span class="p">:</span> <span class="n">get_pext</span><span class="p">(</span><span class="s2">&quot;base_level&quot;</span><span class="p">,</span> <span class="n">gtex_version</span><span class="p">,</span> <span class="n">test</span><span class="o">=</span><span class="n">test</span><span class="p">),</span>
+        <span class="p">},</span>
+    <span class="p">)</span>
+    <span class="n">gnomad_exomes</span> <span class="o">=</span> <span class="n">PipelineStepResourceCollection</span><span class="p">(</span>
+        <span class="s2">&quot;--gnomad-exomes-ht&quot;</span><span class="p">,</span>
+        <span class="n">input_resources</span><span class="o">=</span><span class="p">{</span>
+            <span class="s2">&quot;gnomad exomes HT&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;gnomad_exomes_ht&quot;</span><span class="p">:</span> <span class="n">gnomad_exomes</span><span class="p">},</span>
+        <span class="p">},</span>
+        <span class="n">output_resources</span><span class="o">=</span><span class="p">{</span>
+            <span class="s2">&quot;gnomad_exomes_pext_ht&quot;</span><span class="p">:</span> <span class="n">get_pext</span><span class="p">(</span><span class="s2">&quot;exomes&quot;</span><span class="p">,</span> <span class="n">gtex_version</span><span class="p">,</span> <span class="n">test</span><span class="o">=</span><span class="n">test</span><span class="p">),</span>
+        <span class="p">},</span>
+    <span class="p">)</span>
+    <span class="n">gnomad_genomes</span> <span class="o">=</span> <span class="n">PipelineStepResourceCollection</span><span class="p">(</span>
+        <span class="s2">&quot;--gnomad-genomes-ht&quot;</span><span class="p">,</span>
+        <span class="n">input_resources</span><span class="o">=</span><span class="p">{</span>
+            <span class="s2">&quot;gnomad genomes HT&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;gnomad_genomes_ht&quot;</span><span class="p">:</span> <span class="n">gnomad_genomes</span><span class="p">},</span>
+        <span class="p">},</span>
+        <span class="n">output_resources</span><span class="o">=</span><span class="p">{</span>
+            <span class="s2">&quot;gnomad_genomes_pext_ht&quot;</span><span class="p">:</span> <span class="n">get_pext</span><span class="p">(</span><span class="s2">&quot;genomes&quot;</span><span class="p">,</span> <span class="n">gtex_version</span><span class="p">,</span> <span class="n">test</span><span class="o">=</span><span class="n">test</span><span class="p">),</span>
+        <span class="p">},</span>
+    <span class="p">)</span>
+    <span class="n">browser_ht</span> <span class="o">=</span> <span class="n">PipelineStepResourceCollection</span><span class="p">(</span>
+        <span class="s2">&quot;--browser-ht&quot;</span><span class="p">,</span>
+        <span class="n">pipeline_input_steps</span><span class="o">=</span><span class="p">[</span><span class="n">base_level</span><span class="p">],</span>
+        <span class="n">output_resources</span><span class="o">=</span><span class="p">{</span>
+            <span class="s2">&quot;browser_pext_ht&quot;</span><span class="p">:</span> <span class="n">get_pext</span><span class="p">(</span><span class="s2">&quot;browser&quot;</span><span class="p">,</span> <span class="n">gtex_version</span><span class="p">,</span> <span class="n">test</span><span class="o">=</span><span class="n">test</span><span class="p">),</span>
+        <span class="p">},</span>
+    <span class="p">)</span>
+    <span class="n">export_tsv</span> <span class="o">=</span> <span class="n">PipelineStepResourceCollection</span><span class="p">(</span>
+        <span class="s2">&quot;--export-tsv&quot;</span><span class="p">,</span>
+        <span class="n">pipeline_input_steps</span><span class="o">=</span><span class="p">[</span><span class="n">annotation_level</span><span class="p">,</span> <span class="n">base_level</span><span class="p">],</span>
+        <span class="n">output_resources</span><span class="o">=</span><span class="p">{</span>
+            <span class="s2">&quot;pext_base_tsv&quot;</span><span class="p">:</span> <span class="n">get_pext</span><span class="p">(</span>
+                <span class="s2">&quot;base_level&quot;</span><span class="p">,</span> <span class="n">gtex_version</span><span class="p">,</span> <span class="n">suffix</span><span class="o">=</span><span class="s2">&quot;tsv.gz&quot;</span><span class="p">,</span> <span class="n">test</span><span class="o">=</span><span class="n">test</span>
+            <span class="p">),</span>
+            <span class="s2">&quot;pext_annotation_tsv&quot;</span><span class="p">:</span> <span class="n">get_pext</span><span class="p">(</span>
+                <span class="s2">&quot;annotation_level&quot;</span><span class="p">,</span> <span class="n">gtex_version</span><span class="p">,</span> <span class="n">suffix</span><span class="o">=</span><span class="s2">&quot;tsv.gz&quot;</span><span class="p">,</span> <span class="n">test</span><span class="o">=</span><span class="n">test</span>
+            <span class="p">),</span>
+        <span class="p">},</span>
+    <span class="p">)</span>
+
+    <span class="c1"># Add all steps to the pipeline resource collection.</span>
+    <span class="n">per_sample_pipeline</span><span class="o">.</span><span class="n">add_steps</span><span class="p">(</span>
+        <span class="p">{</span>
+            <span class="s2">&quot;annotation_level&quot;</span><span class="p">:</span> <span class="n">annotation_level</span><span class="p">,</span>
+            <span class="s2">&quot;base_level&quot;</span><span class="p">:</span> <span class="n">base_level</span><span class="p">,</span>
+            <span class="s2">&quot;gnomad_exomes&quot;</span><span class="p">:</span> <span class="n">gnomad_exomes</span><span class="p">,</span>
+            <span class="s2">&quot;gnomad_genomes&quot;</span><span class="p">:</span> <span class="n">gnomad_genomes</span><span class="p">,</span>
+            <span class="s2">&quot;browser_ht&quot;</span><span class="p">:</span> <span class="n">browser_ht</span><span class="p">,</span>
+            <span class="s2">&quot;export_tsv&quot;</span><span class="p">:</span> <span class="n">export_tsv</span><span class="p">,</span>
+        <span class="p">}</span>
+    <span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">per_sample_pipeline</span></div>
+
+
+<div class="viewcode-block" id="main"><a class="viewcode-back" href="../../../api_reference/analyses/compute_pext.html#gnomad_qc.analyses.compute_pext.main">[docs]</a><span class="k">def</span> <span class="nf">main</span><span class="p">(</span><span class="n">args</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Script to get release pext annotation files.&quot;&quot;&quot;</span>
+    <span class="n">test</span> <span class="o">=</span> <span class="n">args</span><span class="o">.</span><span class="n">test</span>
+    <span class="n">gtex_version</span> <span class="o">=</span> <span class="n">args</span><span class="o">.</span><span class="n">gtex_version</span>
+    <span class="n">overwrite</span> <span class="o">=</span> <span class="n">args</span><span class="o">.</span><span class="n">overwrite</span>
+    <span class="n">min_samples</span> <span class="o">=</span> <span class="n">args</span><span class="o">.</span><span class="n">min_samples</span>
+    <span class="n">browser_min_samples</span> <span class="o">=</span> <span class="n">args</span><span class="o">.</span><span class="n">browser_min_samples</span>
+    <span class="k">if</span> <span class="n">browser_min_samples</span> <span class="o">&lt;</span> <span class="n">min_samples</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+            <span class="s2">&quot;The --browser-min-samples threshold must be greater than or equal to the &quot;</span>
+            <span class="s2">&quot;--min-samples threshold.&quot;</span>
+        <span class="p">)</span>
+
+    <span class="n">annotation_level</span> <span class="o">=</span> <span class="p">[</span><span class="s2">&quot;annotation_level&quot;</span><span class="p">]</span> <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">annotation_level</span> <span class="k">else</span> <span class="p">[]</span>
+    <span class="n">annotation_level</span> <span class="o">+=</span> <span class="p">[</span><span class="s2">&quot;gnomad_exomes&quot;</span><span class="p">]</span> <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">gnomad_exomes_ht</span> <span class="k">else</span> <span class="p">[]</span>
+    <span class="n">annotation_level</span> <span class="o">+=</span> <span class="p">[</span><span class="s2">&quot;gnomad_genomes&quot;</span><span class="p">]</span> <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">gnomad_genomes_ht</span> <span class="k">else</span> <span class="p">[]</span>
+
+    <span class="n">hl</span><span class="o">.</span><span class="n">init</span><span class="p">(</span>
+        <span class="n">log</span><span class="o">=</span><span class="s2">&quot;/pext.log&quot;</span><span class="p">,</span>
+        <span class="n">tmp_dir</span><span class="o">=</span><span class="s2">&quot;gs://gnomad-tmp-4day&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">hl</span><span class="o">.</span><span class="n">default_reference</span><span class="p">(</span><span class="s2">&quot;GRCh37&quot;</span> <span class="k">if</span> <span class="n">gtex_version</span> <span class="o">==</span> <span class="s2">&quot;v7&quot;</span> <span class="k">else</span> <span class="s2">&quot;GRCh38&quot;</span><span class="p">)</span>
+    <span class="n">hl</span><span class="o">.</span><span class="n">_set_flags</span><span class="p">(</span><span class="n">use_new_shuffle</span><span class="o">=</span><span class="s2">&quot;1&quot;</span><span class="p">)</span>
+
+    <span class="n">pext_res</span> <span class="o">=</span> <span class="n">get_pipeline_resources</span><span class="p">(</span><span class="n">test</span><span class="p">,</span> <span class="n">gtex_version</span><span class="p">,</span> <span class="n">overwrite</span><span class="p">)</span>
+
+    <span class="c1"># Reduce the number of partitions in the context HT to avoid long run times.</span>
+    <span class="c1"># The context HTs are &gt;30K partitions, which led to long run times for the pipeline,</span>
+    <span class="c1"># reducing the number of partitions to 5K helped reduce the run time.</span>
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">pext_res</span><span class="o">.</span><span class="n">context_ht</span><span class="o">.</span><span class="n">ht</span><span class="p">()</span><span class="o">.</span><span class="n">naive_coalesce</span><span class="p">(</span><span class="mi">5000</span><span class="p">)</span>
+    <span class="n">tx_mt</span> <span class="o">=</span> <span class="n">pext_res</span><span class="o">.</span><span class="n">tx_mt</span><span class="o">.</span><span class="n">mt</span><span class="p">()</span>
+
+    <span class="c1"># Get tissues to completely exclude from the pext calculations. These are tissues</span>
+    <span class="c1"># that have less than `min_samples` samples and should not be included in the</span>
+    <span class="c1"># individual tissue pext values or in the overall pext.</span>
+    <span class="n">tissues_to_exclude</span> <span class="o">=</span> <span class="n">get_tissues_to_exclude</span><span class="p">(</span>
+        <span class="n">tx_mt</span><span class="p">,</span> <span class="n">reproductive</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">cell_lines</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">min_samples</span><span class="o">=</span><span class="n">min_samples</span>
+    <span class="p">)</span>
+
+    <span class="c1"># Get tissues to exclude from the overall mean pext calculation. This includes</span>
+    <span class="c1"># reproductive tissues and cell lines, as well as any tissues that have less than</span>
+    <span class="c1"># `min_samples` samples (`tissues_to_exclude`).</span>
+    <span class="n">tissues_to_exclude_from_mean</span> <span class="o">=</span> <span class="p">(</span>
+        <span class="n">get_tissues_to_exclude</span><span class="p">(</span><span class="n">tx_mt</span><span class="p">,</span> <span class="n">min_samples</span><span class="o">=</span><span class="kc">None</span><span class="p">)</span> <span class="o">+</span> <span class="n">tissues_to_exclude</span>
+    <span class="p">)</span>
+
+    <span class="c1"># If `keep_tissues_under_min_samples` is set, tissues that have less than</span>
+    <span class="c1"># `min_samples` samples will be excluded from the overall mean pext calculation,</span>
+    <span class="c1"># but will still be included in the individual tissue pext values.</span>
+    <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">keep_tissues_under_min_samples</span><span class="p">:</span>
+        <span class="n">tissues_to_exclude</span> <span class="o">=</span> <span class="p">[]</span>
+
+    <span class="k">if</span> <span class="n">test</span><span class="p">:</span>
+        <span class="n">ht</span><span class="p">,</span> <span class="n">tx_mt</span> <span class="o">=</span> <span class="n">filter_to_test</span><span class="p">(</span><span class="n">ht</span><span class="p">,</span> <span class="n">tx_mt</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">annotation_level</span> <span class="ow">or</span> <span class="n">args</span><span class="o">.</span><span class="n">base_level</span><span class="p">:</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span>
+            <span class="s2">&quot;Summarizing transcript expression for GTEx version </span><span class="si">%s</span><span class="s2">...&quot;</span><span class="p">,</span>
+            <span class="n">gtex_version</span><span class="p">,</span>
+        <span class="p">)</span>
+        <span class="n">tx_ht</span> <span class="o">=</span> <span class="n">summarize_transcript_expression</span><span class="p">(</span><span class="n">tx_mt</span><span class="p">)</span><span class="o">.</span><span class="n">checkpoint</span><span class="p">(</span>
+            <span class="n">new_temp_file</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="sa">f</span><span class="s1">&#39;test_&#39;</span><span class="w"> </span><span class="k">if</span><span class="w"> </span><span class="n">test</span><span class="w"> </span><span class="k">else</span><span class="w"> </span><span class="s1">&#39;&#39;</span><span class="si">}</span><span class="s2">tx_ht&quot;</span><span class="p">,</span> <span class="s2">&quot;ht&quot;</span><span class="p">),</span> <span class="n">overwrite</span><span class="o">=</span><span class="n">overwrite</span>
+        <span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">annotation_level</span><span class="p">:</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Creating annotation-level pext scores...&quot;</span><span class="p">)</span>
+
+        <span class="k">for</span> <span class="n">dataset</span> <span class="ow">in</span> <span class="n">annotation_level</span><span class="p">:</span>
+            <span class="n">dataset_name</span> <span class="o">=</span> <span class="s2">&quot;context&quot;</span> <span class="k">if</span> <span class="n">dataset</span> <span class="o">==</span> <span class="s2">&quot;annotation_level&quot;</span> <span class="k">else</span> <span class="n">dataset</span>
+            <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Annotating the </span><span class="si">%s</span><span class="s2"> HT...&quot;</span><span class="p">,</span> <span class="n">dataset_name</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="s2">&quot;_&quot;</span><span class="p">,</span> <span class="s2">&quot; &quot;</span><span class="p">))</span>
+            <span class="n">res</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">pext_res</span><span class="p">,</span> <span class="n">dataset</span><span class="p">)</span>
+            <span class="n">res</span><span class="o">.</span><span class="n">check_resource_existence</span><span class="p">()</span>
+
+            <span class="n">perform_tx_annotation_pipeline</span><span class="p">(</span>
+                <span class="p">(</span>
+                    <span class="n">ht</span>
+                    <span class="k">if</span> <span class="n">dataset</span> <span class="o">==</span> <span class="s2">&quot;annotation_level&quot;</span>
+                    <span class="k">else</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">res</span><span class="p">,</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">dataset</span><span class="si">}</span><span class="s2">_ht&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">ht</span><span class="p">()</span>
+                <span class="p">),</span>
+                <span class="n">tx_ht</span><span class="p">,</span>
+                <span class="n">tissues_to_exclude</span><span class="o">=</span><span class="n">tissues_to_exclude</span><span class="p">,</span>
+                <span class="n">tissues_to_exclude_from_mean</span><span class="o">=</span><span class="n">tissues_to_exclude_from_mean</span><span class="p">,</span>
+            <span class="p">)</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="nb">getattr</span><span class="p">(</span><span class="n">res</span><span class="p">,</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">dataset</span><span class="si">}</span><span class="s2">_pext_ht&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">path</span><span class="p">,</span> <span class="n">overwrite</span><span class="o">=</span><span class="n">overwrite</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">base_level</span><span class="p">:</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Creating base-level pext scores...&quot;</span><span class="p">)</span>
+        <span class="n">res</span> <span class="o">=</span> <span class="n">pext_res</span><span class="o">.</span><span class="n">base_level</span>
+        <span class="n">res</span><span class="o">.</span><span class="n">check_resource_existence</span><span class="p">()</span>
+
+        <span class="n">perform_tx_annotation_pipeline</span><span class="p">(</span>
+            <span class="n">ht</span><span class="p">,</span>
+            <span class="n">tx_ht</span><span class="p">,</span>
+            <span class="n">additional_group_by</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;gene_symbol&quot;</span><span class="p">],</span>
+            <span class="n">tissues_to_exclude</span><span class="o">=</span><span class="n">tissues_to_exclude</span><span class="p">,</span>
+            <span class="n">tissues_to_exclude_from_mean</span><span class="o">=</span><span class="n">tissues_to_exclude_from_mean</span><span class="p">,</span>
+        <span class="p">)</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">res</span><span class="o">.</span><span class="n">base_pext_ht</span><span class="o">.</span><span class="n">path</span><span class="p">,</span> <span class="n">overwrite</span><span class="o">=</span><span class="n">overwrite</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">browser_ht</span><span class="p">:</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Creating pext Table for browser loading...&quot;</span><span class="p">)</span>
+        <span class="n">res</span> <span class="o">=</span> <span class="n">pext_res</span><span class="o">.</span><span class="n">browser_ht</span>
+        <span class="n">res</span><span class="o">.</span><span class="n">check_resource_existence</span><span class="p">()</span>
+        <span class="n">base_pext_ht</span> <span class="o">=</span> <span class="n">res</span><span class="o">.</span><span class="n">base_pext_ht</span><span class="o">.</span><span class="n">ht</span><span class="p">()</span>
+
+        <span class="n">tissue_map</span> <span class="o">=</span> <span class="p">{</span>
+            <span class="n">t</span><span class="p">:</span> <span class="n">clean_tissue_name_for_browser</span><span class="p">(</span><span class="n">t</span><span class="p">)</span> <span class="k">for</span> <span class="n">t</span> <span class="ow">in</span> <span class="n">hl</span><span class="o">.</span><span class="n">eval</span><span class="p">(</span><span class="n">base_pext_ht</span><span class="o">.</span><span class="n">tissues</span><span class="p">)</span>
+        <span class="p">}</span>
+
+        <span class="n">browser_tissues_to_exclude</span> <span class="o">=</span> <span class="n">tissues_to_exclude</span>
+        <span class="k">if</span> <span class="n">browser_min_samples</span> <span class="o">&gt;</span> <span class="n">min_samples</span><span class="p">:</span>
+            <span class="c1"># Get tissues that have less than `browser_min_samples` samples and should</span>
+            <span class="c1"># not be displayed as a tissue pext track on the browser.</span>
+            <span class="n">browser_tissues_to_exclude</span> <span class="o">=</span> <span class="n">get_tissues_to_exclude</span><span class="p">(</span>
+                <span class="n">tx_mt</span><span class="p">,</span>
+                <span class="n">reproductive</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+                <span class="n">cell_lines</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+                <span class="n">min_samples</span><span class="o">=</span><span class="n">browser_min_samples</span><span class="p">,</span>
+            <span class="p">)</span>
+            <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span>
+                <span class="s2">&quot;Excluding tissues with less than </span><span class="si">%d</span><span class="s2"> samples from the browser: </span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">,</span>
+                <span class="n">browser_min_samples</span><span class="p">,</span>
+                <span class="s2">&quot;, &quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span>
+                    <span class="nb">list</span><span class="p">(</span><span class="nb">set</span><span class="p">(</span><span class="n">browser_tissues_to_exclude</span><span class="p">)</span> <span class="o">-</span> <span class="nb">set</span><span class="p">(</span><span class="n">tissues_to_exclude</span><span class="p">))</span>
+                <span class="p">),</span>
+            <span class="p">)</span>
+
+        <span class="n">base_pext_ht</span> <span class="o">=</span> <span class="n">base_pext_ht</span><span class="o">.</span><span class="n">annotate</span><span class="p">(</span>
+            <span class="o">**</span><span class="p">{</span><span class="n">k</span><span class="p">:</span> <span class="n">base_pext_ht</span><span class="p">[</span><span class="n">k</span><span class="p">]</span><span class="o">.</span><span class="n">expression_proportion</span> <span class="k">for</span> <span class="n">k</span> <span class="ow">in</span> <span class="n">tissue_map</span><span class="p">}</span>
+        <span class="p">)</span>
+        <span class="n">base_pext_ht</span> <span class="o">=</span> <span class="n">base_pext_ht</span><span class="o">.</span><span class="n">rename</span><span class="p">(</span><span class="n">tissue_map</span><span class="p">)</span>
+        <span class="n">base_pext_ht</span> <span class="o">=</span> <span class="n">base_pext_ht</span><span class="o">.</span><span class="n">annotate_globals</span><span class="p">(</span>
+            <span class="n">tissues</span><span class="o">=</span><span class="n">base_pext_ht</span><span class="o">.</span><span class="n">tissues</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span>
+                <span class="k">lambda</span> <span class="n">x</span><span class="p">:</span> <span class="o">~</span><span class="n">hl</span><span class="o">.</span><span class="n">literal</span><span class="p">(</span><span class="n">browser_tissues_to_exclude</span><span class="p">)</span><span class="o">.</span><span class="n">contains</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
+            <span class="p">)</span><span class="o">.</span><span class="n">map</span><span class="p">(</span><span class="k">lambda</span> <span class="n">x</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">literal</span><span class="p">(</span><span class="n">tissue_map</span><span class="p">)</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">x</span><span class="p">))</span>
+        <span class="p">)</span>
+        <span class="n">create_tx_annotation_by_region</span><span class="p">(</span><span class="n">base_pext_ht</span><span class="p">)</span><span class="o">.</span><span class="n">write</span><span class="p">(</span>
+            <span class="n">res</span><span class="o">.</span><span class="n">browser_pext_ht</span><span class="o">.</span><span class="n">path</span><span class="p">,</span> <span class="n">overwrite</span><span class="o">=</span><span class="n">overwrite</span>
+        <span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">export_tsv</span><span class="p">:</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Exporting pext Hail Tables to TSVs...&quot;</span><span class="p">)</span>
+        <span class="n">res</span> <span class="o">=</span> <span class="n">pext_res</span><span class="o">.</span><span class="n">export_tsv</span>
+        <span class="n">res</span><span class="o">.</span><span class="n">check_resource_existence</span><span class="p">()</span>
+
+        <span class="n">hts</span> <span class="o">=</span> <span class="p">[</span>
+            <span class="p">(</span><span class="n">res</span><span class="o">.</span><span class="n">base_pext_ht</span><span class="o">.</span><span class="n">ht</span><span class="p">(),</span> <span class="n">res</span><span class="o">.</span><span class="n">pext_base_tsv</span><span class="p">),</span>
+            <span class="p">(</span><span class="n">res</span><span class="o">.</span><span class="n">annotation_level_pext_ht</span><span class="o">.</span><span class="n">ht</span><span class="p">(),</span> <span class="n">res</span><span class="o">.</span><span class="n">pext_annotation_tsv</span><span class="p">),</span>
+        <span class="p">]</span>
+
+        <span class="k">for</span> <span class="n">ht</span><span class="p">,</span> <span class="n">tsv_path</span> <span class="ow">in</span> <span class="n">hts</span><span class="p">:</span>
+            <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">annotate</span><span class="p">(</span>
+                <span class="o">**</span><span class="p">{</span><span class="n">k</span><span class="p">:</span> <span class="n">ht</span><span class="p">[</span><span class="n">k</span><span class="p">]</span><span class="o">.</span><span class="n">expression_proportion</span> <span class="k">for</span> <span class="n">k</span> <span class="ow">in</span> <span class="n">hl</span><span class="o">.</span><span class="n">eval</span><span class="p">(</span><span class="n">ht</span><span class="o">.</span><span class="n">tissues</span><span class="p">)}</span>
+            <span class="p">)</span>
+            <span class="n">ht</span><span class="o">.</span><span class="n">export</span><span class="p">(</span><span class="n">tsv_path</span><span class="p">)</span></div>
+
+
+<span class="k">if</span> <span class="vm">__name__</span> <span class="o">==</span> <span class="s2">&quot;__main__&quot;</span><span class="p">:</span>
+    <span class="n">parser</span> <span class="o">=</span> <span class="n">argparse</span><span class="o">.</span><span class="n">ArgumentParser</span><span class="p">(</span>
+        <span class="n">description</span><span class="o">=</span><span class="s2">&quot;This script creates the pext annotation files for release.&quot;</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span><span class="s2">&quot;--overwrite&quot;</span><span class="p">,</span> <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Overwrite data.&quot;</span><span class="p">,</span> <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--slack-channel&quot;</span><span class="p">,</span> <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Slack channel to post results and notifications to.&quot;</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span><span class="s2">&quot;--slack-token&quot;</span><span class="p">,</span> <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Slack API token.&quot;</span><span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--test&quot;</span><span class="p">,</span> <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Test on a small number of genes.&quot;</span><span class="p">,</span> <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--gtex-version&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;GTEx version to use for pext scores.&quot;</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="s2">&quot;v10&quot;</span><span class="p">,</span>
+        <span class="n">choices</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;v7&quot;</span><span class="p">,</span> <span class="s2">&quot;v10&quot;</span><span class="p">],</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--min-samples&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="p">(</span>
+            <span class="s2">&quot;Minimum number of samples to include a tissue in the overall mean pext. &quot;</span>
+            <span class="s2">&quot;If keep-tissues-under-min-samples is not set, these tissues will also be &quot;</span>
+            <span class="s2">&quot;excluded from the individual tissue pext values.&quot;</span>
+        <span class="p">),</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">int</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="mi">50</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--keep-tissues-under-min-samples&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="p">(</span>
+            <span class="s2">&quot;Keep tissues under the min-samples threshold in the individual tissue &quot;</span>
+            <span class="s2">&quot;pext values.&quot;</span>
+        <span class="p">),</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--annotation-level&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Get annotation-level pext scores.&quot;</span><span class="p">,</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--base-level&quot;</span><span class="p">,</span> <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Get base-level pext scores.&quot;</span><span class="p">,</span> <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--gnomad-exomes-ht&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Get pext Table for gnomAD exomes sites.&quot;</span><span class="p">,</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--gnomad-genomes-ht&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Get pext Table for gnomAD genomes sites.&quot;</span><span class="p">,</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--browser-ht&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Get pext Table for browser loading.&quot;</span><span class="p">,</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--browser-min-samples&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="p">(</span>
+            <span class="s2">&quot;Minimum number of samples to include a tissue in the individual tissue &quot;</span>
+            <span class="s2">&quot;pext values displayed as a track on the browser.&quot;</span>
+        <span class="p">),</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">int</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="mi">100</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--export-tsv&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Export pext Hail Tables to TSVs.&quot;</span><span class="p">,</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+
+    <span class="n">args</span> <span class="o">=</span> <span class="n">parser</span><span class="o">.</span><span class="n">parse_args</span><span class="p">()</span>
+
+    <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">slack_channel</span><span class="p">:</span>
+        <span class="k">with</span> <span class="n">slack_notifications</span><span class="p">(</span><span class="n">slack_token</span><span class="p">,</span> <span class="n">args</span><span class="o">.</span><span class="n">slack_channel</span><span class="p">):</span>
+            <span class="n">main</span><span class="p">(</span><span class="n">args</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">main</span><span class="p">(</span><span class="n">args</span><span class="p">)</span>
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p></p>
+  </div>
+
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

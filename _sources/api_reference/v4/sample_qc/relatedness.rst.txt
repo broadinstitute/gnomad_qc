@@ -1,0 +1,21 @@
+gnomad_qc.v4.sample_qc.relatedness
+==================================
+
+Script to compute relatedness estimates among pairs of samples in the callset.
+
+
+
+
+.. argparse::
+   :ref: gnomad_qc.v4.sample_qc.relatedness.get_script_argument_parser
+   :prog: gnomad_qc.v4.sample_qc.relatedness.py
+
+
+
+Module Functions
+****************
+
+.. gnomad_automodulesummary:: gnomad_qc.v4.sample_qc.relatedness
+
+.. automodule:: gnomad_qc.v4.sample_qc.relatedness
+    :exclude-members: get_script_argument_parser

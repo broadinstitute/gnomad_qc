@@ -1,0 +1,37 @@
+gnomad_qc.v5.variant_qc.create_truth_samples_vds
+================================================
+
+
+Script to create a VDS of the 8 Genomes-in-a-Bottle (GiaB) truth samples from their gVCFs.
+
+The GiaB gVCFs were sequenced with the same protocol as the AoU v8 data and live in the
+AoU control-samples bucket
+(``gs://fc-aou-datasets-controlled/v8/wgs/short_read/snpindel/aux/qc/control_samples/``).
+They are already reblocked, so they are passed straight into Hail's VDS combiner (no
+reblocking step).
+
+The combiner needs the per-gVCF paths up front. The truth-sample bucket cannot be
+listed and the sample IDs might be sensitive, so neither the paths nor the IDs are stored
+in this repo. Instead the script reads a single-column TSV manifest of gVCF paths
+(``truth_samples_gvcf_paths``) by known object path.
+
+This is intended to run in the ``batch`` environment (Hail Batch in the AoU authorization
+domain), since that is where the AoU truth-sample gVCFs are readable.
+
+
+
+
+
+.. argparse::
+   :ref: gnomad_qc.v5.variant_qc.create_truth_samples_vds.get_script_argument_parser
+   :prog: gnomad_qc.v5.variant_qc.create_truth_samples_vds.py
+
+
+
+Module Functions
+****************
+
+.. gnomad_automodulesummary:: gnomad_qc.v5.variant_qc.create_truth_samples_vds
+
+.. automodule:: gnomad_qc.v5.variant_qc.create_truth_samples_vds
+    :exclude-members: get_script_argument_parser

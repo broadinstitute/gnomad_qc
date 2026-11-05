@@ -1,0 +1,455 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>gnomad_qc.v4.variant_qc.final_filter_genomes &mdash; gnomad_qc master documentation</title>
+      <link rel="stylesheet" href="../../../../_static/pygments.css" type="text/css" />
+      <link rel="stylesheet" href="../../../../_static/css/theme.css" type="text/css" />
+      <link rel="stylesheet" href="../../../../_static/theme_overrides.css" type="text/css" />
+  <!--[if lt IE 9]>
+    <script src="../../../../_static/js/html5shiv.min.js"></script>
+  <![endif]-->
+  
+        <script src="../../../../_static/jquery.js"></script>
+        <script src="../../../../_static/_sphinx_javascript_frameworks_compat.js"></script>
+        <script data-url_root="../../../../" id="documentation_options" src="../../../../_static/documentation_options.js"></script>
+        <script src="../../../../_static/doctools.js"></script>
+        <script src="../../../../_static/sphinx_highlight.js"></script>
+        <script src="https://unpkg.com/mermaid@10.2.0/dist/mermaid.min.js"></script>
+        <script>mermaid.initialize({startOnLoad:true});</script>
+    <script src="../../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../../index.html" class="icon icon-home">
+            gnomad_qc
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../../api_reference/index.html">API Reference</a></li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/broadinstitute/gnomad_qc/tags">Change Log</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../../index.html">gnomad_qc</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../../index.html">Module code</a></li>
+      <li class="breadcrumb-item active">gnomad_qc.v4.variant_qc.final_filter_genomes</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for gnomad_qc.v4.variant_qc.final_filter_genomes</h1><div class="highlight"><pre>
+<span></span><span class="sd">&quot;&quot;&quot;Script to create final filter Table for v4 genomes release.&quot;&quot;&quot;</span>
+
+<span class="kn">import</span> <span class="nn">argparse</span>
+<span class="kn">import</span> <span class="nn">logging</span>
+<span class="kn">from</span> <span class="nn">copy</span> <span class="kn">import</span> <span class="n">deepcopy</span>
+
+<span class="kn">import</span> <span class="nn">hail</span> <span class="k">as</span> <span class="nn">hl</span>
+<span class="kn">from</span> <span class="nn">gnomad.resources.grch38.reference_data</span> <span class="kn">import</span> <span class="n">telomeres_and_centromeres</span>
+<span class="kn">from</span> <span class="nn">gnomad.utils.filtering</span> <span class="kn">import</span> <span class="n">add_filters_expr</span><span class="p">,</span> <span class="n">remove_fields_from_constant</span>
+<span class="kn">from</span> <span class="nn">gnomad.utils.slack</span> <span class="kn">import</span> <span class="n">slack_notifications</span>
+<span class="kn">from</span> <span class="nn">gnomad.utils.vcf</span> <span class="kn">import</span> <span class="n">ALLELE_TYPE_FIELDS</span>
+<span class="kn">from</span> <span class="nn">gnomad.variant_qc.pipeline</span> <span class="kn">import</span> <span class="n">INBREEDING_COEFF_HARD_CUTOFF</span>
+
+<span class="kn">from</span> <span class="nn">gnomad_qc.resource_utils</span> <span class="kn">import</span> <span class="p">(</span>
+    <span class="n">PipelineResourceCollection</span><span class="p">,</span>
+    <span class="n">PipelineStepResourceCollection</span><span class="p">,</span>
+<span class="p">)</span>
+<span class="kn">from</span> <span class="nn">gnomad_qc.slack_creds</span> <span class="kn">import</span> <span class="n">slack_token</span>
+<span class="kn">from</span> <span class="nn">gnomad_qc.v3.resources.annotations</span> <span class="kn">import</span> <span class="n">get_info</span><span class="p">,</span> <span class="n">get_vqsr_filters</span>
+<span class="kn">from</span> <span class="nn">gnomad_qc.v3.resources.variant_qc</span> <span class="kn">import</span> <span class="n">get_score_bins</span>
+<span class="kn">from</span> <span class="nn">gnomad_qc.v4.resources.annotations</span> <span class="kn">import</span> <span class="n">get_freq</span>
+<span class="kn">from</span> <span class="nn">gnomad_qc.v4.resources.variant_qc</span> <span class="kn">import</span> <span class="n">VQSR_FEATURES</span><span class="p">,</span> <span class="n">final_filter</span>
+<span class="kn">from</span> <span class="nn">gnomad_qc.v4.variant_qc.final_filter</span> <span class="kn">import</span> <span class="p">(</span>
+    <span class="n">FINAL_FILTER_FIELDS</span><span class="p">,</span>
+    <span class="n">TRAINING_INFO_FIELDS</span><span class="p">,</span>
+    <span class="n">VARIANT_QC_RESULT_FIELDS</span><span class="p">,</span>
+    <span class="n">process_score_cutoffs</span><span class="p">,</span>
+<span class="p">)</span>
+
+<span class="n">logging</span><span class="o">.</span><span class="n">basicConfig</span><span class="p">(</span><span class="nb">format</span><span class="o">=</span><span class="s2">&quot;</span><span class="si">%(levelname)s</span><span class="s2"> (</span><span class="si">%(name)s</span><span class="s2"> </span><span class="si">%(lineno)s</span><span class="s2">): </span><span class="si">%(message)s</span><span class="s2">&quot;</span><span class="p">)</span>
+<span class="n">logger</span> <span class="o">=</span> <span class="n">logging</span><span class="o">.</span><span class="n">getLogger</span><span class="p">(</span><span class="s2">&quot;final_filter_genomes&quot;</span><span class="p">)</span>
+<span class="n">logger</span><span class="o">.</span><span class="n">setLevel</span><span class="p">(</span><span class="n">logging</span><span class="o">.</span><span class="n">INFO</span><span class="p">)</span>
+
+<span class="n">ALLELE_TYPE_FIELDS</span> <span class="o">=</span> <span class="n">deepcopy</span><span class="p">(</span><span class="n">ALLELE_TYPE_FIELDS</span><span class="p">)</span>
+<span class="c1"># Remove original_alleles for containing non-releasable alleles.</span>
+<span class="n">ALLELE_TYPE_FIELDS</span> <span class="o">=</span> <span class="n">remove_fields_from_constant</span><span class="p">(</span>
+    <span class="n">ALLELE_TYPE_FIELDS</span><span class="p">,</span> <span class="p">[</span><span class="s2">&quot;original_alleles&quot;</span><span class="p">,</span> <span class="s2">&quot;has_star&quot;</span><span class="p">]</span>
+<span class="p">)</span>
+<span class="sd">&quot;&quot;&quot;Annotations for allele info to keep in the final filter Table.&quot;&quot;&quot;</span>
+
+<span class="n">REGION_INFO_FIELDS</span> <span class="o">=</span> <span class="p">[</span><span class="s2">&quot;non_lcr&quot;</span><span class="p">]</span>
+<span class="sd">&quot;&quot;&quot;Annotations to keep in the &#39;region_info&#39; field of the final filter Table.&quot;&quot;&quot;</span>
+
+<span class="n">TRUTH_SET_FIELDS</span> <span class="o">=</span> <span class="p">[</span>
+    <span class="s2">&quot;hapmap&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;omni&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;mills&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;kgp_phase1_hc&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;transmitted_singleton&quot;</span><span class="p">,</span>
+<span class="p">]</span>
+<span class="sd">&quot;&quot;&quot;Annotations to keep in the &#39;truth_sets&#39; field of the final filter Table.&quot;&quot;&quot;</span>
+
+<span class="n">FINAL_FILTER_FIELDS</span> <span class="o">=</span> <span class="n">deepcopy</span><span class="p">(</span><span class="n">FINAL_FILTER_FIELDS</span><span class="p">)</span>
+<span class="n">FINAL_FILTER_FIELDS</span> <span class="o">=</span> <span class="n">remove_fields_from_constant</span><span class="p">(</span>
+    <span class="n">FINAL_FILTER_FIELDS</span><span class="p">,</span> <span class="p">[</span><span class="s2">&quot;sibling_singleton&quot;</span><span class="p">]</span>
+<span class="p">)</span>
+<span class="n">FINAL_FILTER_FIELDS</span> <span class="o">=</span> <span class="p">[</span><span class="s2">&quot;allele_info&quot;</span><span class="p">]</span> <span class="o">+</span> <span class="n">FINAL_FILTER_FIELDS</span> <span class="o">+</span> <span class="p">[</span><span class="s2">&quot;AS_VQSLOD&quot;</span><span class="p">]</span>
+<span class="sd">&quot;&quot;&quot;Top level annotations to keep in the final filter Table.&quot;&quot;&quot;</span>
+
+<span class="n">VARIANT_QC_GLOBAL_FIELDS</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="s2">&quot;transmitted_singletons&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;adj&quot;</span><span class="p">,</span>
+<span class="p">}</span>
+<span class="sd">&quot;&quot;&quot;Variant QC global annotations to keep in the final filter Table.&quot;&quot;&quot;</span>
+
+
+<div class="viewcode-block" id="get_final_variant_qc_resources"><a class="viewcode-back" href="../../../../api_reference/v4/variant_qc/final_filter_genomes.html#gnomad_qc.v4.variant_qc.final_filter_genomes.get_final_variant_qc_resources">[docs]</a><span class="k">def</span> <span class="nf">get_final_variant_qc_resources</span><span class="p">(</span>
+    <span class="n">test</span><span class="p">:</span> <span class="nb">bool</span><span class="p">,</span>
+    <span class="n">overwrite</span><span class="p">:</span> <span class="nb">bool</span><span class="p">,</span>
+    <span class="n">model_id</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">PipelineResourceCollection</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Get PipelineResourceCollection for all resources needed in the finalizing variant QC pipeline.</span>
+
+<span class="sd">    :param test: Whether to gather all resources for testing.</span>
+<span class="sd">    :param overwrite: Whether to overwrite resources if they exist.</span>
+<span class="sd">    :param model_id: Model ID to use for final variant QC.</span>
+<span class="sd">    :return: PipelineResourceCollection containing resources for all steps of finalizing</span>
+<span class="sd">        variant QC pipeline.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="c1"># Initialize finalizing variant QC pipeline resource collection.</span>
+    <span class="n">variant_qc_pipeline</span> <span class="o">=</span> <span class="n">PipelineResourceCollection</span><span class="p">(</span>
+        <span class="n">pipeline_name</span><span class="o">=</span><span class="s2">&quot;variant_qc&quot;</span><span class="p">,</span>
+        <span class="n">overwrite</span><span class="o">=</span><span class="n">overwrite</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">input_resources</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="s2">&quot;variant_qc/evaluation.py --create-bin-ht&quot;</span><span class="p">:</span> <span class="p">{</span>
+            <span class="s2">&quot;bin_ht&quot;</span><span class="p">:</span> <span class="n">get_score_bins</span><span class="p">(</span><span class="n">model_id</span><span class="p">,</span> <span class="n">aggregated</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+        <span class="p">},</span>
+        <span class="s2">&quot;variant_qc/evaluation.py --create-aggregated-bin-ht&quot;</span><span class="p">:</span> <span class="p">{</span>
+            <span class="s2">&quot;agg_bin_ht&quot;</span><span class="p">:</span> <span class="n">get_score_bins</span><span class="p">(</span><span class="n">model_id</span><span class="p">,</span> <span class="n">aggregated</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+        <span class="p">},</span>
+        <span class="s2">&quot;annotations/generate_variant_qc_annotations.py --split-info&quot;</span><span class="p">:</span> <span class="p">{</span>
+            <span class="s2">&quot;info_ht&quot;</span><span class="p">:</span> <span class="n">get_info</span><span class="p">()</span>
+        <span class="p">},</span>
+        <span class="s2">&quot;annotations/generate_freq_genomes.py --finalize-freq-ht&quot;</span><span class="p">:</span> <span class="p">{</span>
+            <span class="s2">&quot;freq_ht&quot;</span><span class="p">:</span> <span class="n">get_freq</span><span class="p">(</span><span class="n">data_type</span><span class="o">=</span><span class="s2">&quot;genomes&quot;</span><span class="p">,</span> <span class="n">finalized</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">test</span><span class="o">=</span><span class="n">test</span><span class="p">)</span>
+        <span class="p">},</span>
+        <span class="s2">&quot;VQSR result HT&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;vqsr_ht&quot;</span><span class="p">:</span> <span class="n">get_vqsr_filters</span><span class="p">(</span><span class="n">model_id</span><span class="p">,</span> <span class="n">split</span><span class="o">=</span><span class="kc">True</span><span class="p">)},</span>
+    <span class="p">}</span>
+
+    <span class="c1"># Create resource collection for the finalizing variant QC pipeline.</span>
+    <span class="n">finalize_variant_qc</span> <span class="o">=</span> <span class="n">PipelineStepResourceCollection</span><span class="p">(</span>
+        <span class="s2">&quot;final_filter.py&quot;</span><span class="p">,</span>
+        <span class="n">input_resources</span><span class="o">=</span><span class="n">input_resources</span><span class="p">,</span>
+        <span class="n">output_resources</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;final_ht&quot;</span><span class="p">:</span> <span class="n">final_filter</span><span class="p">(</span><span class="n">data_type</span><span class="o">=</span><span class="s2">&quot;genomes&quot;</span><span class="p">,</span> <span class="n">test</span><span class="o">=</span><span class="n">test</span><span class="p">)},</span>
+    <span class="p">)</span>
+
+    <span class="c1"># Add all steps to the finalizing variant QC pipeline resource collection.</span>
+    <span class="n">variant_qc_pipeline</span><span class="o">.</span><span class="n">add_steps</span><span class="p">({</span><span class="s2">&quot;finalize_variant_qc&quot;</span><span class="p">:</span> <span class="n">finalize_variant_qc</span><span class="p">})</span>
+
+    <span class="k">return</span> <span class="n">variant_qc_pipeline</span></div>
+
+
+<div class="viewcode-block" id="main"><a class="viewcode-back" href="../../../../api_reference/v4/variant_qc/final_filter_genomes.html#gnomad_qc.v4.variant_qc.final_filter_genomes.main">[docs]</a><span class="k">def</span> <span class="nf">main</span><span class="p">(</span><span class="n">args</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Create final filter Table for v4 genome release.&quot;&quot;&quot;</span>
+    <span class="n">hl</span><span class="o">.</span><span class="n">init</span><span class="p">(</span>
+        <span class="n">default_reference</span><span class="o">=</span><span class="s2">&quot;GRCh38&quot;</span><span class="p">,</span>
+        <span class="n">log</span><span class="o">=</span><span class="s2">&quot;/genome_variant_qc_finalize.log&quot;</span><span class="p">,</span>
+        <span class="n">tmp_dir</span><span class="o">=</span><span class="s2">&quot;gs://gnomad-tmp-4day&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">test</span> <span class="o">=</span> <span class="n">args</span><span class="o">.</span><span class="n">test</span>
+    <span class="n">overwrite</span> <span class="o">=</span> <span class="n">args</span><span class="o">.</span><span class="n">overwrite</span>
+    <span class="n">inbreeding_coeff_cutoff</span> <span class="o">=</span> <span class="n">args</span><span class="o">.</span><span class="n">inbreeding_coeff_threshold</span>
+
+    <span class="c1"># Call method to return final VQC resources from evaluation runs.</span>
+    <span class="n">final_vqc_resources</span> <span class="o">=</span> <span class="n">get_final_variant_qc_resources</span><span class="p">(</span>
+        <span class="n">test</span><span class="o">=</span><span class="n">test</span><span class="p">,</span>
+        <span class="n">overwrite</span><span class="o">=</span><span class="n">overwrite</span><span class="p">,</span>
+        <span class="n">model_id</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">model_id</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">res</span> <span class="o">=</span> <span class="n">final_vqc_resources</span><span class="o">.</span><span class="n">finalize_variant_qc</span>
+    <span class="n">res</span><span class="o">.</span><span class="n">check_resource_existence</span><span class="p">()</span>
+
+    <span class="c1"># Get Bin and Freq HTs, where Bin contains info about ordered bins arranged by</span>
+    <span class="c1"># quality and freq contains frequency info for each variant.</span>
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">res</span><span class="o">.</span><span class="n">bin_ht</span><span class="o">.</span><span class="n">ht</span><span class="p">()</span>
+    <span class="n">freq_ht</span> <span class="o">=</span> <span class="n">res</span><span class="o">.</span><span class="n">freq_ht</span><span class="o">.</span><span class="n">ht</span><span class="p">()</span>
+
+    <span class="k">if</span> <span class="n">test</span><span class="p">:</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Filtering to a region in PCSK9 for testing purposes...&quot;</span><span class="p">)</span>
+        <span class="n">ht</span> <span class="o">=</span> <span class="n">hl</span><span class="o">.</span><span class="n">filter_intervals</span><span class="p">(</span>
+            <span class="n">ht</span><span class="p">,</span>
+            <span class="p">[</span>
+                <span class="n">hl</span><span class="o">.</span><span class="n">parse_locus_interval</span><span class="p">(</span>
+                    <span class="s2">&quot;chr1:55039447-55064852&quot;</span><span class="p">,</span> <span class="n">reference_genome</span><span class="o">=</span><span class="s2">&quot;GRCh38&quot;</span>
+                <span class="p">)</span>
+            <span class="p">],</span>
+        <span class="p">)</span>
+
+    <span class="c1"># Filter out bins which fail hard cutoffs.</span>
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="o">~</span><span class="n">res</span><span class="o">.</span><span class="n">info_ht</span><span class="o">.</span><span class="n">ht</span><span class="p">()[</span><span class="n">ht</span><span class="o">.</span><span class="n">key</span><span class="p">]</span><span class="o">.</span><span class="n">AS_lowqual</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">filter_centromere_telomere</span><span class="p">:</span>
+        <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="o">~</span><span class="n">hl</span><span class="o">.</span><span class="n">is_defined</span><span class="p">(</span><span class="n">telomeres_and_centromeres</span><span class="o">.</span><span class="n">ht</span><span class="p">()[</span><span class="n">ht</span><span class="o">.</span><span class="n">locus</span><span class="p">]))</span>
+
+    <span class="k">if</span> <span class="n">ht</span><span class="o">.</span><span class="n">any</span><span class="p">(</span><span class="n">hl</span><span class="o">.</span><span class="n">is_missing</span><span class="p">(</span><span class="n">ht</span><span class="o">.</span><span class="n">score</span><span class="p">)):</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="s2">&quot;Missing Score!&quot;</span><span class="p">)</span>
+        <span class="n">ht</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">hl</span><span class="o">.</span><span class="n">is_missing</span><span class="p">(</span><span class="n">ht</span><span class="o">.</span><span class="n">score</span><span class="p">))</span><span class="o">.</span><span class="n">show</span><span class="p">()</span>
+
+    <span class="c1"># Return a dictionary containing cutoffs by variant type.</span>
+    <span class="n">score_cutoff_globals</span> <span class="o">=</span> <span class="n">process_score_cutoffs</span><span class="p">(</span>
+        <span class="n">ht</span><span class="p">,</span>
+        <span class="n">snv_bin_cutoff</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">snv_bin_cutoff</span><span class="p">,</span>
+        <span class="n">indel_bin_cutoff</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">indel_bin_cutoff</span><span class="p">,</span>
+        <span class="n">snv_score_cutoff</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">snv_score_cutoff</span><span class="p">,</span>
+        <span class="n">indel_score_cutoff</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">indel_score_cutoff</span><span class="p">,</span>
+        <span class="n">aggregated_bin_ht</span><span class="o">=</span><span class="n">res</span><span class="o">.</span><span class="n">agg_bin_ht</span><span class="o">.</span><span class="n">ht</span><span class="p">(),</span>
+        <span class="n">snv_bin_id</span><span class="o">=</span><span class="s2">&quot;bin&quot;</span><span class="p">,</span>
+        <span class="n">indel_bin_id</span><span class="o">=</span><span class="s2">&quot;bin&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+
+    <span class="c1"># Append with frequency information.</span>
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">annotate</span><span class="p">(</span><span class="n">inbreeding_coeff</span><span class="o">=</span><span class="n">freq_ht</span><span class="p">[</span><span class="n">ht</span><span class="o">.</span><span class="n">key</span><span class="p">]</span><span class="o">.</span><span class="n">InbreedingCoeff</span><span class="p">)</span>
+    <span class="n">freq_idx</span> <span class="o">=</span> <span class="n">freq_ht</span><span class="p">[</span><span class="n">ht</span><span class="o">.</span><span class="n">key</span><span class="p">]</span>
+
+    <span class="c1"># Expression that indicates if a variant should be filtered as allele count 0 (AC0)</span>
+    <span class="n">ac0_filter_expr</span> <span class="o">=</span> <span class="n">freq_idx</span><span class="o">.</span><span class="n">freq</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">AC</span> <span class="o">==</span> <span class="mi">0</span>
+
+    <span class="c1"># Allele count expression in `ht` to use as a filter for determining a transmitted</span>
+    <span class="c1"># singleton.</span>
+    <span class="n">ts_ac_filter_expr</span> <span class="o">=</span> <span class="n">freq_idx</span><span class="o">.</span><span class="n">freq</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">AC</span> <span class="o">==</span> <span class="mi">1</span>
+
+    <span class="c1"># Generate expressions for mono-allelic and only-het status.</span>
+    <span class="n">mono_allelic_flag_expr</span> <span class="o">=</span> <span class="p">(</span><span class="n">freq_idx</span><span class="o">.</span><span class="n">freq</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">AC</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">)</span> <span class="o">&amp;</span> <span class="p">(</span><span class="n">freq_idx</span><span class="o">.</span><span class="n">freq</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">AF</span> <span class="o">==</span> <span class="mi">1</span><span class="p">)</span>
+    <span class="n">only_het_flag_expr</span> <span class="o">=</span> <span class="p">(</span>
+        <span class="p">(</span><span class="n">freq_idx</span><span class="o">.</span><span class="n">freq</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">AC</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">)</span>
+        <span class="o">&amp;</span> <span class="p">((</span><span class="n">freq_idx</span><span class="o">.</span><span class="n">freq</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">AC</span> <span class="o">*</span> <span class="mi">2</span><span class="p">)</span> <span class="o">==</span> <span class="n">freq_idx</span><span class="o">.</span><span class="n">freq</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">AN</span><span class="p">)</span>
+        <span class="o">&amp;</span> <span class="p">(</span><span class="n">freq_idx</span><span class="o">.</span><span class="n">freq</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">homozygote_count</span> <span class="o">==</span> <span class="mi">0</span><span class="p">)</span>
+    <span class="p">)</span>
+
+    <span class="c1"># Construct dictionary of filters for final &#39;filters&#39; annotation.</span>
+    <span class="n">vqsr_filter</span> <span class="o">=</span> <span class="n">hl</span><span class="o">.</span><span class="n">is_missing</span><span class="p">(</span><span class="n">ht</span><span class="o">.</span><span class="n">score</span><span class="p">)</span>
+    <span class="n">snv_indel_expr</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;snv&quot;</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">is_snp</span><span class="p">(</span><span class="n">ht</span><span class="o">.</span><span class="n">alleles</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">ht</span><span class="o">.</span><span class="n">alleles</span><span class="p">[</span><span class="mi">1</span><span class="p">])}</span>
+    <span class="n">snv_indel_expr</span><span class="p">[</span><span class="s2">&quot;indel&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="o">~</span><span class="n">snv_indel_expr</span><span class="p">[</span><span class="s2">&quot;snv&quot;</span><span class="p">]</span>
+    <span class="k">for</span> <span class="n">var_type</span><span class="p">,</span> <span class="n">score_cut</span> <span class="ow">in</span> <span class="n">score_cutoff_globals</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+        <span class="n">vqsr_filter</span> <span class="o">=</span> <span class="n">vqsr_filter</span> <span class="o">|</span> <span class="p">(</span>
+            <span class="n">snv_indel_expr</span><span class="p">[</span><span class="n">var_type</span><span class="p">]</span> <span class="o">&amp;</span> <span class="p">(</span><span class="n">ht</span><span class="o">.</span><span class="n">score</span> <span class="o">&lt;</span> <span class="n">score_cut</span><span class="o">.</span><span class="n">min_score</span><span class="p">)</span>
+        <span class="p">)</span>
+
+    <span class="n">filters</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="s2">&quot;InbreedingCoeff&quot;</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">or_else</span><span class="p">(</span>
+            <span class="n">ht</span><span class="o">.</span><span class="n">inbreeding_coeff</span> <span class="o">&lt;</span> <span class="n">inbreeding_coeff_cutoff</span><span class="p">,</span> <span class="kc">False</span>
+        <span class="p">),</span>
+        <span class="s2">&quot;AC0&quot;</span><span class="p">:</span> <span class="n">ac0_filter_expr</span><span class="p">,</span>
+        <span class="s2">&quot;AS_VQSR&quot;</span><span class="p">:</span> <span class="n">vqsr_filter</span><span class="p">,</span>
+    <span class="p">}</span>
+
+    <span class="c1"># Restructure bin annotations as a struct with a struct for &#39;adj&#39; and &#39;raw&#39; bins.</span>
+    <span class="n">bin_names</span> <span class="o">=</span> <span class="p">[</span><span class="n">x</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">ht</span><span class="o">.</span><span class="n">row</span> <span class="k">if</span> <span class="n">x</span><span class="o">.</span><span class="n">endswith</span><span class="p">(</span><span class="s2">&quot;bin&quot;</span><span class="p">)]</span>
+    <span class="n">bin_names</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="s2">&quot;adj&quot;</span><span class="p">:</span> <span class="p">{</span><span class="n">x</span><span class="p">:</span> <span class="n">x</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="s2">&quot;adj_&quot;</span><span class="p">,</span> <span class="s2">&quot;&quot;</span><span class="p">)</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">bin_names</span> <span class="k">if</span> <span class="s2">&quot;adj_&quot;</span> <span class="ow">in</span> <span class="n">x</span><span class="p">},</span>
+        <span class="s2">&quot;raw&quot;</span><span class="p">:</span> <span class="p">{</span><span class="n">x</span><span class="p">:</span> <span class="n">x</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">bin_names</span> <span class="k">if</span> <span class="s2">&quot;adj_&quot;</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">x</span><span class="p">},</span>
+    <span class="p">}</span>
+
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">annotate</span><span class="p">(</span>
+        <span class="o">**</span><span class="n">ht</span><span class="o">.</span><span class="n">info</span><span class="p">,</span>
+        <span class="n">AS_VQSLOD</span><span class="o">=</span><span class="n">ht</span><span class="o">.</span><span class="n">score</span><span class="p">,</span>
+        <span class="n">evaluation_score_bins</span><span class="o">=</span><span class="n">hl</span><span class="o">.</span><span class="n">struct</span><span class="p">(</span>
+            <span class="o">**</span><span class="p">{</span><span class="n">g</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">struct</span><span class="p">(</span><span class="o">**</span><span class="p">{</span><span class="n">n</span><span class="p">[</span><span class="n">k</span><span class="p">]:</span> <span class="n">ht</span><span class="p">[</span><span class="n">k</span><span class="p">]</span> <span class="k">for</span> <span class="n">k</span> <span class="ow">in</span> <span class="n">n</span><span class="p">})</span> <span class="k">for</span> <span class="n">g</span><span class="p">,</span> <span class="n">n</span> <span class="ow">in</span> <span class="n">bin_names</span><span class="o">.</span><span class="n">items</span><span class="p">()}</span>
+        <span class="p">),</span>
+        <span class="n">transmitted_singleton</span><span class="o">=</span><span class="n">hl</span><span class="o">.</span><span class="n">or_missing</span><span class="p">(</span>
+            <span class="n">ts_ac_filter_expr</span><span class="p">,</span> <span class="n">ht</span><span class="o">.</span><span class="n">transmitted_singleton</span>
+        <span class="p">),</span>
+        <span class="n">monoallelic</span><span class="o">=</span><span class="n">mono_allelic_flag_expr</span><span class="p">,</span>
+        <span class="n">only_het</span><span class="o">=</span><span class="n">only_het_flag_expr</span><span class="p">,</span>
+        <span class="n">filters</span><span class="o">=</span><span class="n">add_filters_expr</span><span class="p">(</span><span class="n">filters</span><span class="o">=</span><span class="n">filters</span><span class="p">),</span>
+    <span class="p">)</span>
+
+    <span class="c1"># Restructure annotations into groups of related annotations.</span>
+    <span class="n">snv_features</span> <span class="o">=</span> <span class="n">VQSR_FEATURES</span><span class="p">[</span><span class="s2">&quot;genomes&quot;</span><span class="p">][</span><span class="s2">&quot;snv&quot;</span><span class="p">]</span>
+    <span class="n">indel_features</span> <span class="o">=</span> <span class="n">VQSR_FEATURES</span><span class="p">[</span><span class="s2">&quot;genomes&quot;</span><span class="p">][</span><span class="s2">&quot;indel&quot;</span><span class="p">]</span>
+    <span class="n">keep_features</span> <span class="o">=</span> <span class="nb">set</span><span class="p">(</span><span class="n">snv_features</span><span class="p">)</span> <span class="o">|</span> <span class="nb">set</span><span class="p">(</span><span class="n">indel_features</span><span class="p">)</span>
+    <span class="n">ann_groups</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="s2">&quot;allele_info&quot;</span><span class="p">:</span> <span class="n">ALLELE_TYPE_FIELDS</span><span class="p">,</span>
+        <span class="s2">&quot;region_info&quot;</span><span class="p">:</span> <span class="n">REGION_INFO_FIELDS</span><span class="p">,</span>
+        <span class="s2">&quot;truth_sets&quot;</span><span class="p">:</span> <span class="n">TRUTH_SET_FIELDS</span><span class="p">,</span>
+        <span class="s2">&quot;features&quot;</span><span class="p">:</span> <span class="n">keep_features</span><span class="p">,</span>
+        <span class="s2">&quot;training_info&quot;</span><span class="p">:</span> <span class="n">TRAINING_INFO_FIELDS</span><span class="p">[</span><span class="s2">&quot;AS_VQSR&quot;</span><span class="p">],</span>
+        <span class="s2">&quot;results&quot;</span><span class="p">:</span> <span class="n">VARIANT_QC_RESULT_FIELDS</span><span class="p">[</span><span class="s2">&quot;AS_VQSR&quot;</span><span class="p">],</span>
+    <span class="p">}</span>
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">annotate</span><span class="p">(</span>
+        <span class="o">**</span><span class="p">{</span><span class="n">k</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">struct</span><span class="p">(</span><span class="o">**</span><span class="p">{</span><span class="n">x</span><span class="p">:</span> <span class="n">ht</span><span class="p">[</span><span class="n">x</span><span class="p">]</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">v</span><span class="p">})</span> <span class="k">for</span> <span class="n">k</span><span class="p">,</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">ann_groups</span><span class="o">.</span><span class="n">items</span><span class="p">()}</span>
+    <span class="p">)</span>
+
+    <span class="c1"># Select only the fields we want to keep in the final HT in the order we want them.</span>
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">select</span><span class="p">(</span><span class="o">*</span><span class="n">FINAL_FILTER_FIELDS</span><span class="p">)</span>
+
+    <span class="c1"># NOTE: This was required for v4.0 genomes to grab the SOR annotation, we now</span>
+    <span class="c1"># compute this in `get_site_info_expr`.</span>
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">annotate</span><span class="p">(</span><span class="n">SOR</span><span class="o">=</span><span class="n">res</span><span class="o">.</span><span class="n">vqsr_ht</span><span class="o">.</span><span class="n">ht</span><span class="p">()[</span><span class="n">ht</span><span class="o">.</span><span class="n">key</span><span class="p">]</span><span class="o">.</span><span class="n">info</span><span class="o">.</span><span class="n">SOR</span><span class="p">)</span>
+
+    <span class="c1"># Restructure final filter Table global annotations.</span>
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">select_globals</span><span class="p">(</span>
+        <span class="n">filtering_model_specific_info</span><span class="o">=</span><span class="n">hl</span><span class="o">.</span><span class="n">struct</span><span class="p">(</span>
+            <span class="n">transmitted_singletons</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+            <span class="n">adj</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+        <span class="p">),</span>
+        <span class="n">bin_stats</span><span class="o">=</span><span class="n">hl</span><span class="o">.</span><span class="n">struct</span><span class="p">(</span>
+            <span class="o">**</span><span class="p">{</span>
+                <span class="n">g</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">struct</span><span class="p">(</span>
+                    <span class="o">**</span><span class="p">{</span><span class="n">n</span><span class="p">[</span><span class="n">k</span><span class="p">]:</span> <span class="n">ht</span><span class="o">.</span><span class="n">index_globals</span><span class="p">()</span><span class="o">.</span><span class="n">bin_group_variant_counts</span><span class="p">[</span><span class="n">k</span><span class="p">]</span> <span class="k">for</span> <span class="n">k</span> <span class="ow">in</span> <span class="n">n</span><span class="p">}</span>
+                <span class="p">)</span>
+                <span class="k">for</span> <span class="n">g</span><span class="p">,</span> <span class="n">n</span> <span class="ow">in</span> <span class="n">bin_names</span><span class="o">.</span><span class="n">items</span><span class="p">()</span>
+            <span class="p">}</span>
+        <span class="p">),</span>
+        <span class="n">filtering_model</span><span class="o">=</span><span class="n">hl</span><span class="o">.</span><span class="n">struct</span><span class="p">(</span>
+            <span class="n">model_id</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">model_id</span><span class="p">,</span>
+            <span class="n">filter_name</span><span class="o">=</span><span class="s2">&quot;AS_VQSR&quot;</span><span class="p">,</span>
+            <span class="n">score_name</span><span class="o">=</span><span class="s2">&quot;AS_VQSLOD&quot;</span><span class="p">,</span>
+            <span class="n">snv_cutoff</span><span class="o">=</span><span class="n">score_cutoff_globals</span><span class="p">[</span><span class="s2">&quot;snv&quot;</span><span class="p">],</span>
+            <span class="n">indel_cutoff</span><span class="o">=</span><span class="n">score_cutoff_globals</span><span class="p">[</span><span class="s2">&quot;indel&quot;</span><span class="p">],</span>
+            <span class="n">snv_training_variables</span><span class="o">=</span><span class="n">snv_features</span><span class="p">,</span>
+            <span class="n">indel_training_variables</span><span class="o">=</span><span class="n">indel_features</span><span class="p">,</span>
+        <span class="p">),</span>
+        <span class="n">inbreeding_coeff_cutoff</span><span class="o">=</span><span class="n">inbreeding_coeff_cutoff</span><span class="p">,</span>
+    <span class="p">)</span>
+
+    <span class="c1"># Write out final filtered table to path defined above in resources.</span>
+    <span class="n">ht</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">res</span><span class="o">.</span><span class="n">final_ht</span><span class="o">.</span><span class="n">path</span><span class="p">,</span> <span class="n">overwrite</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">overwrite</span><span class="p">)</span></div>
+
+
+<span class="k">def</span> <span class="nf">get_script_argument_parser</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="n">argparse</span><span class="o">.</span><span class="n">ArgumentParser</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Get script argument parser.&quot;&quot;&quot;</span>
+    <span class="n">parser</span> <span class="o">=</span> <span class="n">argparse</span><span class="o">.</span><span class="n">ArgumentParser</span><span class="p">()</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--slack-channel&quot;</span><span class="p">,</span> <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Slack channel to post results and notifications to.&quot;</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--overwrite&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Overwrite all data from this subset (default: False).&quot;</span><span class="p">,</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--test&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Whether to run a test using only a region in PCSK9.&quot;</span><span class="p">,</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--model-id&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Filtering model ID to use.&quot;</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="s2">&quot;vqsr_alleleSpecificTrans&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--inbreeding-coeff-threshold&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;InbreedingCoeff hard filter to use for variants.&quot;</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">float</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="n">INBREEDING_COEFF_HARD_CUTOFF</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--filter-centromere-telomere&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Filter centromeres and telomeres from final filter Table.&quot;</span><span class="p">,</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">snv_cutoff</span> <span class="o">=</span> <span class="n">parser</span><span class="o">.</span><span class="n">add_mutually_exclusive_group</span><span class="p">(</span><span class="n">required</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="n">snv_cutoff</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--snv-bin-cutoff&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="p">(</span>
+            <span class="s2">&quot;RF or VQSR score bin to use as cutoff for SNVs. Value should be between 1&quot;</span>
+            <span class="s2">&quot; and 100.&quot;</span>
+        <span class="p">),</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">int</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">snv_cutoff</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--snv-score-cutoff&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;RF or VQSR score to use as cutoff for SNVs.&quot;</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">float</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">indel_cutoff</span> <span class="o">=</span> <span class="n">parser</span><span class="o">.</span><span class="n">add_mutually_exclusive_group</span><span class="p">(</span><span class="n">required</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="n">indel_cutoff</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--indel-bin-cutoff&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="p">(</span>
+            <span class="s2">&quot;RF or VQSR score bin to use as cutoff for indels. Value should be between&quot;</span>
+            <span class="s2">&quot; 1 and 100.&quot;</span>
+        <span class="p">),</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">int</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">indel_cutoff</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--indel-score-cutoff&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;RF or VQSR score to use as cutoff for indels.&quot;</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">float</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="k">return</span> <span class="n">parser</span>
+
+
+<span class="k">if</span> <span class="vm">__name__</span> <span class="o">==</span> <span class="s2">&quot;__main__&quot;</span><span class="p">:</span>
+    <span class="n">parser</span> <span class="o">=</span> <span class="n">get_script_argument_parser</span><span class="p">()</span>
+    <span class="n">args</span> <span class="o">=</span> <span class="n">parser</span><span class="o">.</span><span class="n">parse_args</span><span class="p">()</span>
+
+    <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">slack_channel</span><span class="p">:</span>
+        <span class="k">with</span> <span class="n">slack_notifications</span><span class="p">(</span><span class="n">slack_token</span><span class="p">,</span> <span class="n">args</span><span class="o">.</span><span class="n">slack_channel</span><span class="p">):</span>
+            <span class="n">main</span><span class="p">(</span><span class="n">args</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">main</span><span class="p">(</span><span class="n">args</span><span class="p">)</span>
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p></p>
+  </div>
+
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

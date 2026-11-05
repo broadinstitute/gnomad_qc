@@ -1,0 +1,26 @@
+gnomad_qc.v4.subset
+===================
+
+
+Script to filter the gnomAD v4 VariantDataset to a subset of specified samples.
+
+Run this script on Hail version 0.2.120. Higher versions of hail greatly
+increase runtime and cost and thus we enforce this version.
+
+
+
+
+
+.. argparse::
+   :ref: gnomad_qc.v4.subset.get_script_argument_parser
+   :prog: gnomad_qc.v4.subset.py
+
+
+
+Module Functions
+****************
+
+.. gnomad_automodulesummary:: gnomad_qc.v4.subset
+
+.. automodule:: gnomad_qc.v4.subset
+    :exclude-members: get_script_argument_parser
