@@ -3,14 +3,16 @@
 import argparse
 import json
 import logging
+import pickle
 import uuid
-from typing import Any, Dict, List, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import hail as hl
 from gnomad.resources.grch38.reference_data import telomeres_and_centromeres
 from gnomad.variant_qc.pipeline import INFO_FEATURES, NON_INFO_FEATURES, train_rf_model
 from gnomad.variant_qc.random_forest import (
     apply_rf_model,
+    check_ht_fields_for_spark,
     get_rf_runs,
     get_run_data,
     load_model,
@@ -78,6 +80,184 @@ def load_variant_qc_annotations_ht(
     ht = ht.transmute(**{f: ht.info[f] for f in INFO_FEATURES})
 
     return ht
+
+
+def apply_rf_model_sklearn(
+    ht: hl.Table,
+    rf_model: Dict[str, Any],
+    features: List[str],
+    label: Optional[str] = None,
+    probability_col_name: str = "rf_probability",
+    prediction_col_name: str = "rf_prediction",
+) -> hl.Table:
+    """
+    Apply a scikit-learn RF model to a Table and annotate the RF probabilities and predictions.
+
+    Mirrors ``apply_rf_model`` from gnomad_methods without Spark, so it runs on the
+    Hail Batch backend. The trees are passed to Hail as a literal and evaluated in a
+    Hail expression, so the Table is never collected.
+
+    As in ``apply_rf_model``, rows with a missing or NaN feature get missing
+    probabilities and predictions, and string feature values not seen in training
+    get the next index, like StringIndexer's "keep" option.
+
+    :param ht: Input Table.
+    :param rf_model: scikit-learn RF model: a dict with the fitted forest (``rf``),
+        ``features``, ``labels``, and the StringIndexer labels of each string feature
+        (``string_feature_labels``).
+    :param features: List of feature columns in the model. Should match the model
+        list of features.
+    :param label: Optional column containing labels. Only used to check its type, as
+        in ``apply_rf_model``. Default is None.
+    :param probability_col_name: Name of the column that will store the RF
+        probabilities. Default is "rf_probability".
+    :param prediction_col_name: Name of the column that will store the RF predictions.
+        Default is "rf_prediction".
+    :return: Table with RF columns.
+    """
+    logger.info("Applying RF model.")
+
+    check_fields = features[:]
+    if label:
+        check_fields.append(label)
+    check_ht_fields_for_spark(ht, check_fields)
+
+    # Flatten all trees into one set of node arrays. Leaves keep -1 as their
+    # children; other children are shifted to forest-wide node indexes.
+    roots, feature, threshold, left, right, value = [], [], [], [], [], []
+    for estimator in rf_model["rf"].estimators_:
+        tree = estimator.tree_
+        offset = len(feature)
+        roots.append(offset)
+        feature.extend(tree.feature.tolist())
+        threshold.extend(tree.threshold.tolist())
+        left.extend([c + offset if c >= 0 else -1 for c in tree.children_left.tolist()])
+        right.extend(
+            [c + offset if c >= 0 else -1 for c in tree.children_right.tolist()]
+        )
+        # Each tree votes with the class proportions of its leaf.
+        node_value = tree.value[:, 0, :]
+        value.extend((node_value / node_value.sum(axis=1, keepdims=True)).tolist())
+
+    forest = hl.literal(
+        hl.Struct(
+            roots=roots,
+            feature=feature,
+            threshold=threshold,
+            left=left,
+            right=right,
+            value=value,
+        ),
+        dtype=hl.tstruct(
+            roots=hl.tarray(hl.tint32),
+            feature=hl.tarray(hl.tint32),
+            threshold=hl.tarray(hl.tfloat64),
+            left=hl.tarray(hl.tint32),
+            right=hl.tarray(hl.tint32),
+            value=hl.tarray(hl.tarray(hl.tfloat64)),
+        ),
+    )
+    depth = max(estimator.tree_.max_depth for estimator in rf_model["rf"].estimators_)
+
+    # Build the feature vector in model order, indexing string features like
+    # StringIndexer. scikit-learn trains on float32 values, so features are cast to
+    # float32 for the split thresholds to match.
+    string_feature_labels = rf_model["string_feature_labels"]
+    x = []
+    for f in rf_model["features"]:
+        expr = ht[f]
+        if f in string_feature_labels:
+            levels = string_feature_labels[f]
+            expr = hl.literal({v: i for i, v in enumerate(levels)}).get(
+                expr, len(levels)
+            )
+        x.append(hl.float32(expr))
+    x = hl.array(x)
+
+    # Rows with a missing or NaN feature are not scored, like in ``ht_to_rf_df``.
+    defined = hl.all(
+        [
+            (
+                hl.is_defined(ht[f]) & ~hl.is_nan(ht[f])
+                if ht[f].dtype in (hl.tfloat32, hl.tfloat64)
+                else hl.is_defined(ht[f])
+            )
+            for f in features
+        ]
+    )
+
+    # Walk each tree from its root to a leaf. A leaf has no children and stays put.
+    leaves = forest.roots.map(
+        lambda root: hl.fold(
+            lambda node, _: hl.if_else(
+                forest.left[node] < 0,
+                node,
+                hl.if_else(
+                    x[forest.feature[node]] <= forest.threshold[node],
+                    forest.left[node],
+                    forest.right[node],
+                ),
+            ),
+            root,
+            hl.range(depth),
+        )
+    )
+    # Average the leaf class proportions over trees, like ``predict_proba``.
+    labels = rf_model["labels"]
+    probability = hl.bind(
+        lambda tree_leaves: hl.range(len(labels)).map(
+            lambda i: hl.sum(tree_leaves.map(lambda leaf: forest.value[leaf][i]))
+            / len(roots)
+        ),
+        leaves,
+    )
+
+    ht = ht.annotate(**{probability_col_name: hl.or_missing(defined, probability)})
+    ht = ht.annotate(
+        **{
+            probability_col_name: {
+                c: ht[probability_col_name][i] for i, c in enumerate(labels)
+            },
+            prediction_col_name: hl.literal(labels)[
+                hl.argmax(ht[probability_col_name])
+            ],
+        }
+    )
+
+    return ht
+
+
+def save_model_sklearn(
+    rf_model: Dict[str, Any], out_path: str, overwrite: bool = False
+) -> None:
+    """
+    Save a scikit-learn RF model as a pickle.
+
+    Load it with the same scikit-learn version it was trained with.
+
+    :param rf_model: scikit-learn RF model to save.
+    :param out_path: Output path.
+    :param overwrite: If set, will overwrite an existing file at the output location.
+        Default is False.
+    :return: None.
+    """
+    logger.info("Saving model to %s", out_path)
+    if not overwrite and hl.hadoop_exists(out_path):
+        raise FileExistsError(f"{out_path} already exists and overwrite is not set.")
+    with hl.hadoop_open(out_path, "wb") as f:
+        pickle.dump(rf_model, f)
+
+
+def load_model_sklearn(input_path: str) -> Dict[str, Any]:
+    """
+    Load a scikit-learn RF model saved by ``save_model_sklearn``.
+
+    :param input_path: Location of model to load.
+    :return: scikit-learn RF model.
+    """
+    logger.info("Loading model from %s", input_path)
+    with hl.hadoop_open(input_path, "rb") as f:
+        return pickle.load(f)
 
 
 def train_rf(
