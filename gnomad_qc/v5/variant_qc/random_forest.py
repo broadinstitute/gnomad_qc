@@ -532,9 +532,10 @@ def train_rf(
     adj: bool = False,
     filter_centromere_telomere: bool = False,
     test_intervals: Union[str, List[str]] = "chr20",
+    environment: str = "rwb",
 ) -> Tuple[hl.Table, Any]:
     """
-    Train random forest model using `train_rf_model`.
+    Train random forest model using `train_rf_model`, or `train_rf_model_sklearn` on Batch.
 
     :param ht: Table containing annotations needed for RF training.
     :param test: Whether to filter the input Table to `DENSE_TRIO_TEST_CHROMS` and
@@ -555,6 +556,8 @@ def train_rf(
         Default is False.
     :param test_intervals: Specified interval(s) will be held out for testing and
         evaluation only. Default is "chr20".
+    :param environment: Environment to run in. On "batch", which has no Spark, the RF
+        is trained with scikit-learn using `train_rf_model_sklearn`. Default is "rwb".
     :return: Input `ht` annotated with training information and the RF model.
     """
     if features is None:
@@ -604,7 +607,9 @@ def train_rf(
             ~hl.is_defined(telomeres_and_centromeres.ht()[rf_ht.locus])
         )
 
-    rf_ht, rf_model = train_rf_model(
+    # The Hail Batch backend has no Spark, so the RF is trained with scikit-learn.
+    train_fn = train_rf_model_sklearn if environment == "batch" else train_rf_model
+    rf_ht, rf_model = train_fn(
         rf_ht,
         rf_features=features,
         tp_expr=rf_ht.tp,
@@ -764,6 +769,7 @@ def main(args):
                 adj=args.adj,
                 filter_centromere_telomere=args.filter_centromere_telomere,
                 test_intervals=args.test_intervals,
+                environment=environment,
             )
             ht = ht.checkpoint(rf_training_ht_resource.path, overwrite=overwrite)
 
@@ -771,7 +777,10 @@ def main(args):
             add_model_to_run_list(ht, model_id, get_rf_runs(rf_run_path), rf_run_path)
 
             logger.info("Saving RF model")
-            save_model(rf_model, rf_model_path, overwrite=overwrite)
+            if environment == "batch":
+                save_model_sklearn(rf_model, rf_model_path, overwrite=overwrite)
+            else:
+                save_model(rf_model, rf_model_path, overwrite=overwrite)
 
         if args.apply_rf:
             # Check inputs exist.
@@ -794,11 +803,18 @@ def main(args):
                 test=test, environment=environment
             )
             ht = rf_ht.annotate(**vqc_annotation_ht[rf_ht.key].select(*rf_features))
-            ht = apply_rf_model(
-                ht,
-                rf_model=load_model(rf_model_path),
-                features=rf_features,
-            )
+            if environment == "batch":
+                ht = apply_rf_model_sklearn(
+                    ht,
+                    rf_model=load_model_sklearn(rf_model_path),
+                    features=rf_features,
+                )
+            else:
+                ht = apply_rf_model(
+                    ht,
+                    rf_model=load_model(rf_model_path),
+                    features=rf_features,
+                )
 
             logger.info("Finished applying RF model...")
             summary_cols = [
