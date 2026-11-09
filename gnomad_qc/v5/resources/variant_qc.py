@@ -17,6 +17,7 @@ from gnomad_qc.v5.resources.constants import (
     CURRENT_VARIANT_QC_RESULT_VERSION,
     CURRENT_VARIANT_QC_VERSION,
     VARIANT_QC_RESULT_VERSIONS,
+    VARIANT_QC_VERSIONS,
 )
 
 # Variant QC model features, keyed by variant type. GATK trains a separate model per
@@ -239,6 +240,92 @@ def get_iforest_run_prefix(
         version, test=test, data_type=data_type, environment=environment
     )
     return f"{root}/if/models/{model_id}"
+
+
+def get_rf_run_path(
+    version: str = CURRENT_VARIANT_QC_VERSION,
+    test: bool = False,
+    environment: str = "batch",
+) -> str:
+    """
+    Return the path to the json file containing the RF runs list.
+
+    :param version: Version of RF path to return.
+    :param test: Whether to return the test RF runs list.
+    :param environment: Environment to use. Default is "batch". Must be one of "rwb",
+        "batch", or "dataproc".
+    :return: Path to json file.
+    """
+    return f"{_variant_qc_root(version, test=test, environment=environment)}/rf/gnomad.genomes.v{version}.rf_runs.json"
+
+
+def get_rf_model_path(
+    model_id: str,
+    version: str = CURRENT_VARIANT_QC_VERSION,
+    test: bool = False,
+    environment: str = "batch",
+) -> str:
+    """
+    Get the path to the RF model for a given run.
+
+    :param model_id: RF run to load.
+    :param version: Version of model path to return.
+    :param test: Whether to use a tmp path for variant QC tests.
+    :param environment: Environment to use. Default is "batch". Must be one of "rwb",
+        "batch", or "dataproc".
+    :return: Path to the RF model.
+    """
+    return f"{_variant_qc_root(version, test=test, environment=environment)}/rf/models/{model_id}/gnomad.genomes.v{version}.rf.model"
+
+
+def get_rf_training(
+    model_id: str,
+    test: bool = False,
+    environment: str = "batch",
+) -> VersionedTableResource:
+    """
+    Get the training data for a given run.
+
+    :param model_id: RF run to load.
+    :param test: Whether to use a tmp path for variant QC tests.
+    :param environment: Environment to use. Default is "batch". Must be one of "rwb",
+        "batch", or "dataproc".
+    :return: VersionedTableResource for RF training data.
+    """
+    return VersionedTableResource(
+        CURRENT_VARIANT_QC_VERSION,
+        {
+            version: TableResource(
+                f"{_variant_qc_root(version, test=test, environment=environment)}/rf/models/{model_id}/gnomad.genomes.v{version}.training.ht"
+            )
+            for version in VARIANT_QC_VERSIONS
+        },
+    )
+
+
+def final_filter(
+    data_type: str = "genomes",
+    test: bool = False,
+    environment: str = "batch",
+) -> VersionedTableResource:
+    """
+    Get finalized variant QC filtering Table.
+
+    :param data_type: Whether to return 'exomes' or 'genomes' data. Default is genomes.
+    :param test: Whether to use a tmp path for variant QC tests. Default is False.
+    :param environment: Environment to use. Default is "batch". Must be one of "rwb",
+        "batch", or "dataproc".
+    :return: VersionedTableResource for final variant QC data.
+    """
+    return VersionedTableResource(
+        CURRENT_VARIANT_QC_RESULT_VERSION,
+        {
+            version: TableResource(
+                f"{_variant_qc_root(version, test=test, data_type=data_type, environment=environment)}/gnomad.{data_type}.v{version}.final_filter.ht"
+            )
+            for version in VARIANT_QC_RESULT_VERSIONS
+        },
+    )
 
 
 def run_batch(b: hb.Batch, description: str) -> None:
