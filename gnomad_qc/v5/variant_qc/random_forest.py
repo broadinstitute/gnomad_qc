@@ -3,11 +3,15 @@
 import argparse
 import json
 import logging
+import math
 import pickle
+import pprint
 import uuid
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 import hail as hl
+import numpy as np
+import pandas as pd
 from gnomad.resources.grch38.reference_data import telomeres_and_centromeres
 from gnomad.variant_qc.pipeline import INFO_FEATURES, NON_INFO_FEATURES, train_rf_model
 from gnomad.variant_qc.random_forest import (
@@ -19,6 +23,8 @@ from gnomad.variant_qc.random_forest import (
     pretty_print_runs,
     save_model,
 )
+from gnomad.variant_qc.training import sample_training_examples
+from sklearn.ensemble import RandomForestClassifier
 
 from gnomad_qc.v5.resources.annotations import get_variant_qc_annotations
 from gnomad_qc.v5.resources.basics import (
@@ -80,6 +86,79 @@ def load_variant_qc_annotations_ht(
     ht = ht.transmute(**{f: ht.info[f] for f in INFO_FEATURES})
 
     return ht
+
+
+def _get_rf_features_defined_expr(
+    ht: hl.Table, features: List[str]
+) -> hl.expr.BooleanExpression:
+    """
+    Get whether all RF features of a row are defined and not NaN.
+
+    Rows with a missing or NaN feature are dropped before RF training and scoring, as
+    in ``ht_to_rf_df``.
+
+    :param ht: Input Table.
+    :param features: List of feature columns.
+    :return: Expression that is True if no feature is missing or NaN.
+    """
+    return hl.all(
+        [
+            (
+                hl.is_defined(ht[f]) & ~hl.is_nan(ht[f])
+                if ht[f].dtype in (hl.tfloat32, hl.tfloat64)
+                else hl.is_defined(ht[f])
+            )
+            for f in features
+        ]
+    )
+
+
+def test_model_sklearn(
+    ht: hl.Table,
+    rf_model: Dict[str, Any],
+    features: List[str],
+    label: str,
+    prediction_col_name: str = "rf_prediction",
+) -> List[hl.Struct]:
+    """
+    Test a scikit-learn RF model on a set of examples with known labels.
+
+    Mirrors ``test_model`` from gnomad_methods: runs the model on the data, logs the
+    confusion matrix and accuracy, and returns the confusion matrix.
+
+    :param ht: Input Table.
+    :param rf_model: scikit-learn RF model.
+    :param features: Columns containing features that were used in the model.
+    :param label: Column containing label to be predicted.
+    :param prediction_col_name: Where to store the prediction. Default is
+        "rf_prediction".
+    :return: A list containing structs with {label, prediction, n}.
+    """
+    ht = apply_rf_model_sklearn(
+        ht.filter(hl.is_defined(ht[label])),
+        rf_model,
+        features,
+        label,
+        prediction_col_name=prediction_col_name,
+    )
+
+    test_results = (
+        ht.group_by(ht[prediction_col_name], ht[label])
+        .aggregate(n=hl.agg.count())
+        .collect()
+    )
+
+    # Print results.
+    df = pd.DataFrame(test_results)
+    df = df.pivot(index=label, columns=prediction_col_name, values="n")
+    logger.info("Testing results:\n%s", pprint.pformat(df))
+    logger.info(
+        "Accuracy: %f",
+        sum([x.n for x in test_results if x[label] == x[prediction_col_name]])
+        / sum([x.n for x in test_results]),
+    )
+
+    return test_results
 
 
 def apply_rf_model_sklearn(
@@ -175,16 +254,7 @@ def apply_rf_model_sklearn(
     x = hl.array(x)
 
     # Rows with a missing or NaN feature are not scored, like in ``ht_to_rf_df``.
-    defined = hl.all(
-        [
-            (
-                hl.is_defined(ht[f]) & ~hl.is_nan(ht[f])
-                if ht[f].dtype in (hl.tfloat32, hl.tfloat64)
-                else hl.is_defined(ht[f])
-            )
-            for f in features
-        ]
-    )
+    defined = _get_rf_features_defined_expr(ht, features)
 
     # Walk each tree from its root to a leaf. A leaf has no children and stays put.
     leaves = forest.roots.map(
@@ -258,6 +328,196 @@ def load_model_sklearn(input_path: str) -> Dict[str, Any]:
     logger.info("Loading model from %s", input_path)
     with hl.hadoop_open(input_path, "rb") as f:
         return pickle.load(f)
+
+
+def _get_string_indexer_labels(values: pd.Series) -> List[str]:
+    """
+    Get the distinct values of a column in StringIndexer order.
+
+    StringIndexer orders values by frequency, most frequent first, and breaks ties
+    alphabetically.
+
+    :param values: Column to index.
+    :return: Distinct values in index order.
+    """
+    counts = values.value_counts()
+    return sorted(counts.index, key=lambda v: (-counts[v], v))
+
+
+def train_rf_sklearn(
+    ht: hl.Table,
+    features: List[str],
+    label: str,
+    num_trees: int = 500,
+    max_depth: int = 5,
+) -> Dict[str, Any]:
+    """
+    Train a scikit-learn RF model.
+
+    Mirrors ``train_rf`` from gnomad_methods without Spark, so it runs on the Hail
+    Batch backend. As in ``train_rf``, rows with a missing or NaN feature are dropped,
+    missing labels are replaced with "NA", labels and string features are indexed
+    like StringIndexer, and each split considers the square root of the number of
+    features, rounded up.
+
+    .. note::
+
+        The training rows are collected into memory with ``to_pandas``. Unlike Spark,
+        scikit-learn trains on float32 values, finds exact splits instead of binning
+        each feature into 32 bins, and treats indexed string features as ordered
+        rather than categorical.
+
+    :param ht: Input Table.
+    :param features: List of columns to be used as features.
+    :param label: Column containing the label to predict.
+    :param num_trees: Number of trees to use. Default is 500.
+    :param max_depth: Maximum tree depth. Default is 5.
+    :return: scikit-learn RF model: a dict with the fitted forest (``rf``),
+        ``features``, ``labels``, and the StringIndexer labels of each string feature
+        (``string_feature_labels``).
+    """
+    logger.info(
+        "Training RF model using:\nfeatures: %s\nlabels: %s\nnum_trees:"
+        " %d\nmax_depth: %d",
+        ",".join(features),
+        label,
+        num_trees,
+        max_depth,
+    )
+
+    check_ht_fields_for_spark(ht, features + [label])
+
+    # Like ``ht_to_rf_df``, drop rows with a missing or NaN feature (in Hail, so they
+    # are not collected) and replace missing labels with "NA".
+    ht = ht.key_by().select(*features, label)
+    df = ht.filter(_get_rf_features_defined_expr(ht, features)).to_pandas()
+    df[label] = df[label].fillna("NA")
+
+    labels = _get_string_indexer_labels(df[label])
+    logger.info("Found labels: %s", labels)
+
+    string_features = [f for f in features if ht[f].dtype == hl.tstr]
+    if string_features:
+        logger.info("Indexing string features: %s", ",".join(string_features))
+    string_feature_labels = {
+        f: _get_string_indexer_labels(df[f]) for f in string_features
+    }
+
+    # Assemble the features in order, with string features replaced by their index.
+    x = np.column_stack(
+        [
+            (
+                df[f].map({v: i for i, v in enumerate(string_feature_labels[f])})
+                if f in string_feature_labels
+                else df[f]
+            ).to_numpy(dtype=np.float32)
+            for f in features
+        ]
+    )
+    y = df[label].map({v: i for i, v in enumerate(labels)}).to_numpy(dtype=np.int64)
+
+    rf = RandomForestClassifier(
+        n_estimators=num_trees,
+        max_depth=max_depth,
+        max_features=math.ceil(math.sqrt(len(features))),
+        n_jobs=-1,
+    )
+
+    # Train model.
+    logger.info("Training RF model")
+    rf.fit(x, y)
+
+    feature_importance = dict(zip(features, rf.feature_importances_.tolist()))
+    logger.info(
+        "RF features importance:\n%s",
+        "\n".join([f"{f}: {i}" for f, i in feature_importance.items()]),
+    )
+
+    return {
+        "rf": rf,
+        "features": features,
+        "labels": labels,
+        "string_feature_labels": string_feature_labels,
+    }
+
+
+def train_rf_model_sklearn(
+    ht: hl.Table,
+    rf_features: List[str],
+    tp_expr: hl.expr.BooleanExpression,
+    fp_expr: hl.expr.BooleanExpression,
+    fp_to_tp: float = 1.0,
+    num_trees: int = 500,
+    max_depth: int = 5,
+    test_expr: hl.expr.BooleanExpression = False,
+) -> Tuple[hl.Table, Dict[str, Any]]:
+    """
+    Perform scikit-learn random forest (RF) training using a Table annotated with features and training data.
+
+    Mirrors ``train_rf_model`` from gnomad_methods, but trains and tests the model
+    with ``train_rf_sklearn`` and ``test_model_sklearn``, so it runs on the Hail Batch
+    backend. The returned Table has the same annotations as in ``train_rf_model``.
+
+    :param ht: Table annotated with features for the RF model and the positive and
+        negative training data.
+    :param rf_features: List of column names to use as features in the RF training.
+    :param tp_expr: TP training expression.
+    :param fp_expr: FP training expression.
+    :param fp_to_tp: Ratio of FPs to TPs for creating the RF model. If set to 0, all
+        training examples are used. Default is 1.0.
+    :param num_trees: Number of trees in the RF model. Default is 500.
+    :param max_depth: Maximum tree depth in the RF model. Default is 5.
+    :param test_expr: An expression specifying variants to hold out for testing and
+        use for evaluation only. Default is False.
+    :return: Table with TP and FP training sets used in the RF training and the
+        resulting scikit-learn RF model.
+    """
+    ht = ht.annotate(_tp=tp_expr, _fp=fp_expr, rf_test=test_expr)
+
+    rf_ht = sample_training_examples(
+        ht, tp_expr=ht._tp, fp_expr=ht._fp, fp_to_tp=fp_to_tp, test_expr=ht.rf_test
+    )
+    ht = ht.annotate(rf_train=rf_ht[ht.key].train, rf_label=rf_ht[ht.key].label)
+
+    summary = ht.group_by("_tp", "_fp", "rf_train", "rf_label", "rf_test").aggregate(
+        n=hl.agg.count()
+    )
+    logger.info("Summary of TP/FP and RF training data:")
+    summary.show(n=20)
+
+    logger.info(
+        "Training RF model:\nfeatures: %s\nnum_tree: %d\nmax_depth:%d",
+        ",".join(rf_features),
+        num_trees,
+        max_depth,
+    )
+
+    rf_model = train_rf_sklearn(
+        ht.filter(ht.rf_train),
+        features=rf_features,
+        label="rf_label",
+        num_trees=num_trees,
+        max_depth=max_depth,
+    )
+
+    test_results = None
+    if test_expr is not None:
+        logger.info("Testing model on specified variants or intervals...")
+        test_ht = ht.filter(hl.is_defined(ht.rf_label) & ht.rf_test)
+        test_results = test_model_sklearn(
+            test_ht, rf_model, features=rf_features, label="rf_label"
+        )
+
+    features_importance = dict(
+        zip(rf_model["features"], rf_model["rf"].feature_importances_.tolist())
+    )
+    ht = ht.select_globals(
+        features_importance=features_importance,
+        features=rf_features,
+        test_results=test_results,
+    )
+
+    return ht.select("rf_train", "rf_label", "rf_test"), rf_model
 
 
 def train_rf(
