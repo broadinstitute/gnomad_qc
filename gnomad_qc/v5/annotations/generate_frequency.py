@@ -276,7 +276,13 @@ def _localize_carriers(mt: hl.MatrixTable, group_membership_ht: hl.Table) -> hl.
         .filter(lambda t: t[1])
         .map(lambda t: t[0])
     )
-    mt = mt.annotate_cols(strata=gm[mt.col_key].strata)
+    strata = gm[mt.col_key].strata
+    # A sample missing here would add nothing to AC but still count in the histograms.
+    mt = mt.annotate_cols(
+        strata=hl.case()
+        .when(hl.is_defined(strata), strata)
+        .or_error("Sample missing from the group membership HT: " + mt.s)
+    )
     lt = mt.localize_entries("entries", "cols")
     carriers = (
         hl.enumerate(lt.entries)
@@ -438,7 +444,8 @@ def _sparse_split_strata_and_hists(
     splitting first would process mostly missing entries once per split row.
     Compacting to carriers first makes every later step proportional to carriers.
     The split matches ``sparse_split_multi`` with ``filter_changed_loci=True``, except
-    that bi-allelic rows are min-repped too.
+    that bi-allelic rows are min-repped too when that keeps the locus; otherwise they
+    are kept as they are, as ``sparse_split_multi`` keeps them.
 
     :param mt: Prepared, unsplit variant MT from :func:`_prepare_aou_vds`.
     :param group_membership_ht: Membership HT whose ``group_membership`` array and
@@ -451,10 +458,16 @@ def _sparse_split_strata_and_hists(
 
     def _split_struct(i):
         return hl.bind(
-            lambda mr: hl.or_missing(
+            lambda mr: hl.case()
+            .when(
                 mr.locus == lt.locus,
                 hl.struct(locus=lt.locus, alleles=mr.alleles, a_index=i),
-            ),
+            )
+            .when(
+                hl.len(lt.alleles) == 2,
+                hl.struct(locus=lt.locus, alleles=lt.alleles, a_index=i),
+            )
+            .or_missing(),
             hl.min_rep(lt.locus, [lt.alleles[0], lt.alleles[i]]),
         )
 
@@ -1759,6 +1772,8 @@ if __name__ == "__main__":
     if args.assemble_chrom_freq:
         if not args.contigs:
             parser.error("--assemble-chrom-freq requires --contigs.")
+        # A contig listed twice would be unioned, and counted, twice.
+        args.contigs = list(dict.fromkeys(args.contigs))
         if args.chrom:
             parser.error(
                 "--assemble-chrom-freq writes the contig-unscoped HT; do not pass --chrom."
