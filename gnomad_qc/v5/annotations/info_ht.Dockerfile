@@ -46,7 +46,8 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt /tmp/requirements.txt
-RUN pip install --no-cache-dir -r /tmp/requirements.txt hail==0.2.140
+# aiohttp 3.14 breaks Hail's GCS uploads over 8 MiB.
+RUN pip install --no-cache-dir -r /tmp/requirements.txt hail==0.2.140 aiohttp==3.13.2
 
 # Assert the Hail version so a base/pin mismatch fails the build, not a run.
 RUN python -c "import hail, gnomad, gnomad.utils.annotations; assert hail.__version__.startswith('0.2.140'), hail.__version__; print('gnomad_methods OK:', gnomad.__file__)"
