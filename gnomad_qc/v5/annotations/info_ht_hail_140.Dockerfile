@@ -1,48 +1,52 @@
-# Overlay on gnomad-qc-deps:20260710 that runs Hail 0.2.140 (official release,
-# https://hail.is/docs/0.2/change_log.html) for the v5 info HT runs. Supersedes
-# info_ht_hail_dev.Dockerfile once 0.2.140 is confirmed to carry the fix that
-# build existed for -- retire that file and info_ht_hail_dev_venv.pins at that
-# point.
+# Dependencies-only image for the v5 info HT runs (generate_variant_qc_annotations.py
+# --generate-ac-info-ht) on Hail 0.2.140 (official release,
+# https://hail.is/docs/0.2/change_log.html). gnomad_qc code itself is NOT
+# installed -- runs mount it with -v .../gnomad_qc:/pkg/gnomad_qc
+# --env PYTHONPATH=/pkg.
 #
-# 0.2.140 requires Python 3.12+ (hail-is/hail#15663) and the base's /opt/venv is
-# 3.11, so this builds a second venv at /opt/venv-312 from
-# info_ht_hail_dev_venv.pins (shared with the hail-dev overlay -- deps besides
-# hail itself are unchanged) and puts that venv first on PATH. The 3.11 venv
-# stays intact but shadowed.
+# Built FROM the official hailgenetics/hail:0.2.140-py3.12 image. Replaces
+# gnomad-qc-deps:20260710-hail882835b-py312, the dev-wheel image some
+# production runs used before 0.2.140 shipped.
 #
-# Because this venv is the one on PATH, its pins are what actually run --
-# including gnomad_methods, frozen to an exact commit rather than the base
-# image's @main. Mount over the install to run local gnomad_methods changes
-# without a rebuild:
+# gnomad_methods IS installed, pinned at build time (@main via requirements.txt
+# here). To run local gnomad_methods changes without a rebuild, mount over the
+# install:
 #
 #   -v /path/to/gnomad_methods/gnomad:/pkg/gnomad \
 #   --env PYTHONPATH=/pkg
 #
-# See info_ht.Dockerfile's header for why that works.
+# PYTHONPATH precedes site-packages on sys.path, so the checkout wins. How
+# completely depends on the checkout: with a gnomad/__init__.py it is a regular
+# package and hides the install outright; without one it is a PEP 420
+# namespace package, __path__ holds both directories, and only the modules
+# present in the checkout are shadowed. Either way the installed dist-info
+# stays, so pip keeps reporting the pinned commit.
 #
-# Build (no local docker needed), from the repo root:
+# Tables written by runs on this image use this Hail's table format; anything
+# that reads them (local envs, other images) must run the same or a newer
+# Hail.
 #
-#   CTX=$(mktemp -d)
-#   cp gnomad_qc/v5/annotations/info_ht_hail_140.Dockerfile $CTX/Dockerfile
-#   cp gnomad_qc/v5/annotations/info_ht_hail_dev_venv.pins $CTX/
+# Build context must be the REPO ROOT (requirements.txt lives there), and
+# pushes go to Artifact Registry. No local docker/podman needed, from the repo
+# root:
+#
 #   gcloud builds submit \
-#   --tag us-central1-docker.pkg.dev/broad-mpg-gnomad/images/gnomad-qc-deps:YYYYMMDD-hail0.2.140-py312 \
 #   --project broad-mpg-gnomad \
-#   $CTX
-FROM us-central1-docker.pkg.dev/broad-mpg-gnomad/images/gnomad-qc-deps:20260710
+#   --config gnomad_qc/v5/annotations/info_ht_hail_140_cloudbuild.yaml \
+#   --substitutions _TAG=us-central1-docker.pkg.dev/broad-mpg-gnomad/images/gnomad-qc-deps:YYYYMMDD-hail0.2.140-py312 \
+#   .
+FROM hailgenetics/hail:0.2.140-py3.12
 
-COPY info_ht_hail_dev_venv.pins /tmp/info_ht_hail_dev_venv.pins
-
+# annoy (a gnomad_methods dep) has no py3.12 wheel and compiles from source, so
+# it needs a C++ compiler at build time.
+USER root
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends python3.12 python3.12-venv python3.12-dev \
-  && rm -rf /var/lib/apt/lists/* \
-  && python3.12 -m venv /opt/venv-312 \
-  && /opt/venv-312/bin/pip install --no-cache-dir -r /tmp/info_ht_hail_dev_venv.pins \
-  && /opt/venv-312/bin/pip install --no-cache-dir hail==0.2.140 \
-  && rm /tmp/info_ht_hail_dev_venv.pins
+    && apt-get install -y --no-install-recommends g++ \
+    && rm -rf /var/lib/apt/lists/*
 
-ENV VIRTUAL_ENV=/opt/venv-312
-ENV PATH=/opt/venv-312/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+COPY requirements.txt /tmp/requirements.txt
+RUN pip install --no-cache-dir -r /tmp/requirements.txt \
+    && pip install --no-cache-dir hail==0.2.140
 
-# Catch a broken pin set or the wrong interpreter at build time, not in a run.
-RUN python -c "import sys, hail, gnomad.utils.annotations; assert sys.version_info >= (3, 12), sys.version; assert hail.__version__.startswith('0.2.140'), hail.__version__; print('hail', hail.__version__)"
+# Assert the Hail version so a base/pin mismatch fails the build, not a run.
+RUN python -c "import hail, gnomad, gnomad.utils.annotations; assert hail.__version__.startswith('0.2.140'), hail.__version__; print('gnomad_methods OK:', gnomad.__file__)"
