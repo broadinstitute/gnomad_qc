@@ -5,7 +5,8 @@
 # --env PYTHONPATH=/pkg.
 #
 # Built FROM the official hailgenetics/hail:0.2.140-py3.12 image and pushed as
-# gnomad-qc-deps:20261117-hail0.2.140-py312. Replaces
+# gnomad-qc-deps:20261117-hail0.2.140-aiohttp3.13.2-py312 (the earlier
+# 20261117-hail0.2.140-py312 tag lacks the aiohttp pin). Replaces
 # gnomad-qc-deps:20260710-hail882835b-py312, the dev-wheel image some
 # production runs used before 0.2.140 shipped.
 #
