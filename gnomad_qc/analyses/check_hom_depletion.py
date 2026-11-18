@@ -50,11 +50,19 @@ MGI_PATH = "gs://gnomad-kristen/hom_depletion/HOM_AllOrganism.txt"
 LASSEN_S4_PATH = (
     "gs://gnomad-kristen/hom_depletion/lassen2026_meta_analysis_supp_s4.txt"
 )
-# Column order of LASSEN_S4_PATH, which is read positionally (see
-# `annotate_lassen_biallelic_ko`). "Novel" is their flag for genes whose knockout
-# was first observed in the 2026 meta-analysis. gnomAD/Sulem/Narasimhan/Saleheen
-# counts are secondhand, taken from the Oddsson et al. 2023
-# (doi:10.1038/s41467-023-38951-2) compilation.
+# Per-survey knockout counts in LASSEN_S4_PATH, read by column name in
+# `annotate_lassen_biallelic_ko`. The gnomAD, Sulem, Narasimhan, and Saleheen counts
+# are secondhand, taken from the Oddsson et al. 2023 (doi:10.1038/s41467-023-38951-2)
+# compilation.
+LASSEN_S4_DATASETS = [
+    "lassen2026",
+    "sulem",
+    "narasimhan",
+    "saleheen",
+    "gnomad_via_oddsson",
+    "oddsson",
+    "sun",
+]
 # Supplementary Table 1 of Heyne et al. 2023 (Nature 613:519-525,
 # doi:10.1038/s41586-022-05420-7): every coding variant association with P < 1e-7
 # under the additive *or* the recessive model, across all FinnGen (release 4)
@@ -87,15 +95,6 @@ LASSEN_S5_PATH = (
 BRAVA_PRE_META_PATH = "gs://gnomad-kristen/hom_depletion/brava_pre_meta/*.tsv.gz"
 # Genetic ancestry labels used in the BRaVa cohort-level results.
 BRAVA_ANCESTRIES = ["afr", "amr", "eas", "eur", "sas"]
-LASSEN_S4_DATASETS = [
-    "lassen2026",
-    "sulem",
-    "narasimhan",
-    "saleheen",
-    "gnomad_via_oddsson",
-    "oddsson",
-    "sun",
-]
 
 
 def get_readable_field_name(group: str) -> str:
@@ -509,26 +508,29 @@ def annotate_lassen_biallelic_ko(
         Default is LASSEN_S4_PATH.
     :return: Hail Table with a `lassen2026_ko` struct annotation.
     """
-    # Read positionally: the header carries empty trailing column names and a
-    # trailing space in "gnomAD ", both of which break named import.
-    s4 = hl.import_table(s4_path, no_header=True, delimiter="\t")
-    s4 = s4.filter(~hl.literal({"Gene", "TOTAL"}).contains(s4.f0))
+    # Read by column name, so a reordered export can't shift counts between surveys
+    # and a renamed column fails here.
+    s4 = hl.import_table(s4_path, delimiter="\t")
+    # Drop the TOTAL row and the export's blank trailing rows. Rows with Gene "NA"
+    # (read as missing) are known only by Ensembl ID and are kept.
+    s4 = s4.filter(~hl.literal({"TOTAL", ""}).contains(s4.Gene))
 
     def _count(field: hl.expr.StringExpression) -> hl.expr.Int32Expression:
         """Parse an S4 count, treating blank or non-numeric cells as 0."""
         return hl.or_else(hl.parse_int32(field), 0)
 
     s4 = s4.select(
-        gene_symbol=s4.f0,
+        gene_symbol=s4.Gene,
         # Set only for genes with a Lassen 2026 knockout.
-        gene_id=s4.f9,
-        lassen2026=_count(s4.f1),
-        sulem=_count(s4.f3),
-        narasimhan=_count(s4.f4),
-        saleheen=_count(s4.f5),
-        gnomad_via_oddsson=_count(s4.f6),
-        oddsson=_count(s4.f7),
-        sun=_count(s4.f8),
+        gene_id=s4["Ensembl ID"],
+        lassen2026=_count(s4["This study"]),
+        sulem=_count(s4["Sulem et al"]),
+        narasimhan=_count(s4["Narasimhan et al"]),
+        saleheen=_count(s4["Saleheen et al"]),
+        # The header has a trailing space here.
+        gnomad_via_oddsson=_count(s4["gnomAD "]),
+        oddsson=_count(s4["Oddsson et al"]),
+        sun=_count(s4["Sun et al"]),
     )
 
     # Look up both keys (import_table reads S4's "NA" as missing). S4 lists 69
@@ -666,50 +668,22 @@ def annotate_brava_cohort_carriers(
     pre_meta_path: str = BRAVA_PRE_META_PATH,
 ) -> hl.Table:
     """
-    Annotate per-cohort biallelic-carrier evidence from the BRaVa recessive analysis.
+    Annotate per-cohort biallelic-carrier counts from the BRaVa recessive analysis.
 
-    Uses the cohort-level (pre-meta-analysis) recessive burden results behind Lassen
-    et al. 2026 -- the per-(biobank, ancestry) rows before they were combined -- as a
-    census of where two-hit carriers of `most_severe_gene_id` exist. The six
-    contributing cohorts are UK Biobank (UKB), All of Us (AOU), Genomics England
-    (GEL), Genes & Health (GNH, a British Pakistani and Bangladeshi cohort with high
-    parental relatedness), BioMe, and BioBank Japan (BBJ).
+    Uses the cohort-level (pre-meta) results behind Lassen et al. 2026 (UKB, AOU, GEL,
+    GNH, BioMe, BBJ) to show which ancestries have biallelic carriers of the gene. GNH
+    has high parental relatedness, so no carriers there is stronger evidence than
+    gnomAD alone.
 
-    This answers what the S4 knockout tally cannot: S4 is one pLoF-only total summed
-    across biobanks, whereas most of our candidate variants are missense, and we
-    would like to know about the ancestry split. A gene with biallelic carriers in
-    the ancestry driving a candidate's depletion (e.g. GNH for SAS) weakens that
-    candidate; a gene with no testable carriers even in the consanguineous GNH
-    cohort (fewer than five, see below) is a stronger absence than gnomAD alone can
-    show -- autozygosity there produces rare biallelic genotypes at rates an outbred
-    cohort of the same size never reaches.
+    Recessive encoding is 0/0/1, so AC = number of biallelic individuals (max over
+    traits). Counts are summed across biobanks within an ancestry, never across
+    masks, which are nested (pLoF is a subset of nonsynonymous).
 
-    Carrier counts: the recessive genotype is encoded 0/0/1 for zero/one/two
-    affected gene copies (browser FAQ), so AC is directly the number of biallelic
-    individuals -- homozygous or statistically phased compound-het (All of Us:
-    homozygous only). AC varies slightly across traits with per-trait N, so counts
-    are deduplicated by taking the max across traits. Counts are summed across
-    biobanks within an ancestry (disjoint individuals), but never across annotation
-    masks, which are nested: a pLoF carrier is also counted under
-    pLoF|damaging_missense and nonsynonymous.
-
-    A missing row means "fewer than five", not "none": a (gene, phenotype,
-    subcohort) test required at least five biallelic carriers, so a present row
-    implies >= 5 carriers, while a missing (gene, subcohort) means fewer than five
-    carriers for every phenotype, or an untested phenotype.
-
-    Not every cohort reports counts, in two distinct ways. GEL releases cohort-level
-    p-values with AC, AF, and N blank. All of Us applies small-count suppression,
-    reporting AC as the string "<40" (so a suppressed row means 5-39 carriers, not
-    none). Neither contributes to the per-ancestry sums, so `cohorts_tested`,
-    `cohorts_missing_counts`, and `ancestries_counted` expose the difference between
-    "no carriers counted" and "carriers not reported". Check `ancestries_counted`
-    contains a candidate's driving ancestry before reading its `<anc>_n_biallelic`
-    as evidence, and see the per-cohort `ac_suppressed` flag in `cohorts` to tell
-    an AOU suppression apart from a GEL blank.
-
-    This is descriptive evidence only: cohort-level p-values are deliberately not
-    surfaced. Association claims belong to the meta-analyzed results (table S5).
+    A missing row means fewer than 5 carriers, not none. GEL reports no AC, and AOU
+    reports "<40" (5-39); neither is summed. `cohorts_missing_counts` lists which of
+    `cohorts_tested` lack usable counts, and `ac_suppressed` in `cohorts` separates
+    AOU suppression from GEL blanks. Check `ancestries_counted` before reading
+    `<anc>_n_biallelic`. Cohort p-values are deliberately not surfaced.
 
     :param ht: Hail Table containing `most_severe_gene_id` (Ensembl gene ID).
     :param pre_meta_path: Glob of the BRaVa pre-meta gene-bucket .tsv.gz chunks.
@@ -824,50 +798,27 @@ def annotate_heyne_assoc(
     """
     Annotate FinnGen coding-variant associations for `most_severe_gene`.
 
-    Uses table S1 of Heyne et al. 2023: every coding variant reaching P < 1e-7 under
-    the additive or the recessive model across all FinnGen disease endpoints. The
-    join is on gene symbol, so the hit is usually a *different* variant in the same
-    gene, which is the point: it says the gene is disease relevant in FinnGen even
-    when our allele is not.
+    Uses Heyne et al. 2023 table S1 (see HEYNE_S1_PATH): every coding variant
+    reaching P < 1e-7 under the additive or recessive model across all FinnGen
+    disease endpoints. The join is on gene symbol, so a hit usually shows the gene is
+    disease relevant, not this exact variant (see `this_variant_associated`). A large
+    `max_ac_hom` shows the gene tolerates homozygosity for some allele, though not
+    necessarily this one.
 
     S1 uses some gene symbols older than VEP 105's: the 8 in
     `HEYNE_S1_RENAMED_GENES` are switched to their newer names before the join. 5
     more (RP11-/RP5- clone names and FAM206BP) have no known mapping and never match.
 
-    Rows are filtered by p-value before aggregation: a row is kept only if
-    P < `max_p` in the additive or the recessive model. `assoc_models` then labels
-    each gene "additive", "recessive", or "both" according to which models pass;
-    genes with no passing row are simply absent (`has_association=False`). Blank
-    p-values in S1 are missing results, not non-significant ones (a blank p always
-    comes with a blank beta), and drop out of every comparison and aggregation.
-
-    The default `max_p` matches S1's stated P < 1e-7 pre-filter, but 41 of S1's
-    2,167 rows (17 genes) fail it in both models, 3 of them with no p-values at all,
-    and are dropped. Beyond that, `max_p` sets where the per-model `add_significant`
-    / `rec_significant` flags (and hence `assoc_models` and `has_recessive_specific`)
-    turn on.
-
-    `this_variant_associated` marks rows whose own locus/alleles appear among the
-    gene's associated variants, separating "our exact variant is FinnGen-associated"
-    from the usual case where the hit is a different allele in the same gene.
-
     `has_recessive_specific` is the strict tier: the gene has an association passing
     Heyne's 100x rule (recessive p at least two orders of magnitude below additive),
     the criterion behind the paper's 124 recessive-specific associations.
 
-    `max_ac_hom` is the largest FinnGen homozygote count among the gene's associated
-    variants. A large value shows the gene tolerates homozygosity for *some* allele,
-    which argues against gene-level recessive lethality -- though not against an
-    allele-specific effect at our variant, which may be far rarer and more damaging.
-
-    The table is small (~390 genes), so most genes get `has_association=False`; this
-    is a lookup for the occasional hit, not a broadly informative annotation.
-
     :param ht: Hail Table containing `most_severe_gene`.
     :param s1_path: Path to the tab-delimited export of Heyne et al. 2023 table S1.
         Default is HEYNE_S1_PATH.
-    :param max_p: Significance threshold applied to both models. Default P < 1e-7
-        matches S1's own pre-filter; the paper's genome-wide threshold is 5e-8.
+    :param max_p: Significance threshold applied to both models; rows passing
+        neither are dropped. Default is 1e-7, S1's stated pre-filter, which 41 of
+        its 2,167 rows still fail. The paper's genome-wide threshold is 5e-8.
     :return: Hail Table with a `heyne_results` struct annotation.
     """
     # Both p-value columns can be empty (the additive-or-recessive filter), and
