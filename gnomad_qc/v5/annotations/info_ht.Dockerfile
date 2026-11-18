@@ -32,7 +32,7 @@
 # pushes go to Artifact Registry. No local docker/podman needed, from the repo
 # root:
 #
-#   gcloud builds submit \
+#   gcloud beta builds submit \
 #   --project broad-mpg-gnomad \
 #   --config gnomad_qc/v5/annotations/info_ht_cloudbuild.yaml \
 #   --substitutions _TAG=us-central1-docker.pkg.dev/broad-mpg-gnomad/images/gnomad-qc-deps:YYYYMMDD-hail0.2.140[-<pkg><version>]-py312 \
