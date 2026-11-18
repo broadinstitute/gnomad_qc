@@ -257,12 +257,13 @@ def annotate_omim_recessive_gene_label(
     omim_path: str = OMIM_PATH,
 ) -> hl.Table:
     """
-    Annotate whether `most_severe_gene` is OMIM-labeled as recessive.
+    Annotate whether `most_severe_gene_id` is OMIM-labeled as recessive.
 
-    :param ht: Hail Table containing `most_severe_gene`.
-    :param omim_path: Path to OMIM table (TSV/CSV) with gene + inheritance columns.
-        Default is OMIM_PATH.
-    :return: Hail Table with `is_omim_recessive_gene` boolean annotation.
+    :param ht: Hail Table containing `most_severe_gene_id`.
+    :param omim_path: Path to a tab-delimited OMIM table with `gene_id` and
+        `phenotype_inheritance` columns. Default is OMIM_PATH.
+    :return: Hail Table with `is_omim_recessive_gene` boolean and `omim` array
+        annotations.
     """
     omim_ht = hl.import_table(omim_path, impute=True)
 
@@ -615,18 +616,17 @@ def annotate_lassen_recessive_assoc(
         Default is LASSEN_S5_PATH.
     :return: Hail Table with a `lassen2026_recessive_assoc` struct annotation.
     """
-    # Positional read, as for S4: the exported header carries empty trailing column
-    # names and a trailing space in "P rec pLoF ".
-    s5 = hl.import_table(s5_path, no_header=True, delimiter="\t")
-    # Skip the header row and the export's blank trailing rows.
-    s5 = s5.filter((s5.f0 != "Phenotype") & (s5.f17 != ""))
+    # Read by column name, as for S4.
+    s5 = hl.import_table(s5_path, delimiter="\t")
+    # Drop the export's blank trailing rows.
+    s5 = s5.filter(s5["ENSEMBL ID"] != "")
     s5 = s5.select(
         # Match on Ensembl ID, which S5 gives for every association.
-        gene_id=s5.f17,
-        phenotype=s5.f0,
-        mode=s5.f2,
-        p_rec=hl.parse_float64(s5.f3),
-        p_add=hl.parse_float64(s5.f4),
+        gene_id=s5["ENSEMBL ID"],
+        phenotype=s5.Phenotype,
+        mode=s5["Mode (Sup Note 7)"],
+        p_rec=hl.parse_float64(s5["P rec"]),
+        p_add=hl.parse_float64(s5["P add"]),
     )
     s5 = s5.group_by(gene_id=s5.gene_id).aggregate(
         associations=hl.agg.collect(
