@@ -5,7 +5,8 @@
 # --env PYTHONPATH=/pkg.
 #
 # Built FROM the official hailgenetics/hail:0.2.140-py3.12 image and pushed as
-# gnomad-qc-deps:20261117-hail0.2.140-py312. Replaces
+# gnomad-qc-deps:20261117-hail0.2.140-aiohttp3.13.2-py312 (the earlier
+# 20261117-hail0.2.140-py312 tag lacks the aiohttp pin). Replaces
 # gnomad-qc-deps:20260710-hail882835b-py312, the dev-wheel image some
 # production runs used before 0.2.140 shipped.
 #
@@ -31,10 +32,10 @@
 # pushes go to Artifact Registry. No local docker/podman needed, from the repo
 # root:
 #
-#   gcloud builds submit \
+#   gcloud beta builds submit \
 #   --project broad-mpg-gnomad \
 #   --config gnomad_qc/v5/annotations/info_ht_cloudbuild.yaml \
-#   --substitutions _TAG=us-central1-docker.pkg.dev/broad-mpg-gnomad/images/gnomad-qc-deps:YYYYMMDD-hail0.2.140-py312 \
+#   --substitutions _TAG=us-central1-docker.pkg.dev/broad-mpg-gnomad/images/gnomad-qc-deps:YYYYMMDD-hail0.2.140[-<pkg><version>]-py312 \
 #   .
 FROM hailgenetics/hail:0.2.140-py3.12
 
@@ -46,7 +47,8 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt /tmp/requirements.txt
-RUN pip install --no-cache-dir -r /tmp/requirements.txt hail==0.2.140
+# aiohttp 3.14 breaks Hail's GCS uploads over 8 MiB.
+RUN pip install --no-cache-dir -r /tmp/requirements.txt hail==0.2.140 aiohttp==3.13.2
 
 # Assert the Hail version so a base/pin mismatch fails the build, not a run.
 RUN python -c "import hail, gnomad, gnomad.utils.annotations; assert hail.__version__.startswith('0.2.140'), hail.__version__; print('gnomad_methods OK:', gnomad.__file__)"

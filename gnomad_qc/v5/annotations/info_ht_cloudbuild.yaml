@@ -4,15 +4,21 @@
 # --config has to be passed explicitly. The trailing "." is the build context and
 # must stay the repo root -- requirements.txt lives there. _TAG has no default on
 # purpose: forgetting it should fail the build rather than push over a shared tag.
-# From the repo root:
+# Tag as YYYYMMDD-hail<version>[-<pkg><version>]-py<version>, naming any package
+# pinned away from the base image. Use beta so the log streams (logs go to Cloud
+# Logging only). From the repo root:
 #
-#   gcloud builds submit \
+#   gcloud beta builds submit \
 #   --project broad-mpg-gnomad \
 #   --config gnomad_qc/v5/annotations/info_ht_cloudbuild.yaml \
-#   --substitutions _TAG=us-central1-docker.pkg.dev/broad-mpg-gnomad/images/gnomad-qc-deps:YYYYMMDD-hail0.2.140-py312 \
+#   --substitutions _TAG=us-central1-docker.pkg.dev/broad-mpg-gnomad/images/gnomad-qc-deps:YYYYMMDD-hail0.2.140[-<pkg><version>]-py312 \
 #   .
 steps:
   - name: 'gcr.io/cloud-builders/docker'
     args: ['build', '-f', 'gnomad_qc/v5/annotations/info_ht.Dockerfile', '-t', '${_TAG}', '.']
 images: ['${_TAG}']
 timeout: 2400s
+# Keep build logs in Cloud Logging only. Without this, Cloud Build also saves a
+# copy to a GCS bucket in this project.
+options:
+  logging: CLOUD_LOGGING_ONLY
