@@ -13,6 +13,7 @@ def _analysis_root(
     name: str,
     version: Optional[str] = None,
     test: bool = False,
+    days: Optional[int] = None,
 ) -> str:
     """
     Get root path to the analysis resources.
@@ -22,11 +23,16 @@ def _analysis_root(
         returns no additional directory nesting.
     :param test: Whether to use a tmp path for analysis of the test dataset instead of
         the full dataset.
+    :param days: Retention days for the tmp bucket, one of None, 4, or 30; only used
+        when `test` is True. Default is None, which uses "gs://gnomad-tmp".
     :return: Root path of analysis resources.
     """
+    if days not in [None, 4, 30]:
+        raise ValueError("Days must be either None, 4, or 30.")
     version = f"/{version}" if version else ""
+    tmp_bucket = f"gs://gnomad-tmp{f'-{days}day' if days is not None else ''}"
     return (
-        f"gs://gnomad-tmp/gnomad_{name}_testing{version}"
+        f"{tmp_bucket}/gnomad_{name}_testing{version}"
         if test
         else f"gs://gnomad/analyses/{name}{version}"
     )
@@ -59,3 +65,28 @@ def get_pext(
         return TableResource(path=path)
     else:
         return path
+
+
+def get_hom_depletion(
+    data_type: str = "exomes",
+    version: Optional[str] = None,
+    test: bool = False,
+) -> TableResource:
+    """
+    Get homozygote depletion analysis Table.
+
+    :param data_type: Dataset the check was run on, one of "exomes" or "genomes".
+        Default is "exomes".
+    :param version: Version of the analysis path to return. Default is None, which
+        returns no additional directory nesting.
+    :param test: Whether to return the tmp path used for test output instead of the
+        analyses bucket path. Default is False.
+    :return: Hom depletion TableResource.
+    """
+    root = _analysis_root(
+        "hom_depletion",
+        version=version,
+        test=test,
+        days=30,
+    )
+    return TableResource(path=f"{root}/gnomad.hom_depletion.{data_type}.ht")
