@@ -1,0 +1,384 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>gnomad_qc.v4.sample_qc.platform_inference &mdash; gnomad_qc master documentation</title>
+      <link rel="stylesheet" href="../../../../_static/pygments.css" type="text/css" />
+      <link rel="stylesheet" href="../../../../_static/css/theme.css" type="text/css" />
+      <link rel="stylesheet" href="../../../../_static/theme_overrides.css" type="text/css" />
+  <!--[if lt IE 9]>
+    <script src="../../../../_static/js/html5shiv.min.js"></script>
+  <![endif]-->
+  
+        <script src="../../../../_static/jquery.js"></script>
+        <script src="../../../../_static/_sphinx_javascript_frameworks_compat.js"></script>
+        <script data-url_root="../../../../" id="documentation_options" src="../../../../_static/documentation_options.js"></script>
+        <script src="../../../../_static/doctools.js"></script>
+        <script src="../../../../_static/sphinx_highlight.js"></script>
+        <script src="https://unpkg.com/mermaid@10.2.0/dist/mermaid.min.js"></script>
+        <script>mermaid.initialize({startOnLoad:true});</script>
+    <script src="../../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../../index.html" class="icon icon-home">
+            gnomad_qc
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../../api_reference/index.html">API Reference</a></li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/broadinstitute/gnomad_qc/tags">Change Log</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../../index.html">gnomad_qc</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../../index.html">Module code</a></li>
+      <li class="breadcrumb-item active">gnomad_qc.v4.sample_qc.platform_inference</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for gnomad_qc.v4.sample_qc.platform_inference</h1><div class="highlight"><pre>
+<span></span><span class="sd">&quot;&quot;&quot;Script to assign platforms based on per interval fraction of bases over DP 0 PCA results using HDBSCAN.&quot;&quot;&quot;</span>
+
+<span class="kn">import</span> <span class="nn">argparse</span>
+<span class="kn">import</span> <span class="nn">logging</span>
+
+<span class="kn">import</span> <span class="nn">hail</span> <span class="k">as</span> <span class="nn">hl</span>
+<span class="kn">from</span> <span class="nn">gnomad.sample_qc.platform</span> <span class="kn">import</span> <span class="n">assign_platform_from_pcs</span><span class="p">,</span> <span class="n">run_platform_pca</span>
+<span class="kn">from</span> <span class="nn">gnomad.utils.file_utils</span> <span class="kn">import</span> <span class="n">file_exists</span>
+<span class="kn">from</span> <span class="nn">gnomad.utils.slack</span> <span class="kn">import</span> <span class="n">slack_notifications</span>
+
+<span class="kn">from</span> <span class="nn">gnomad_qc.slack_creds</span> <span class="kn">import</span> <span class="n">slack_token</span>
+<span class="kn">from</span> <span class="nn">gnomad_qc.v4.resources.basics</span> <span class="kn">import</span> <span class="p">(</span>
+    <span class="n">get_checkpoint_path</span><span class="p">,</span>
+    <span class="n">get_logging_path</span><span class="p">,</span>
+    <span class="n">gnomad_v4_testset_meta</span><span class="p">,</span>
+<span class="p">)</span>
+<span class="kn">from</span> <span class="nn">gnomad_qc.v4.resources.sample_qc</span> <span class="kn">import</span> <span class="p">(</span>
+    <span class="n">hard_filtered_samples_no_sex</span><span class="p">,</span>
+    <span class="n">interval_coverage</span><span class="p">,</span>
+    <span class="n">platform</span><span class="p">,</span>
+    <span class="n">platform_pca_eigenvalues</span><span class="p">,</span>
+    <span class="n">platform_pca_loadings</span><span class="p">,</span>
+    <span class="n">platform_pca_scores</span><span class="p">,</span>
+<span class="p">)</span>
+
+<span class="n">logging</span><span class="o">.</span><span class="n">basicConfig</span><span class="p">(</span><span class="nb">format</span><span class="o">=</span><span class="s2">&quot;</span><span class="si">%(levelname)s</span><span class="s2"> (</span><span class="si">%(name)s</span><span class="s2"> </span><span class="si">%(lineno)s</span><span class="s2">): </span><span class="si">%(message)s</span><span class="s2">&quot;</span><span class="p">)</span>
+<span class="n">logger</span> <span class="o">=</span> <span class="n">logging</span><span class="o">.</span><span class="n">getLogger</span><span class="p">(</span><span class="s2">&quot;platform_pca&quot;</span><span class="p">)</span>
+<span class="n">logger</span><span class="o">.</span><span class="n">setLevel</span><span class="p">(</span><span class="n">logging</span><span class="o">.</span><span class="n">INFO</span><span class="p">)</span>
+
+
+<div class="viewcode-block" id="main"><a class="viewcode-back" href="../../../../api_reference/v4/sample_qc/platform_inference.html#gnomad_qc.v4.sample_qc.platform_inference.main">[docs]</a><span class="k">def</span> <span class="nf">main</span><span class="p">(</span><span class="n">args</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Assign platforms based on PCA of per interval fraction of bases over DP 0.&quot;&quot;&quot;</span>
+    <span class="n">hl</span><span class="o">.</span><span class="n">init</span><span class="p">(</span>
+        <span class="n">log</span><span class="o">=</span><span class="s2">&quot;/platform_pca.log&quot;</span><span class="p">,</span>
+        <span class="n">default_reference</span><span class="o">=</span><span class="s2">&quot;GRCh38&quot;</span><span class="p">,</span>
+        <span class="n">tmp_dir</span><span class="o">=</span><span class="s2">&quot;gs://gnomad-tmp-4day&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="c1"># NOTE: remove this flag when the new shuffle method is the default.</span>
+    <span class="n">hl</span><span class="o">.</span><span class="n">_set_flags</span><span class="p">(</span><span class="n">use_new_shuffle</span><span class="o">=</span><span class="s2">&quot;1&quot;</span><span class="p">)</span>
+
+    <span class="n">calling_interval_name</span> <span class="o">=</span> <span class="n">args</span><span class="o">.</span><span class="n">calling_interval_name</span>
+    <span class="n">calling_interval_padding</span> <span class="o">=</span> <span class="n">args</span><span class="o">.</span><span class="n">calling_interval_padding</span>
+    <span class="n">hdbscan_min_cluster_size</span> <span class="o">=</span> <span class="n">args</span><span class="o">.</span><span class="n">hdbscan_min_cluster_size</span>
+    <span class="n">hdbscan_min_samples</span> <span class="o">=</span> <span class="n">args</span><span class="o">.</span><span class="n">hdbscan_min_samples</span>
+    <span class="n">n_assignment_pcs</span> <span class="o">=</span> <span class="n">args</span><span class="o">.</span><span class="n">n_assignment_pcs</span>
+
+    <span class="k">try</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">run_platform_pca</span><span class="p">:</span>
+            <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Running platform PCA...&quot;</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">test</span><span class="p">:</span>
+                <span class="n">test_coverage_path</span> <span class="o">=</span> <span class="n">get_checkpoint_path</span><span class="p">(</span>
+                    <span class="sa">f</span><span class="s2">&quot;test_interval_coverage.</span><span class="si">{</span><span class="n">calling_interval_name</span><span class="si">}</span><span class="s2">.pad</span><span class="si">{</span><span class="n">calling_interval_padding</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">,</span>
+                    <span class="n">mt</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+                <span class="p">)</span>
+                <span class="k">if</span> <span class="n">file_exists</span><span class="p">(</span><span class="n">test_coverage_path</span><span class="p">):</span>
+                    <span class="n">mt</span> <span class="o">=</span> <span class="n">hl</span><span class="o">.</span><span class="n">read_matrix_table</span><span class="p">(</span><span class="n">test_coverage_path</span><span class="p">)</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="k">raise</span> <span class="ne">FileNotFoundError</span><span class="p">(</span>
+                        <span class="s2">&quot;The test interval coverage MatrixTable does not exist for&quot;</span>
+                        <span class="sa">f</span><span class="s2">&quot; calling interval </span><span class="si">{</span><span class="n">calling_interval_name</span><span class="si">}</span><span class="s2"> and interval&quot;</span>
+                        <span class="sa">f</span><span class="s2">&quot; padding </span><span class="si">{</span><span class="n">calling_interval_padding</span><span class="si">}</span><span class="s2">. Please run&quot;</span>
+                        <span class="s2">&quot; --compute_coverage with the --test argument and needed&quot;</span>
+                        <span class="s2">&quot; --calling_interval_name/--calling_interval_padding&quot;</span>
+                        <span class="s2">&quot; arguments.&quot;</span>
+                    <span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">mt</span> <span class="o">=</span> <span class="n">interval_coverage</span><span class="o">.</span><span class="n">mt</span><span class="p">()</span>
+
+            <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span>
+                <span class="s2">&quot;Removing hard filtered samples from interval coverage MatrixTable...&quot;</span>
+            <span class="p">)</span>
+            <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">test</span><span class="p">:</span>
+                <span class="n">ht</span> <span class="o">=</span> <span class="n">gnomad_v4_testset_meta</span><span class="o">.</span><span class="n">ht</span><span class="p">()</span>
+                <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">hl</span><span class="o">.</span><span class="n">len</span><span class="p">(</span><span class="n">ht</span><span class="o">.</span><span class="n">rand_sampling_meta</span><span class="o">.</span><span class="n">hard_filters_no_sex</span><span class="p">)</span> <span class="o">!=</span> <span class="mi">0</span><span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">ht</span> <span class="o">=</span> <span class="n">hard_filtered_samples_no_sex</span><span class="o">.</span><span class="n">ht</span><span class="p">()</span>
+
+            <span class="n">mt</span> <span class="o">=</span> <span class="n">mt</span><span class="o">.</span><span class="n">filter_cols</span><span class="p">(</span><span class="n">hl</span><span class="o">.</span><span class="n">is_missing</span><span class="p">(</span><span class="n">ht</span><span class="p">[</span><span class="n">mt</span><span class="o">.</span><span class="n">col_key</span><span class="p">]))</span>
+
+            <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Filter interval coverage MatrixTable to autosomes...&quot;</span><span class="p">)</span>
+            <span class="n">mt</span> <span class="o">=</span> <span class="n">mt</span><span class="o">.</span><span class="n">filter_rows</span><span class="p">(</span><span class="n">mt</span><span class="o">.</span><span class="n">interval</span><span class="o">.</span><span class="n">start</span><span class="o">.</span><span class="n">in_autosome</span><span class="p">())</span>
+
+            <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span>
+                <span class="s2">&quot;Annotating interval coverage MatrixTable with &#39;callrate&#39; defined as&quot;</span>
+                <span class="s2">&quot; fraction over dp 0...&quot;</span>
+            <span class="p">)</span>
+            <span class="c1"># Default `hl.vds.interval_coverage` will return a list for</span>
+            <span class="c1"># `fraction_over_dp_threshold` where the second element is dp &gt;= 1 (dp &gt; 0).</span>
+            <span class="n">mt</span> <span class="o">=</span> <span class="n">mt</span><span class="o">.</span><span class="n">annotate_entries</span><span class="p">(</span><span class="n">callrate</span><span class="o">=</span><span class="n">mt</span><span class="o">.</span><span class="n">fraction_over_dp_threshold</span><span class="p">[</span><span class="mi">1</span><span class="p">])</span>
+
+            <span class="c1"># NOTE: added None binarization_threshold parameter to be consistent with runs before this parameter existed. # noqa</span>
+            <span class="n">eigenvalues</span><span class="p">,</span> <span class="n">scores_ht</span><span class="p">,</span> <span class="n">loadings_ht</span> <span class="o">=</span> <span class="n">run_platform_pca</span><span class="p">(</span>
+                <span class="n">mt</span><span class="p">,</span> <span class="n">binarization_threshold</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">n_pcs</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">n_platform_pcs</span>
+            <span class="p">)</span>
+            <span class="n">scores_ht</span> <span class="o">=</span> <span class="n">scores_ht</span><span class="o">.</span><span class="n">annotate_globals</span><span class="p">(</span><span class="o">**</span><span class="n">mt</span><span class="o">.</span><span class="n">index_globals</span><span class="p">())</span>
+            <span class="n">scores_ht</span><span class="o">.</span><span class="n">write</span><span class="p">(</span>
+                <span class="p">(</span>
+                    <span class="n">get_checkpoint_path</span><span class="p">(</span>
+                        <span class="sa">f</span><span class="s2">&quot;test_platform_scores.</span><span class="si">{</span><span class="n">calling_interval_name</span><span class="si">}</span><span class="s2">.pad</span><span class="si">{</span><span class="n">calling_interval_padding</span><span class="si">}</span><span class="s2">&quot;</span>
+                    <span class="p">)</span>
+                    <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">test</span>
+                    <span class="k">else</span> <span class="n">platform_pca_scores</span><span class="o">.</span><span class="n">path</span>
+                <span class="p">),</span>
+                <span class="n">overwrite</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">overwrite</span><span class="p">,</span>
+            <span class="p">)</span>
+            <span class="n">loadings_ht</span> <span class="o">=</span> <span class="n">loadings_ht</span><span class="o">.</span><span class="n">annotate_globals</span><span class="p">(</span><span class="o">**</span><span class="n">mt</span><span class="o">.</span><span class="n">index_globals</span><span class="p">())</span>
+            <span class="n">loadings_ht</span><span class="o">.</span><span class="n">write</span><span class="p">(</span>
+                <span class="p">(</span>
+                    <span class="n">get_checkpoint_path</span><span class="p">(</span>
+                        <span class="sa">f</span><span class="s2">&quot;test_platform_loadings.</span><span class="si">{</span><span class="n">calling_interval_name</span><span class="si">}</span><span class="s2">.pad</span><span class="si">{</span><span class="n">calling_interval_padding</span><span class="si">}</span><span class="s2">&quot;</span>
+                    <span class="p">)</span>
+                    <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">test</span>
+                    <span class="k">else</span> <span class="n">platform_pca_loadings</span><span class="o">.</span><span class="n">path</span>
+                <span class="p">),</span>
+                <span class="n">overwrite</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">overwrite</span><span class="p">,</span>
+            <span class="p">)</span>
+            <span class="n">eigenvalues_ht</span> <span class="o">=</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="o">.</span><span class="n">parallelize</span><span class="p">(</span>
+                <span class="n">hl</span><span class="o">.</span><span class="n">literal</span><span class="p">(</span>
+                    <span class="p">[{</span><span class="s2">&quot;PC&quot;</span><span class="p">:</span> <span class="n">i</span> <span class="o">+</span> <span class="mi">1</span><span class="p">,</span> <span class="s2">&quot;eigenvalue&quot;</span><span class="p">:</span> <span class="n">x</span><span class="p">}</span> <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">x</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">eigenvalues</span><span class="p">)],</span>
+                    <span class="s2">&quot;array&lt;struct{PC: int, eigenvalue: float}&gt;&quot;</span><span class="p">,</span>
+                <span class="p">)</span>
+            <span class="p">)</span>
+            <span class="n">eigenvalues_ht</span> <span class="o">=</span> <span class="n">eigenvalues_ht</span><span class="o">.</span><span class="n">annotate_globals</span><span class="p">(</span><span class="o">**</span><span class="n">mt</span><span class="o">.</span><span class="n">index_globals</span><span class="p">())</span>
+            <span class="n">eigenvalues_ht</span><span class="o">.</span><span class="n">write</span><span class="p">(</span>
+                <span class="p">(</span>
+                    <span class="n">get_checkpoint_path</span><span class="p">(</span>
+                        <span class="sa">f</span><span class="s2">&quot;test_platform_eigenvalues.</span><span class="si">{</span><span class="n">calling_interval_name</span><span class="si">}</span><span class="s2">.pad</span><span class="si">{</span><span class="n">calling_interval_padding</span><span class="si">}</span><span class="s2">&quot;</span>
+                    <span class="p">)</span>
+                    <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">test</span>
+                    <span class="k">else</span> <span class="n">platform_pca_eigenvalues</span><span class="o">.</span><span class="n">path</span>
+                <span class="p">),</span>
+                <span class="n">overwrite</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">overwrite</span><span class="p">,</span>
+            <span class="p">)</span>
+
+        <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">assign_platforms</span><span class="p">:</span>
+            <span class="c1"># TODO: Add drop of `gq_thresholds` for future versions.</span>
+            <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Assigning platforms based on platform PCA clustering&quot;</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">test</span><span class="p">:</span>
+                <span class="n">test_scores_path</span> <span class="o">=</span> <span class="n">get_checkpoint_path</span><span class="p">(</span>
+                    <span class="sa">f</span><span class="s2">&quot;test_platform_scores.</span><span class="si">{</span><span class="n">calling_interval_name</span><span class="si">}</span><span class="s2">.pad</span><span class="si">{</span><span class="n">calling_interval_padding</span><span class="si">}</span><span class="s2">&quot;</span>
+                <span class="p">)</span>
+                <span class="k">if</span> <span class="n">file_exists</span><span class="p">(</span><span class="n">test_scores_path</span><span class="p">):</span>
+                    <span class="n">scores_ht</span> <span class="o">=</span> <span class="n">hl</span><span class="o">.</span><span class="n">read_table</span><span class="p">(</span><span class="n">test_scores_path</span><span class="p">)</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="k">raise</span> <span class="ne">FileNotFoundError</span><span class="p">(</span>
+                        <span class="s2">&quot;The test platform PCA Table does not exist for calling&quot;</span>
+                        <span class="sa">f</span><span class="s2">&quot; interval </span><span class="si">{</span><span class="n">calling_interval_name</span><span class="si">}</span><span class="s2"> and interval padding&quot;</span>
+                        <span class="sa">f</span><span class="s2">&quot; </span><span class="si">{</span><span class="n">calling_interval_padding</span><span class="si">}</span><span class="s2">. Please run hard_filters.py&quot;</span>
+                        <span class="s2">&quot; --compute-coverage and platform_inference.py&quot;</span>
+                        <span class="s2">&quot; --run-platform-pca with the --test argument and needed&quot;</span>
+                        <span class="s2">&quot; --calling-interval-name/--calling-interval-padding&quot;</span>
+                        <span class="s2">&quot; arguments.&quot;</span>
+                    <span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">scores_ht</span> <span class="o">=</span> <span class="n">platform_pca_scores</span><span class="o">.</span><span class="n">ht</span><span class="p">()</span>
+
+            <span class="n">platform_ht</span> <span class="o">=</span> <span class="n">assign_platform_from_pcs</span><span class="p">(</span>
+                <span class="n">scores_ht</span><span class="o">.</span><span class="n">annotate</span><span class="p">(</span><span class="n">scores</span><span class="o">=</span><span class="n">scores_ht</span><span class="o">.</span><span class="n">scores</span><span class="p">[:</span><span class="n">n_assignment_pcs</span><span class="p">]),</span>
+                <span class="n">hdbscan_min_cluster_size</span><span class="o">=</span><span class="n">hdbscan_min_cluster_size</span><span class="p">,</span>
+                <span class="n">hdbscan_min_samples</span><span class="o">=</span><span class="n">hdbscan_min_samples</span><span class="p">,</span>
+            <span class="p">)</span>
+
+            <span class="c1"># Make sure hdbscan_min_samples is not None before annotating globals.</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="n">hdbscan_min_samples</span><span class="p">:</span>
+                <span class="n">hdbscan_min_samples</span> <span class="o">=</span> <span class="n">hdbscan_min_cluster_size</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">hdbscan_min_samples</span> <span class="o">=</span> <span class="n">hdbscan_min_samples</span>
+            <span class="n">platform_ht</span> <span class="o">=</span> <span class="n">platform_ht</span><span class="o">.</span><span class="n">annotate_globals</span><span class="p">(</span>
+                <span class="n">hdbscan_min_cluster_size</span><span class="o">=</span><span class="n">hdbscan_min_cluster_size</span><span class="p">,</span>
+                <span class="n">hdbscan_min_samples</span><span class="o">=</span><span class="n">hdbscan_min_samples</span><span class="p">,</span>
+                <span class="n">n_pcs</span><span class="o">=</span><span class="n">n_assignment_pcs</span><span class="p">,</span>
+                <span class="o">**</span><span class="n">scores_ht</span><span class="o">.</span><span class="n">index_globals</span><span class="p">(),</span>
+            <span class="p">)</span>
+            <span class="n">platform_ht</span> <span class="o">=</span> <span class="n">platform_ht</span><span class="o">.</span><span class="n">checkpoint</span><span class="p">(</span>
+                <span class="p">(</span>
+                    <span class="n">get_checkpoint_path</span><span class="p">(</span>
+                        <span class="sa">f</span><span class="s2">&quot;test_platform_assignment.</span><span class="si">{</span><span class="n">calling_interval_name</span><span class="si">}</span><span class="s2">.pad</span><span class="si">{</span><span class="n">calling_interval_padding</span><span class="si">}</span><span class="s2">&quot;</span>
+                    <span class="p">)</span>
+                    <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">test</span>
+                    <span class="k">else</span> <span class="n">platform</span><span class="o">.</span><span class="n">path</span>
+                <span class="p">),</span>
+                <span class="n">overwrite</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">overwrite</span><span class="p">,</span>
+            <span class="p">)</span>
+            <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Platform PCA Table count: </span><span class="si">{</span><span class="n">platform_ht</span><span class="o">.</span><span class="n">count</span><span class="p">()</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+
+    <span class="k">finally</span><span class="p">:</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Copying log to logging bucket...&quot;</span><span class="p">)</span>
+        <span class="n">hl</span><span class="o">.</span><span class="n">copy_log</span><span class="p">(</span><span class="n">get_logging_path</span><span class="p">(</span><span class="s2">&quot;platform_pca&quot;</span><span class="p">))</span></div>
+
+
+<span class="k">def</span> <span class="nf">get_script_argument_parser</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="n">argparse</span><span class="o">.</span><span class="n">ArgumentParser</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Get script argument parser.&quot;&quot;&quot;</span>
+    <span class="n">parser</span> <span class="o">=</span> <span class="n">argparse</span><span class="o">.</span><span class="n">ArgumentParser</span><span class="p">()</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;-o&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;--overwrite&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Overwrite output files (default: False).&quot;</span><span class="p">,</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--test&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Use the v4 test dataset instead of the full dataset.&quot;</span><span class="p">,</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--calling-interval-name&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="p">(</span>
+            <span class="s2">&quot;Name of calling intervals to use for interval coverage. One of: &#39;ukb&#39;,&quot;</span>
+            <span class="s2">&quot; &#39;broad&#39;, or &#39;intersection&#39;.&quot;</span>
+        <span class="p">),</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">str</span><span class="p">,</span>
+        <span class="n">choices</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;ukb&quot;</span><span class="p">,</span> <span class="s2">&quot;broad&quot;</span><span class="p">,</span> <span class="s2">&quot;intersection&quot;</span><span class="p">],</span>
+        <span class="n">default</span><span class="o">=</span><span class="s2">&quot;intersection&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--calling-interval-padding&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="p">(</span>
+            <span class="s2">&quot;Number of base pair padding to use on the calling intervals. One of 0 or&quot;</span>
+            <span class="s2">&quot; 50 bp.&quot;</span>
+        <span class="p">),</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">int</span><span class="p">,</span>
+        <span class="n">choices</span><span class="o">=</span><span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">50</span><span class="p">],</span>
+        <span class="n">default</span><span class="o">=</span><span class="mi">50</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--run-platform-pca&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="p">(</span>
+            <span class="s2">&quot;Runs platform PCA (assumes coverage MatrixTable was computed,&quot;</span>
+            <span class="s2">&quot; --compute-coverage).&quot;</span>
+        <span class="p">),</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--n-platform-pcs&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Number of platform PCs to compute.&quot;</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">int</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="mi">30</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--assign-platforms&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="p">(</span>
+            <span class="s2">&quot;Assigns platforms based on per interval fraction of bases over DP 0 PCA&quot;</span>
+            <span class="s2">&quot; results using HDBSCAN.&quot;</span>
+        <span class="p">),</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--n-assignment-pcs&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Number of platform PCs to use for platform assignment.&quot;</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">int</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="mi">10</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--hdbscan-min-samples&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="p">(</span>
+            <span class="s2">&quot;Minimum samples parameter for HDBSCAN. If not specified,&quot;</span>
+            <span class="s2">&quot; --hdbscan-min-cluster-size is used.&quot;</span>
+        <span class="p">),</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">int</span><span class="p">,</span>
+        <span class="n">required</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--hdbscan-min-cluster-size&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Minimum cluster size parameter for HDBSCAN.&quot;</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">int</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="mi">50</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--slack-channel&quot;</span><span class="p">,</span> <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Slack channel to post results and notifications to.&quot;</span>
+    <span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">parser</span>
+
+
+<span class="k">if</span> <span class="vm">__name__</span> <span class="o">==</span> <span class="s2">&quot;__main__&quot;</span><span class="p">:</span>
+    <span class="n">parser</span> <span class="o">=</span> <span class="n">get_script_argument_parser</span><span class="p">()</span>
+    <span class="n">args</span> <span class="o">=</span> <span class="n">parser</span><span class="o">.</span><span class="n">parse_args</span><span class="p">()</span>
+
+    <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">slack_channel</span><span class="p">:</span>
+        <span class="k">with</span> <span class="n">slack_notifications</span><span class="p">(</span><span class="n">slack_token</span><span class="p">,</span> <span class="n">args</span><span class="o">.</span><span class="n">slack_channel</span><span class="p">):</span>
+            <span class="n">main</span><span class="p">(</span><span class="n">args</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">main</span><span class="p">(</span><span class="n">args</span><span class="p">)</span>
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p></p>
+  </div>
+
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

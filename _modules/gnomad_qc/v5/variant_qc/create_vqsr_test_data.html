@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>gnomad_qc.v5.variant_qc.create_vqsr_test_data &mdash; gnomad_qc master documentation</title>
+      <link rel="stylesheet" href="../../../../_static/pygments.css" type="text/css" />
+      <link rel="stylesheet" href="../../../../_static/css/theme.css" type="text/css" />
+      <link rel="stylesheet" href="../../../../_static/theme_overrides.css" type="text/css" />
+  <!--[if lt IE 9]>
+    <script src="../../../../_static/js/html5shiv.min.js"></script>
+  <![endif]-->
+  
+        <script src="../../../../_static/jquery.js"></script>
+        <script src="../../../../_static/_sphinx_javascript_frameworks_compat.js"></script>
+        <script data-url_root="../../../../" id="documentation_options" src="../../../../_static/documentation_options.js"></script>
+        <script src="../../../../_static/doctools.js"></script>
+        <script src="../../../../_static/sphinx_highlight.js"></script>
+        <script src="https://unpkg.com/mermaid@10.2.0/dist/mermaid.min.js"></script>
+        <script>mermaid.initialize({startOnLoad:true});</script>
+    <script src="../../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../../index.html" class="icon icon-home">
+            gnomad_qc
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../../api_reference/index.html">API Reference</a></li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/broadinstitute/gnomad_qc/tags">Change Log</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../../index.html">gnomad_qc</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../../index.html">Module code</a></li>
+      <li class="breadcrumb-item active">gnomad_qc.v5.variant_qc.create_vqsr_test_data</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for gnomad_qc.v5.variant_qc.create_vqsr_test_data</h1><div class="highlight"><pre>
+<span></span><span class="sd">&quot;&quot;&quot;Create a schema-faithful VQSR test input from gnomAD v4 data.</span>
+
+<span class="sd">The v5 VQSR pipeline (``vqsr.py``) consumes a sites-only info VCF</span>
+<span class="sd">(:func:`info_vcf_path`) and, optionally, a true-positive/singleton VCF</span>
+<span class="sd">(:func:`get_true_positive_vcf_path`). Those are produced by</span>
+<span class="sd">``generate_variant_qc_annotations.py`` from AoU data, which is not yet available.</span>
+
+<span class="sd">This script stands in for that step so the VQSR pipeline can be exercised</span>
+<span class="sd">end-to-end before the real v5 info VCF exists. It reads the public gnomAD v4</span>
+<span class="sd">exomes info Table, restricts it to a small test region, and remaps its</span>
+<span class="sd">allele-specific annotations onto the exact INFO schema that the v5 info VCF</span>
+<span class="sd">export produces, then writes the info VCF and a transmitted-singleton VCF to the</span>
+<span class="sd">``test=True`` paths that ``vqsr.py --test`` reads.</span>
+
+<span class="sd">The v4 ``AS_info`` struct already carries every field the v5 export keeps that</span>
+<span class="sd">VQSR reads, so the mapping is a straight rename plus the two type/shape</span>
+<span class="sd">adjustments the v5 export applies:</span>
+
+<span class="sd">    - ``AS_QD`` is cast to ``float32`` (v5 stores it as ``float32``).</span>
+<span class="sd">    - ``AS_SB_TABLE`` is reshaped from a flat 4-element array to the nested</span>
+<span class="sd">      ``[[ref_fwd, ref_rev], [alt_fwd, alt_rev]]`` form expected by</span>
+<span class="sd">      ``adjust_vcf_incompatible_types``.</span>
+<span class="sd">&quot;&quot;&quot;</span>
+
+<span class="kn">import</span> <span class="nn">argparse</span>
+<span class="kn">import</span> <span class="nn">logging</span>
+
+<span class="kn">import</span> <span class="nn">hail</span> <span class="k">as</span> <span class="nn">hl</span>
+<span class="kn">from</span> <span class="nn">gnomad.utils.vcf</span> <span class="kn">import</span> <span class="n">adjust_vcf_incompatible_types</span>
+
+<span class="kn">from</span> <span class="nn">gnomad_qc.v4.resources.annotations</span> <span class="kn">import</span> <span class="n">get_info</span> <span class="k">as</span> <span class="n">get_v4_info</span>
+<span class="kn">from</span> <span class="nn">gnomad_qc.v5.resources.annotations</span> <span class="kn">import</span> <span class="n">get_true_positive_vcf_path</span><span class="p">,</span> <span class="n">info_vcf_path</span>
+<span class="kn">from</span> <span class="nn">gnomad_qc.v5.resources.variant_qc</span> <span class="kn">import</span> <span class="n">VQSR_FEATURES</span>
+
+<span class="n">logging</span><span class="o">.</span><span class="n">basicConfig</span><span class="p">(</span><span class="nb">format</span><span class="o">=</span><span class="s2">&quot;</span><span class="si">%(levelname)s</span><span class="s2"> (</span><span class="si">%(name)s</span><span class="s2"> </span><span class="si">%(lineno)s</span><span class="s2">): </span><span class="si">%(message)s</span><span class="s2">&quot;</span><span class="p">)</span>
+<span class="n">logger</span> <span class="o">=</span> <span class="n">logging</span><span class="o">.</span><span class="n">getLogger</span><span class="p">(</span><span class="s2">&quot;create_vqsr_test_data&quot;</span><span class="p">)</span>
+<span class="n">logger</span><span class="o">.</span><span class="n">setLevel</span><span class="p">(</span><span class="n">logging</span><span class="o">.</span><span class="n">INFO</span><span class="p">)</span>
+
+<span class="c1"># Fields the v5 info VCF export carries that VQSR (and the downstream VCF import)</span>
+<span class="c1"># read. Every one is present in the v4 exomes &#39;AS_info&#39; struct.</span>
+<span class="n">FLOAT64_FEATURES</span> <span class="o">=</span> <span class="p">[</span>
+    <span class="s2">&quot;AS_MQRankSum&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;AS_ReadPosRankSum&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;AS_FS&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;AS_SOR&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;AS_MQ&quot;</span><span class="p">,</span>
+<span class="p">]</span>
+
+
+<div class="viewcode-block" id="build_info_vcf"><a class="viewcode-back" href="../../../../api_reference/v5/variant_qc/create_vqsr_test_data.html#gnomad_qc.v5.variant_qc.create_vqsr_test_data.build_info_vcf">[docs]</a><span class="k">def</span> <span class="nf">build_info_vcf</span><span class="p">(</span><span class="n">region</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">out_path</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Build a sites-only info VCF matching the v5 info VCF INFO schema.</span>
+
+<span class="sd">    :param region: Locus interval string (e.g. &quot;chr22&quot;) to restrict the v4 info</span>
+<span class="sd">        Table to.</span>
+<span class="sd">    :param out_path: Path to write the info VCF (bgzipped, tabix indexed).</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Reading v4 exomes split info HT...&quot;</span><span class="p">)</span>
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">hl</span><span class="o">.</span><span class="n">read_table</span><span class="p">(</span><span class="n">get_v4_info</span><span class="p">(</span><span class="n">split</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span><span class="o">.</span><span class="n">path</span><span class="p">)</span>
+
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Restricting to test region </span><span class="si">%s</span><span class="s2">...&quot;</span><span class="p">,</span> <span class="n">region</span><span class="p">)</span>
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">hl</span><span class="o">.</span><span class="n">filter_intervals</span><span class="p">(</span>
+        <span class="n">ht</span><span class="p">,</span> <span class="p">[</span><span class="n">hl</span><span class="o">.</span><span class="n">parse_locus_interval</span><span class="p">(</span><span class="n">region</span><span class="p">,</span> <span class="n">reference_genome</span><span class="o">=</span><span class="s2">&quot;GRCh38&quot;</span><span class="p">)]</span>
+    <span class="p">)</span>
+
+    <span class="c1"># Remap the v4 &#39;AS_info&#39; struct onto the v5 info VCF INFO schema. The features</span>
+    <span class="c1"># are wrapped in a length-1 array, as the production export does, so a missing</span>
+    <span class="c1"># value is written as &#39;.&#39; instead of the field being omitted. GATK&#39;s</span>
+    <span class="c1"># allele-specific VariantRecalibrator parses &#39;.&#39; as NaN but crashed with an</span>
+    <span class="c1"># IndexOutOfBoundsException when the field is absent on 4.2.6.1 (not yet</span>
+    <span class="c1"># retested on 4.6.1.0).</span>
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">select</span><span class="p">(</span>
+        <span class="n">info</span><span class="o">=</span><span class="n">hl</span><span class="o">.</span><span class="n">struct</span><span class="p">(</span>
+            <span class="n">AS_QD</span><span class="o">=</span><span class="n">hl</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="n">hl</span><span class="o">.</span><span class="n">float32</span><span class="p">(</span><span class="n">ht</span><span class="o">.</span><span class="n">AS_info</span><span class="o">.</span><span class="n">AS_QD</span><span class="p">)]),</span>
+            <span class="n">AS_QUALapprox</span><span class="o">=</span><span class="n">hl</span><span class="o">.</span><span class="n">int64</span><span class="p">(</span><span class="n">ht</span><span class="o">.</span><span class="n">AS_info</span><span class="o">.</span><span class="n">AS_QUALapprox</span><span class="p">),</span>
+            <span class="n">AS_VarDP</span><span class="o">=</span><span class="n">hl</span><span class="o">.</span><span class="n">int32</span><span class="p">(</span><span class="n">ht</span><span class="o">.</span><span class="n">AS_info</span><span class="o">.</span><span class="n">AS_VarDP</span><span class="p">),</span>
+            <span class="n">AS_SB_TABLE</span><span class="o">=</span><span class="n">ht</span><span class="o">.</span><span class="n">AS_info</span><span class="o">.</span><span class="n">AS_SB_TABLE</span><span class="p">,</span>
+            <span class="o">**</span><span class="p">{</span><span class="n">f</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="n">ht</span><span class="o">.</span><span class="n">AS_info</span><span class="p">[</span><span class="n">f</span><span class="p">]])</span> <span class="k">for</span> <span class="n">f</span> <span class="ow">in</span> <span class="n">FLOAT64_FEATURES</span><span class="p">},</span>
+        <span class="p">)</span>
+    <span class="p">)</span><span class="o">.</span><span class="n">select_globals</span><span class="p">()</span>
+
+    <span class="c1"># Reshape AS_SB_TABLE into the nested array form the v5 export uses so</span>
+    <span class="c1"># adjust_vcf_incompatible_types emits it correctly.</span>
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">annotate</span><span class="p">(</span>
+        <span class="n">info</span><span class="o">=</span><span class="n">ht</span><span class="o">.</span><span class="n">info</span><span class="o">.</span><span class="n">annotate</span><span class="p">(</span>
+            <span class="n">AS_SB_TABLE</span><span class="o">=</span><span class="n">hl</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="n">ht</span><span class="o">.</span><span class="n">info</span><span class="o">.</span><span class="n">AS_SB_TABLE</span><span class="p">[</span><span class="mi">0</span><span class="p">:</span><span class="mi">2</span><span class="p">],</span> <span class="n">ht</span><span class="o">.</span><span class="n">info</span><span class="o">.</span><span class="n">AS_SB_TABLE</span><span class="p">[</span><span class="mi">2</span><span class="p">:</span><span class="mi">4</span><span class="p">]])</span>
+        <span class="p">)</span>
+    <span class="p">)</span>
+
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">adjust_vcf_incompatible_types</span><span class="p">(</span><span class="n">ht</span><span class="p">,</span> <span class="n">pipe_delimited_annotations</span><span class="o">=</span><span class="p">[])</span>
+
+    <span class="c1"># Same header the production export writes: GATK&#39;s allele-specific VQSR needs the</span>
+    <span class="c1"># features declared Number=A, and Hail would write Number=. for these arrays.</span>
+    <span class="n">info_meta</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="n">f</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;Number&quot;</span><span class="p">:</span> <span class="s2">&quot;A&quot;</span><span class="p">,</span> <span class="s2">&quot;Type&quot;</span><span class="p">:</span> <span class="s2">&quot;Float&quot;</span><span class="p">,</span> <span class="s2">&quot;Description&quot;</span><span class="p">:</span> <span class="s2">&quot;&quot;</span><span class="p">}</span>
+        <span class="k">for</span> <span class="n">f</span> <span class="ow">in</span> <span class="n">VQSR_FEATURES</span><span class="p">[</span><span class="s2">&quot;snv&quot;</span><span class="p">]</span>
+    <span class="p">}</span>
+
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Exporting info VCF to </span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">out_path</span><span class="p">)</span>
+    <span class="n">hl</span><span class="o">.</span><span class="n">export_vcf</span><span class="p">(</span><span class="n">ht</span><span class="p">,</span> <span class="n">out_path</span><span class="p">,</span> <span class="n">tabix</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">metadata</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;info&quot;</span><span class="p">:</span> <span class="n">info_meta</span><span class="p">})</span></div>
+
+
+<div class="viewcode-block" id="build_true_positive_vcf"><a class="viewcode-back" href="../../../../api_reference/v5/variant_qc/create_vqsr_test_data.html#gnomad_qc.v5.variant_qc.create_vqsr_test_data.build_true_positive_vcf">[docs]</a><span class="k">def</span> <span class="nf">build_true_positive_vcf</span><span class="p">(</span><span class="n">region</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Build sites-only transmitted-singleton VCFs (raw and adj) for VQSR training.</span>
+
+<span class="sd">    Uses v4 singletons (AC == 1) in the test region as a stand-in for the v5</span>
+<span class="sd">    transmitted-singleton true-positive set. VQSR only needs the sites, so the</span>
+<span class="sd">    exported VCFs are sites-only.</span>
+
+<span class="sd">    :param region: Locus interval string (e.g. &quot;chr22&quot;) to restrict to.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">hl</span><span class="o">.</span><span class="n">read_table</span><span class="p">(</span><span class="n">get_v4_info</span><span class="p">(</span><span class="n">split</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span><span class="o">.</span><span class="n">path</span><span class="p">)</span>
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">hl</span><span class="o">.</span><span class="n">filter_intervals</span><span class="p">(</span>
+        <span class="n">ht</span><span class="p">,</span> <span class="p">[</span><span class="n">hl</span><span class="o">.</span><span class="n">parse_locus_interval</span><span class="p">(</span><span class="n">region</span><span class="p">,</span> <span class="n">reference_genome</span><span class="o">=</span><span class="s2">&quot;GRCh38&quot;</span><span class="p">)]</span>
+    <span class="p">)</span>
+    <span class="n">tp_ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">ht</span><span class="o">.</span><span class="n">AC_info</span><span class="o">.</span><span class="n">AC</span> <span class="o">==</span> <span class="mi">1</span><span class="p">)</span><span class="o">.</span><span class="n">select</span><span class="p">()</span><span class="o">.</span><span class="n">select_globals</span><span class="p">()</span>
+    <span class="n">tp_ht</span> <span class="o">=</span> <span class="n">tp_ht</span><span class="o">.</span><span class="n">checkpoint</span><span class="p">(</span><span class="n">hl</span><span class="o">.</span><span class="n">utils</span><span class="o">.</span><span class="n">new_temp_file</span><span class="p">(</span><span class="s2">&quot;vqsr_test_tp&quot;</span><span class="p">,</span> <span class="s2">&quot;ht&quot;</span><span class="p">))</span>
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;True-positive (singleton) sites: </span><span class="si">%d</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">tp_ht</span><span class="o">.</span><span class="n">count</span><span class="p">())</span>
+
+    <span class="k">for</span> <span class="n">adj</span> <span class="ow">in</span> <span class="p">(</span><span class="kc">False</span><span class="p">,</span> <span class="kc">True</span><span class="p">):</span>
+        <span class="n">out_path</span> <span class="o">=</span> <span class="n">get_true_positive_vcf_path</span><span class="p">(</span>
+            <span class="n">test</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">true_positive_type</span><span class="o">=</span><span class="s2">&quot;transmitted_singleton&quot;</span><span class="p">,</span> <span class="n">adj</span><span class="o">=</span><span class="n">adj</span>
+        <span class="p">)</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Exporting true-positive VCF (adj=</span><span class="si">%s</span><span class="s2">) to </span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">adj</span><span class="p">,</span> <span class="n">out_path</span><span class="p">)</span>
+        <span class="n">hl</span><span class="o">.</span><span class="n">export_vcf</span><span class="p">(</span><span class="n">tp_ht</span><span class="p">,</span> <span class="n">out_path</span><span class="p">,</span> <span class="n">tabix</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="main"><a class="viewcode-back" href="../../../../api_reference/v5/variant_qc/create_vqsr_test_data.html#gnomad_qc.v5.variant_qc.create_vqsr_test_data.main">[docs]</a><span class="k">def</span> <span class="nf">main</span><span class="p">(</span><span class="n">args</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Create the VQSR test info VCF and true-positive VCF from v4 data.&quot;&quot;&quot;</span>
+    <span class="n">hl</span><span class="o">.</span><span class="n">init</span><span class="p">(</span>
+        <span class="n">backend</span><span class="o">=</span><span class="s2">&quot;batch&quot;</span><span class="p">,</span>
+        <span class="n">tmp_dir</span><span class="o">=</span><span class="s2">&quot;gs://gnomad-tmp-4day&quot;</span><span class="p">,</span>
+        <span class="n">gcs_requester_pays_configuration</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">gcp_billing_project</span><span class="p">,</span>
+        <span class="n">default_reference</span><span class="o">=</span><span class="s2">&quot;GRCh38&quot;</span><span class="p">,</span>
+        <span class="n">regions</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;us-central1&quot;</span><span class="p">],</span>
+    <span class="p">)</span>
+
+    <span class="n">build_info_vcf</span><span class="p">(</span><span class="n">args</span><span class="o">.</span><span class="n">test_region</span><span class="p">,</span> <span class="n">info_vcf_path</span><span class="p">(</span><span class="n">test</span><span class="o">=</span><span class="kc">True</span><span class="p">))</span>
+
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">args</span><span class="o">.</span><span class="n">skip_true_positive_vcf</span><span class="p">:</span>
+        <span class="n">build_true_positive_vcf</span><span class="p">(</span><span class="n">args</span><span class="o">.</span><span class="n">test_region</span><span class="p">)</span></div>
+
+
+<span class="k">def</span> <span class="nf">get_script_argument_parser</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="n">argparse</span><span class="o">.</span><span class="n">ArgumentParser</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Get script argument parser.&quot;&quot;&quot;</span>
+    <span class="n">parser</span> <span class="o">=</span> <span class="n">argparse</span><span class="o">.</span><span class="n">ArgumentParser</span><span class="p">(</span><span class="n">description</span><span class="o">=</span><span class="vm">__doc__</span><span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--test-region&quot;</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">str</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="s2">&quot;chr22&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Locus interval to restrict the v4 info Table to. Default is chr22.&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--skip-true-positive-vcf&quot;</span><span class="p">,</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Skip building the transmitted-singleton true-positive VCF.&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--gcp-billing-project&quot;</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">str</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="s2">&quot;broad-mpg-gnomad&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Google Cloud billing project for reading requester-pays buckets.&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="k">return</span> <span class="n">parser</span>
+
+
+<span class="k">if</span> <span class="vm">__name__</span> <span class="o">==</span> <span class="s2">&quot;__main__&quot;</span><span class="p">:</span>
+    <span class="n">main</span><span class="p">(</span><span class="n">get_script_argument_parser</span><span class="p">()</span><span class="o">.</span><span class="n">parse_args</span><span class="p">())</span>
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p></p>
+  </div>
+
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

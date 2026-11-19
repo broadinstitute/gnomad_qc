@@ -1,0 +1,428 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>gnomad_qc.v4.resources.variant_qc &mdash; gnomad_qc master documentation</title>
+      <link rel="stylesheet" href="../../../../_static/pygments.css" type="text/css" />
+      <link rel="stylesheet" href="../../../../_static/css/theme.css" type="text/css" />
+      <link rel="stylesheet" href="../../../../_static/theme_overrides.css" type="text/css" />
+  <!--[if lt IE 9]>
+    <script src="../../../../_static/js/html5shiv.min.js"></script>
+  <![endif]-->
+  
+        <script src="../../../../_static/jquery.js"></script>
+        <script src="../../../../_static/_sphinx_javascript_frameworks_compat.js"></script>
+        <script data-url_root="../../../../" id="documentation_options" src="../../../../_static/documentation_options.js"></script>
+        <script src="../../../../_static/doctools.js"></script>
+        <script src="../../../../_static/sphinx_highlight.js"></script>
+        <script src="https://unpkg.com/mermaid@10.2.0/dist/mermaid.min.js"></script>
+        <script>mermaid.initialize({startOnLoad:true});</script>
+    <script src="../../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../../index.html" class="icon icon-home">
+            gnomad_qc
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../../api_reference/index.html">API Reference</a></li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/broadinstitute/gnomad_qc/tags">Change Log</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../../index.html">gnomad_qc</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../../index.html">Module code</a></li>
+      <li class="breadcrumb-item active">gnomad_qc.v4.resources.variant_qc</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for gnomad_qc.v4.resources.variant_qc</h1><div class="highlight"><pre>
+<span></span><span class="sd">&quot;&quot;&quot;Script containing variant QC related resources.&quot;&quot;&quot;</span>
+
+<span class="kn">from</span> <span class="nn">typing</span> <span class="kn">import</span> <span class="n">Union</span>
+
+<span class="kn">from</span> <span class="nn">gnomad.resources.grch38</span> <span class="kn">import</span> <span class="p">(</span>
+    <span class="n">na12878_giab</span><span class="p">,</span>
+    <span class="n">na12878_giab_hc_intervals</span><span class="p">,</span>
+    <span class="n">syndip</span><span class="p">,</span>
+    <span class="n">syndip_hc_intervals</span><span class="p">,</span>
+<span class="p">)</span>
+<span class="kn">from</span> <span class="nn">gnomad.resources.resource_utils</span> <span class="kn">import</span> <span class="p">(</span>
+    <span class="n">MatrixTableResource</span><span class="p">,</span>
+    <span class="n">TableResource</span><span class="p">,</span>
+    <span class="n">VersionedMatrixTableResource</span><span class="p">,</span>
+    <span class="n">VersionedTableResource</span><span class="p">,</span>
+<span class="p">)</span>
+
+<span class="kn">from</span> <span class="nn">gnomad_qc.v4.resources.constants</span> <span class="kn">import</span> <span class="p">(</span>
+    <span class="n">CURRENT_VARIANT_QC_RESULT_VERSION</span><span class="p">,</span>
+    <span class="n">CURRENT_VARIANT_QC_VERSION</span><span class="p">,</span>
+    <span class="n">VARIANT_QC_RESULT_VERSIONS</span><span class="p">,</span>
+    <span class="n">VARIANT_QC_VERSIONS</span><span class="p">,</span>
+<span class="p">)</span>
+
+<span class="n">VQSR_FEATURES</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="s2">&quot;exomes&quot;</span><span class="p">:</span> <span class="p">{</span>
+        <span class="s2">&quot;snv&quot;</span><span class="p">:</span> <span class="p">[</span>
+            <span class="s2">&quot;AS_QD&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;AS_MQRankSum&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;AS_ReadPosRankSum&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;AS_FS&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;AS_MQ&quot;</span><span class="p">,</span>
+        <span class="p">],</span>
+        <span class="s2">&quot;indel&quot;</span><span class="p">:</span> <span class="p">[</span>
+            <span class="s2">&quot;AS_QD&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;AS_MQRankSum&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;AS_ReadPosRankSum&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;AS_FS&quot;</span><span class="p">,</span>
+        <span class="p">],</span>
+    <span class="p">},</span>
+    <span class="s2">&quot;genomes&quot;</span><span class="p">:</span> <span class="p">{</span>
+        <span class="s2">&quot;snv&quot;</span><span class="p">:</span> <span class="p">[</span>
+            <span class="s2">&quot;AS_QD&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;AS_MQRankSum&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;AS_ReadPosRankSum&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;AS_FS&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;AS_SOR&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;AS_MQ&quot;</span><span class="p">,</span>
+        <span class="p">],</span>
+        <span class="s2">&quot;indel&quot;</span><span class="p">:</span> <span class="p">[</span>
+            <span class="s2">&quot;AS_QD&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;AS_MQRankSum&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;AS_ReadPosRankSum&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;AS_FS&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;AS_SOR&quot;</span><span class="p">,</span>
+        <span class="p">],</span>
+    <span class="p">},</span>
+<span class="p">}</span>
+<span class="sd">&quot;&quot;&quot;List of features used in the VQSR model.&quot;&quot;&quot;</span>
+
+<span class="n">SYNDIP</span> <span class="o">=</span> <span class="s2">&quot;CHMI_CHMI3_Nex1&quot;</span>
+<span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">String representation for syndip truth sample.</span>
+<span class="sd">&quot;&quot;&quot;</span>
+
+<span class="n">NA12878</span> <span class="o">=</span> <span class="s2">&quot;ASC-4Set-1573S_NA12878@1075619236&quot;</span>
+<span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">String representation for NA12878 truth sample.</span>
+<span class="sd">&quot;&quot;&quot;</span>
+
+<span class="n">UKB_NA12878</span> <span class="o">=</span> <span class="s2">&quot;Coriell_NA12878_NA12878&quot;</span>
+<span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">String representation for the UKB Regeneron generated NA12878 truth sample.</span>
+<span class="sd">&quot;&quot;&quot;</span>
+
+<span class="n">TRUTH_SAMPLES</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="s2">&quot;syndip&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;s&quot;</span><span class="p">:</span> <span class="n">SYNDIP</span><span class="p">,</span> <span class="s2">&quot;truth_mt&quot;</span><span class="p">:</span> <span class="n">syndip</span><span class="p">,</span> <span class="s2">&quot;hc_intervals&quot;</span><span class="p">:</span> <span class="n">syndip_hc_intervals</span><span class="p">},</span>
+    <span class="s2">&quot;NA12878&quot;</span><span class="p">:</span> <span class="p">{</span>
+        <span class="s2">&quot;s&quot;</span><span class="p">:</span> <span class="n">NA12878</span><span class="p">,</span>
+        <span class="s2">&quot;truth_mt&quot;</span><span class="p">:</span> <span class="n">na12878_giab</span><span class="p">,</span>
+        <span class="s2">&quot;hc_intervals&quot;</span><span class="p">:</span> <span class="n">na12878_giab_hc_intervals</span><span class="p">,</span>
+    <span class="p">},</span>
+    <span class="s2">&quot;UKB_NA12878&quot;</span><span class="p">:</span> <span class="p">{</span>
+        <span class="s2">&quot;s&quot;</span><span class="p">:</span> <span class="n">UKB_NA12878</span><span class="p">,</span>
+        <span class="s2">&quot;truth_mt&quot;</span><span class="p">:</span> <span class="n">na12878_giab</span><span class="p">,</span>
+        <span class="s2">&quot;hc_intervals&quot;</span><span class="p">:</span> <span class="n">na12878_giab_hc_intervals</span><span class="p">,</span>
+    <span class="p">},</span>
+<span class="p">}</span>
+<span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">Dictionary containing necessary information for truth samples</span>
+
+<span class="sd">Current truth samples available are syndip and NA12878. Available data for each are the</span>
+<span class="sd">following:</span>
+
+<span class="sd">    - s: Sample name in the callset</span>
+<span class="sd">    - truth_mt: Truth sample MatrixTable resource</span>
+<span class="sd">    - hc_intervals: High confidence interval Table resource in truth sample</span>
+<span class="sd">&quot;&quot;&quot;</span>
+
+
+<span class="k">def</span> <span class="nf">_variant_qc_root</span><span class="p">(</span>
+    <span class="n">version</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="n">CURRENT_VARIANT_QC_VERSION</span><span class="p">,</span>
+    <span class="n">test</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+    <span class="n">data_type</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;exomes&quot;</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Return path to variant QC root folder.</span>
+
+<span class="sd">    :param version: Version of variant QC path to return.</span>
+<span class="sd">    :param test: Whether to use a tmp path for variant QC tests.</span>
+<span class="sd">    :param data_type: Whether to return &#39;exomes&#39; or &#39;genomes&#39; data. Default is exomes.</span>
+<span class="sd">    :return: Root to variant QC path.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">return</span> <span class="p">(</span>
+        <span class="sa">f</span><span class="s2">&quot;gs://gnomad-tmp/gnomad_v</span><span class="si">{</span><span class="n">version</span><span class="si">}</span><span class="s2">_testing/variant_qc/</span><span class="si">{</span><span class="n">data_type</span><span class="si">}</span><span class="s2">&quot;</span>
+        <span class="k">if</span> <span class="n">test</span>
+        <span class="k">else</span> <span class="sa">f</span><span class="s2">&quot;gs://gnomad/v</span><span class="si">{</span><span class="n">version</span><span class="si">}</span><span class="s2">/variant_qc/</span><span class="si">{</span><span class="n">data_type</span><span class="si">}</span><span class="s2">&quot;</span>
+    <span class="p">)</span>
+
+
+<div class="viewcode-block" id="get_callset_truth_data"><a class="viewcode-back" href="../../../../api_reference/v4/resources/variant_qc.html#gnomad_qc.v4.resources.variant_qc.get_callset_truth_data">[docs]</a><span class="k">def</span> <span class="nf">get_callset_truth_data</span><span class="p">(</span>
+    <span class="n">truth_sample</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">mt</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span> <span class="n">test</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Union</span><span class="p">[</span><span class="n">VersionedMatrixTableResource</span><span class="p">,</span> <span class="n">VersionedTableResource</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Get resources for the truth sample data that is subset from the full callset.</span>
+
+<span class="sd">    If `mt` this will return the truth sample MatrixTable (subset from callset);</span>
+<span class="sd">    otherwise it returns the merged truth sample Table that includes both the truth</span>
+<span class="sd">    data and the data from the callset.</span>
+
+<span class="sd">    :param str truth_sample: Name of the truth sample.</span>
+<span class="sd">    :param bool mt: Whether path is for a MatrixTable, default is True.</span>
+<span class="sd">    :param test: Whether to use a tmp path for variant QC tests.</span>
+<span class="sd">    :return: Path to callset truth sample MT.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="n">mt</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">VersionedMatrixTableResource</span><span class="p">(</span>
+            <span class="n">CURRENT_VARIANT_QC_VERSION</span><span class="p">,</span>
+            <span class="p">{</span>
+                <span class="n">version</span><span class="p">:</span> <span class="n">MatrixTableResource</span><span class="p">(</span>
+                    <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">_variant_qc_root</span><span class="p">(</span><span class="n">version</span><span class="p">,</span><span class="w"> </span><span class="n">test</span><span class="o">=</span><span class="n">test</span><span class="p">)</span><span class="si">}</span><span class="s2">/truth_samples/gnomad.exomes.v</span><span class="si">{</span><span class="n">version</span><span class="si">}</span><span class="s2">.</span><span class="si">{</span><span class="n">truth_sample</span><span class="si">}</span><span class="s2">.mt&quot;</span>
+                <span class="p">)</span>
+                <span class="k">for</span> <span class="n">version</span> <span class="ow">in</span> <span class="n">VARIANT_QC_VERSIONS</span>
+            <span class="p">},</span>
+        <span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">VersionedTableResource</span><span class="p">(</span>
+            <span class="n">CURRENT_VARIANT_QC_VERSION</span><span class="p">,</span>
+            <span class="p">{</span>
+                <span class="n">version</span><span class="p">:</span> <span class="n">TableResource</span><span class="p">(</span>
+                    <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">_variant_qc_root</span><span class="p">(</span><span class="n">version</span><span class="p">,</span><span class="w"> </span><span class="n">test</span><span class="o">=</span><span class="n">test</span><span class="p">)</span><span class="si">}</span><span class="s2">/truth_samples/gnomad.exomes.v</span><span class="si">{</span><span class="n">version</span><span class="si">}</span><span class="s2">.</span><span class="si">{</span><span class="n">truth_sample</span><span class="si">}</span><span class="s2">.ht&quot;</span>
+                <span class="p">)</span>
+                <span class="k">for</span> <span class="n">version</span> <span class="ow">in</span> <span class="n">VARIANT_QC_VERSIONS</span>
+            <span class="p">},</span>
+        <span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="get_score_bins"><a class="viewcode-back" href="../../../../api_reference/v4/resources/variant_qc.html#gnomad_qc.v4.resources.variant_qc.get_score_bins">[docs]</a><span class="k">def</span> <span class="nf">get_score_bins</span><span class="p">(</span>
+    <span class="n">model_id</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">aggregated</span><span class="p">:</span> <span class="nb">bool</span><span class="p">,</span> <span class="n">test</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">VersionedTableResource</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Return the path to a Table containing RF or VQSR scores and annotated with a bin based on rank of the metric scores.</span>
+
+<span class="sd">    .. note::</span>
+
+<span class="sd">        These Tables are only available for exomes data. Use the v3 resources for the</span>
+<span class="sd">        genomes data.</span>
+
+<span class="sd">    :param model_id: RF or VQSR model ID for which to return score data.</span>
+<span class="sd">    :param bool aggregated: Whether to get the aggregated data. If True, will return</span>
+<span class="sd">        the path to Table grouped by bin that contains aggregated variant counts per</span>
+<span class="sd">        bin.</span>
+<span class="sd">    :param test: Whether to use a tmp path for variant QC tests.</span>
+<span class="sd">    :return: Path to desired hail Table</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">return</span> <span class="n">VersionedTableResource</span><span class="p">(</span>
+        <span class="n">CURRENT_VARIANT_QC_RESULT_VERSION</span><span class="p">[</span><span class="s2">&quot;exomes&quot;</span><span class="p">],</span>
+        <span class="p">{</span>
+            <span class="n">version</span><span class="p">:</span> <span class="n">TableResource</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">_variant_qc_root</span><span class="p">(</span><span class="n">version</span><span class="p">,</span><span class="w"> </span><span class="n">test</span><span class="o">=</span><span class="n">test</span><span class="p">)</span><span class="si">}</span><span class="s2">/score_bins/gnomad.exomes.v</span><span class="si">{</span><span class="n">version</span><span class="si">}</span><span class="s2">.</span><span class="si">{</span><span class="n">model_id</span><span class="si">}</span><span class="s2">.</span><span class="si">{</span><span class="s1">&#39;aggregated&#39;</span><span class="w"> </span><span class="k">if</span><span class="w"> </span><span class="n">aggregated</span><span class="w"> </span><span class="k">else</span><span class="w"> </span><span class="s1">&#39;bins&#39;</span><span class="si">}</span><span class="s2">.ht&quot;</span>
+            <span class="p">)</span>
+            <span class="k">for</span> <span class="n">version</span> <span class="ow">in</span> <span class="n">VARIANT_QC_RESULT_VERSIONS</span><span class="p">[</span><span class="s2">&quot;exomes&quot;</span><span class="p">]</span>
+        <span class="p">},</span>
+    <span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="get_binned_concordance"><a class="viewcode-back" href="../../../../api_reference/v4/resources/variant_qc.html#gnomad_qc.v4.resources.variant_qc.get_binned_concordance">[docs]</a><span class="k">def</span> <span class="nf">get_binned_concordance</span><span class="p">(</span>
+    <span class="n">model_id</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">truth_sample</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">test</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">VersionedTableResource</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Return the path to a truth sample concordance Table.</span>
+
+<span class="sd">    .. note::</span>
+
+<span class="sd">        These Tables are only available for exomes data. Use the v3 resources for the</span>
+<span class="sd">        genomes data.</span>
+
+<span class="sd">    This Table contains concordance information (TP, FP, FN) between a truth sample</span>
+<span class="sd">    within the callset and the sample&#39;s truth data, grouped by bins of a metric (RF or</span>
+<span class="sd">    VQSR scores).</span>
+
+<span class="sd">    :param model_id: RF or VQSR model ID for which to return score data.</span>
+<span class="sd">    :param truth_sample: Which truth sample concordance to analyze (e.g., &quot;NA12878&quot; or</span>
+<span class="sd">        &quot;syndip&quot;).</span>
+<span class="sd">    :param test: Whether to use a tmp path for variant QC tests.</span>
+<span class="sd">    :return: Path to binned truth data concordance Hail Table.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">return</span> <span class="n">VersionedTableResource</span><span class="p">(</span>
+        <span class="n">CURRENT_VARIANT_QC_RESULT_VERSION</span><span class="p">[</span><span class="s2">&quot;exomes&quot;</span><span class="p">],</span>
+        <span class="p">{</span>
+            <span class="n">version</span><span class="p">:</span> <span class="n">TableResource</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">_variant_qc_root</span><span class="p">(</span><span class="n">version</span><span class="p">,</span><span class="w"> </span><span class="n">test</span><span class="o">=</span><span class="n">test</span><span class="p">)</span><span class="si">}</span><span class="s2">/binned_concordance/gnomad.exomes.v</span><span class="si">{</span><span class="n">version</span><span class="si">}</span><span class="s2">.</span><span class="si">{</span><span class="n">truth_sample</span><span class="si">}</span><span class="s2">.</span><span class="si">{</span><span class="n">model_id</span><span class="si">}</span><span class="s2">.binned_concordance.ht&quot;</span>
+            <span class="p">)</span>
+            <span class="k">for</span> <span class="n">version</span> <span class="ow">in</span> <span class="n">VARIANT_QC_RESULT_VERSIONS</span><span class="p">[</span><span class="s2">&quot;exomes&quot;</span><span class="p">]</span>
+        <span class="p">},</span>
+    <span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="get_rf_run_path"><a class="viewcode-back" href="../../../../api_reference/v4/resources/variant_qc.html#gnomad_qc.v4.resources.variant_qc.get_rf_run_path">[docs]</a><span class="k">def</span> <span class="nf">get_rf_run_path</span><span class="p">(</span>
+    <span class="n">version</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="n">CURRENT_VARIANT_QC_VERSION</span><span class="p">,</span> <span class="n">test</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Return the path to the json file containing the RF runs list.</span>
+
+<span class="sd">    :param version: Version of RF path to return.</span>
+<span class="sd">    :param test: Whether to return the test RF runs list.</span>
+<span class="sd">    :return: Path to json file.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">return</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">_variant_qc_root</span><span class="p">(</span><span class="n">version</span><span class="p">,</span><span class="w"> </span><span class="n">test</span><span class="o">=</span><span class="n">test</span><span class="p">)</span><span class="si">}</span><span class="s2">/rf/gnomad.exomes.v</span><span class="si">{</span><span class="n">version</span><span class="si">}</span><span class="s2">.rf_runs.json&quot;</span></div>
+
+
+<div class="viewcode-block" id="get_rf_model_path"><a class="viewcode-back" href="../../../../api_reference/v4/resources/variant_qc.html#gnomad_qc.v4.resources.variant_qc.get_rf_model_path">[docs]</a><span class="k">def</span> <span class="nf">get_rf_model_path</span><span class="p">(</span>
+    <span class="n">model_id</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">version</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="n">CURRENT_VARIANT_QC_VERSION</span><span class="p">,</span> <span class="n">test</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Get the path to the RF model for a given run.</span>
+
+<span class="sd">    :param model_id: RF run to load.</span>
+<span class="sd">    :param version: Version of model path to return.</span>
+<span class="sd">    :param test: Whether to use a tmp path for variant QC tests.</span>
+<span class="sd">    :return: Path to the RF model.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">return</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">_variant_qc_root</span><span class="p">(</span><span class="n">version</span><span class="p">,</span><span class="w"> </span><span class="n">test</span><span class="o">=</span><span class="n">test</span><span class="p">)</span><span class="si">}</span><span class="s2">/rf/models/</span><span class="si">{</span><span class="n">model_id</span><span class="si">}</span><span class="s2">/gnomad.exomes.v</span><span class="si">{</span><span class="n">version</span><span class="si">}</span><span class="s2">.rf.model&quot;</span></div>
+
+
+<div class="viewcode-block" id="get_rf_training"><a class="viewcode-back" href="../../../../api_reference/v4/resources/variant_qc.html#gnomad_qc.v4.resources.variant_qc.get_rf_training">[docs]</a><span class="k">def</span> <span class="nf">get_rf_training</span><span class="p">(</span><span class="n">model_id</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">test</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">VersionedTableResource</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Get the training data for a given run.</span>
+
+<span class="sd">    :param model_id: RF run to load.</span>
+<span class="sd">    :param test: Whether to use a tmp path for variant QC tests.</span>
+<span class="sd">    :return: VersionedTableResource for RF training data.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">return</span> <span class="n">VersionedTableResource</span><span class="p">(</span>
+        <span class="n">CURRENT_VARIANT_QC_VERSION</span><span class="p">,</span>
+        <span class="p">{</span>
+            <span class="n">version</span><span class="p">:</span> <span class="n">TableResource</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">_variant_qc_root</span><span class="p">(</span><span class="n">version</span><span class="p">,</span><span class="w"> </span><span class="n">test</span><span class="o">=</span><span class="n">test</span><span class="p">)</span><span class="si">}</span><span class="s2">/rf/models/</span><span class="si">{</span><span class="n">model_id</span><span class="si">}</span><span class="s2">/gnomad.exomes.v</span><span class="si">{</span><span class="n">version</span><span class="si">}</span><span class="s2">.training.ht&quot;</span>
+            <span class="p">)</span>
+            <span class="k">for</span> <span class="n">version</span> <span class="ow">in</span> <span class="n">VARIANT_QC_VERSIONS</span>
+        <span class="p">},</span>
+    <span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="get_variant_qc_result"><a class="viewcode-back" href="../../../../api_reference/v4/resources/variant_qc.html#gnomad_qc.v4.resources.variant_qc.get_variant_qc_result">[docs]</a><span class="k">def</span> <span class="nf">get_variant_qc_result</span><span class="p">(</span>
+    <span class="n">model_id</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">test</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span> <span class="n">split</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">VersionedTableResource</span><span class="p">:</span>
+<span class="w">    </span><span class="sa">r</span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Get the results of variant QC filtering for a given run.</span>
+
+<span class="sd">    .. note::</span>
+
+<span class="sd">        These Tables are only available for exomes data. Use the v3 resources for the</span>
+<span class="sd">        genomes data.</span>
+
+<span class="sd">    :param model_id: Model ID of variant QC run to load. Must start with &#39;rf\_&#39;,</span>
+<span class="sd">        &#39;vqsr\_&#39;, or &#39;if\_&#39;.</span>
+<span class="sd">    :param test: Whether to use a tmp path for variant QC tests.</span>
+<span class="sd">    :param split: Whether to return the split or unsplit variant QC result.</span>
+<span class="sd">    :return: VersionedTableResource for variant QC results.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">model_type</span> <span class="o">=</span> <span class="n">model_id</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s2">&quot;_&quot;</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span>
+    <span class="k">if</span> <span class="n">model_type</span> <span class="ow">not</span> <span class="ow">in</span> <span class="p">[</span><span class="s2">&quot;rf&quot;</span><span class="p">,</span> <span class="s2">&quot;vqsr&quot;</span><span class="p">,</span> <span class="s2">&quot;if&quot;</span><span class="p">]:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+            <span class="sa">f</span><span class="s2">&quot;Model ID must start with &#39;rf_&#39;, &#39;vqsr_&#39;, or &#39;if_&#39;, but found </span><span class="si">{</span><span class="n">model_id</span><span class="si">}</span><span class="s2">&quot;</span>
+        <span class="p">)</span>
+    <span class="k">return</span> <span class="n">VersionedTableResource</span><span class="p">(</span>
+        <span class="n">CURRENT_VARIANT_QC_RESULT_VERSION</span><span class="p">[</span><span class="s2">&quot;exomes&quot;</span><span class="p">],</span>
+        <span class="p">{</span>
+            <span class="n">version</span><span class="p">:</span> <span class="n">TableResource</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">_variant_qc_root</span><span class="p">(</span><span class="n">version</span><span class="p">,</span><span class="w"> </span><span class="n">test</span><span class="o">=</span><span class="n">test</span><span class="p">)</span><span class="si">}</span><span class="s2">/</span><span class="si">{</span><span class="n">model_type</span><span class="si">}</span><span class="s2">/models/</span><span class="si">{</span><span class="n">model_id</span><span class="si">}</span><span class="s2">/gnomad.exomes.v</span><span class="si">{</span><span class="n">version</span><span class="si">}</span><span class="s2">.</span><span class="si">{</span><span class="n">model_type</span><span class="si">}</span><span class="s2">_result</span><span class="si">{</span><span class="s1">&#39;&#39;</span><span class="w"> </span><span class="k">if</span><span class="w"> </span><span class="n">split</span><span class="w"> </span><span class="k">else</span><span class="w"> </span><span class="s1">&#39;.unsplit&#39;</span><span class="si">}</span><span class="s2">.ht&quot;</span>
+            <span class="p">)</span>
+            <span class="k">for</span> <span class="n">version</span> <span class="ow">in</span> <span class="n">VARIANT_QC_RESULT_VERSIONS</span><span class="p">[</span><span class="s2">&quot;exomes&quot;</span><span class="p">]</span>
+        <span class="p">},</span>
+    <span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="final_filter"><a class="viewcode-back" href="../../../../api_reference/v4/resources/variant_qc.html#gnomad_qc.v4.resources.variant_qc.final_filter">[docs]</a><span class="k">def</span> <span class="nf">final_filter</span><span class="p">(</span>
+    <span class="n">data_type</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;exomes&quot;</span><span class="p">,</span>
+    <span class="n">all_variants</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+    <span class="n">only_filters</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+    <span class="n">test</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">VersionedTableResource</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Get finalized variant QC filtering Table.</span>
+
+<span class="sd">    :param data_type: Whether to return &#39;exomes&#39; or &#39;genomes&#39; data. Default is exomes.</span>
+<span class="sd">    :param all_variants: Whether to return the Table with all variants. Default is</span>
+<span class="sd">        False.</span>
+<span class="sd">    :param only_filters: Whether to return the Table with only the &#39;filters&#39; field.</span>
+<span class="sd">        Default is False.</span>
+<span class="sd">    :param test: Whether to use a tmp path for variant QC tests. Default is False.</span>
+<span class="sd">    :return: VersionedTableResource for final variant QC data.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">suffix</span> <span class="o">=</span> <span class="p">(</span>
+        <span class="sa">f</span><span class="s2">&quot;.final_filter</span><span class="si">{</span><span class="s1">&#39;.all_variants&#39;</span><span class="w"> </span><span class="k">if</span><span class="w"> </span><span class="n">all_variants</span><span class="w"> </span><span class="k">else</span><span class="w"> </span><span class="s1">&#39;&#39;</span><span class="si">}</span><span class="s2">&quot;</span>
+        <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="s1">&#39;.only_filters&#39;</span><span class="w"> </span><span class="k">if</span><span class="w"> </span><span class="n">only_filters</span><span class="w"> </span><span class="k">else</span><span class="w"> </span><span class="s1">&#39;&#39;</span><span class="si">}</span><span class="s2">&quot;</span>
+    <span class="p">)</span>
+    <span class="k">return</span> <span class="n">VersionedTableResource</span><span class="p">(</span>
+        <span class="n">CURRENT_VARIANT_QC_RESULT_VERSION</span><span class="p">[</span><span class="n">data_type</span><span class="p">],</span>
+        <span class="p">{</span>
+            <span class="n">version</span><span class="p">:</span> <span class="n">TableResource</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">_variant_qc_root</span><span class="p">(</span><span class="n">version</span><span class="p">,</span><span class="w"> </span><span class="n">test</span><span class="o">=</span><span class="n">test</span><span class="p">,</span><span class="w"> </span><span class="n">data_type</span><span class="o">=</span><span class="n">data_type</span><span class="p">)</span><span class="si">}</span><span class="s2">/gnomad.</span><span class="si">{</span><span class="n">data_type</span><span class="si">}</span><span class="s2">.v</span><span class="si">{</span><span class="n">version</span><span class="si">}{</span><span class="n">suffix</span><span class="si">}</span><span class="s2">.ht&quot;</span>
+            <span class="p">)</span>
+            <span class="k">for</span> <span class="n">version</span> <span class="ow">in</span> <span class="n">VARIANT_QC_RESULT_VERSIONS</span><span class="p">[</span><span class="n">data_type</span><span class="p">]</span>
+        <span class="p">},</span>
+    <span class="p">)</span></div>
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p></p>
+  </div>
+
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

@@ -1,0 +1,21 @@
+gnomad_qc.v4.sample_qc.outlier_filtering
+========================================
+
+Script to determine sample QC metric outliers that should be filtered.
+
+
+
+
+.. argparse::
+   :ref: gnomad_qc.v4.sample_qc.outlier_filtering.get_script_argument_parser
+   :prog: gnomad_qc.v4.sample_qc.outlier_filtering.py
+
+
+
+Module Functions
+****************
+
+.. gnomad_automodulesummary:: gnomad_qc.v4.sample_qc.outlier_filtering
+
+.. automodule:: gnomad_qc.v4.sample_qc.outlier_filtering
+    :exclude-members: get_script_argument_parser

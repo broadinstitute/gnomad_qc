@@ -1,0 +1,1520 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>gnomad_qc.v4.sample_qc.sex_inference &mdash; gnomad_qc master documentation</title>
+      <link rel="stylesheet" href="../../../../_static/pygments.css" type="text/css" />
+      <link rel="stylesheet" href="../../../../_static/css/theme.css" type="text/css" />
+      <link rel="stylesheet" href="../../../../_static/theme_overrides.css" type="text/css" />
+  <!--[if lt IE 9]>
+    <script src="../../../../_static/js/html5shiv.min.js"></script>
+  <![endif]-->
+  
+        <script src="../../../../_static/jquery.js"></script>
+        <script src="../../../../_static/_sphinx_javascript_frameworks_compat.js"></script>
+        <script data-url_root="../../../../" id="documentation_options" src="../../../../_static/documentation_options.js"></script>
+        <script src="../../../../_static/doctools.js"></script>
+        <script src="../../../../_static/sphinx_highlight.js"></script>
+        <script src="https://unpkg.com/mermaid@10.2.0/dist/mermaid.min.js"></script>
+        <script>mermaid.initialize({startOnLoad:true});</script>
+    <script src="../../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../../index.html" class="icon icon-home">
+            gnomad_qc
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../../api_reference/index.html">API Reference</a></li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/broadinstitute/gnomad_qc/tags">Change Log</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../../index.html">gnomad_qc</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../../index.html">Module code</a></li>
+      <li class="breadcrumb-item active">gnomad_qc.v4.sample_qc.sex_inference</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for gnomad_qc.v4.sample_qc.sex_inference</h1><div class="highlight"><pre>
+<span></span><span class="sd">&quot;&quot;&quot;Script to impute chromosomal sex karyotype annotation.&quot;&quot;&quot;</span>
+
+<span class="kn">import</span> <span class="nn">argparse</span>
+<span class="kn">import</span> <span class="nn">json</span>
+<span class="kn">import</span> <span class="nn">logging</span>
+<span class="kn">from</span> <span class="nn">typing</span> <span class="kn">import</span> <span class="n">Dict</span><span class="p">,</span> <span class="n">Optional</span><span class="p">,</span> <span class="n">Tuple</span><span class="p">,</span> <span class="n">Union</span>
+
+<span class="kn">import</span> <span class="nn">hail</span> <span class="k">as</span> <span class="nn">hl</span>
+<span class="kn">from</span> <span class="nn">gnomad.resources.resource_utils</span> <span class="kn">import</span> <span class="n">DataException</span>
+<span class="kn">from</span> <span class="nn">gnomad.sample_qc.pipeline</span> <span class="kn">import</span> <span class="n">annotate_sex</span><span class="p">,</span> <span class="n">infer_sex_karyotype</span>
+<span class="kn">from</span> <span class="nn">gnomad.sample_qc.sex</span> <span class="kn">import</span> <span class="n">get_sex_expr</span>
+<span class="kn">from</span> <span class="nn">gnomad.utils.file_utils</span> <span class="kn">import</span> <span class="n">file_exists</span>
+<span class="kn">from</span> <span class="nn">gnomad.utils.slack</span> <span class="kn">import</span> <span class="n">slack_notifications</span>
+
+<span class="kn">from</span> <span class="nn">gnomad_qc.slack_creds</span> <span class="kn">import</span> <span class="n">slack_token</span>
+<span class="kn">from</span> <span class="nn">gnomad_qc.v4.resources.basics</span> <span class="kn">import</span> <span class="p">(</span>
+    <span class="n">get_checkpoint_path</span><span class="p">,</span>
+    <span class="n">get_gnomad_v4_vds</span><span class="p">,</span>
+    <span class="n">get_logging_path</span><span class="p">,</span>
+    <span class="n">ukb_f_stat</span><span class="p">,</span>
+<span class="p">)</span>
+<span class="kn">from</span> <span class="nn">gnomad_qc.v4.resources.sample_qc</span> <span class="kn">import</span> <span class="p">(</span>
+    <span class="n">f_stat_sites</span><span class="p">,</span>
+    <span class="n">get_ploidy_cutoff_json_path</span><span class="p">,</span>
+    <span class="n">hard_filtered_samples_no_sex</span><span class="p">,</span>
+    <span class="n">interval_coverage</span><span class="p">,</span>
+    <span class="n">platform</span><span class="p">,</span>
+    <span class="n">ploidy</span><span class="p">,</span>
+    <span class="n">sex</span><span class="p">,</span>
+    <span class="n">sex_chr_coverage</span><span class="p">,</span>
+    <span class="n">sex_imputation_interval_qc</span><span class="p">,</span>
+<span class="p">)</span>
+<span class="kn">from</span> <span class="nn">gnomad_qc.v4.sample_qc.interval_qc</span> <span class="kn">import</span> <span class="p">(</span>
+    <span class="n">compute_interval_qc</span><span class="p">,</span>
+    <span class="n">get_high_qual_cutoff_dict</span><span class="p">,</span>
+    <span class="n">get_interval_qc_pass</span><span class="p">,</span>
+<span class="p">)</span>
+
+<span class="n">logging</span><span class="o">.</span><span class="n">basicConfig</span><span class="p">(</span><span class="nb">format</span><span class="o">=</span><span class="s2">&quot;</span><span class="si">%(levelname)s</span><span class="s2"> (</span><span class="si">%(name)s</span><span class="s2"> </span><span class="si">%(lineno)s</span><span class="s2">): </span><span class="si">%(message)s</span><span class="s2">&quot;</span><span class="p">)</span>
+<span class="n">logger</span> <span class="o">=</span> <span class="n">logging</span><span class="o">.</span><span class="n">getLogger</span><span class="p">(</span><span class="s2">&quot;sex_inference&quot;</span><span class="p">)</span>
+<span class="n">logger</span><span class="o">.</span><span class="n">setLevel</span><span class="p">(</span><span class="n">logging</span><span class="o">.</span><span class="n">INFO</span><span class="p">)</span>
+
+
+<div class="viewcode-block" id="determine_fstat_sites"><a class="viewcode-back" href="../../../../api_reference/v4/sample_qc/sex_inference.html#gnomad_qc.v4.sample_qc.sex_inference.determine_fstat_sites">[docs]</a><span class="k">def</span> <span class="nf">determine_fstat_sites</span><span class="p">(</span>
+    <span class="n">vds</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">vds</span><span class="o">.</span><span class="n">VariantDataset</span><span class="p">,</span>
+    <span class="n">approx_af_and_no_callrate</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+    <span class="n">min_af</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">0.001</span><span class="p">,</span>
+    <span class="n">min_callrate</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">0.99</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Write a Table with chromosome X SNPs that are bi-allelic, common, and high callrate by default.</span>
+
+<span class="sd">    This Table is designed to be used as a variant filter in sex imputation for f-stat</span>
+<span class="sd">    computation.</span>
+
+<span class="sd">    .. warning::</span>
+
+<span class="sd">        By default `approx_af_and_no_callrate` is False and the final Table will be</span>
+<span class="sd">        filtered to high callrate (&gt; value specified by `min_callrate`) variants. This</span>
+<span class="sd">        requires a densify of chrX!&quot;</span>
+
+<span class="sd">    .. note::</span>
+
+<span class="sd">        If `approx_af_and_no_callrate` is True, allele frequency is approximated with</span>
+<span class="sd">        AC/(n_samples * 2) and no callrate filter is used.</span>
+
+<span class="sd">    :param vds: Input VariantDataset.</span>
+<span class="sd">    :param approx_af_and_no_callrate: Whether to approximate allele frequency with</span>
+<span class="sd">        AC/(n_samples * 2) and use no callrate cutoff to filter sites.</span>
+<span class="sd">    :param min_af: Minimum alternate allele frequency cutoff used to filter sites.</span>
+<span class="sd">    :param min_callrate: Minimum callrate cutoff used to filter sites.</span>
+<span class="sd">    :return: Table of chromosome X sites to be used for f-stat computation.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">vds</span> <span class="o">=</span> <span class="n">hl</span><span class="o">.</span><span class="n">vds</span><span class="o">.</span><span class="n">filter_chromosomes</span><span class="p">(</span><span class="n">vds</span><span class="p">,</span> <span class="n">keep</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;chrX&quot;</span><span class="p">])</span>
+    <span class="n">vd</span> <span class="o">=</span> <span class="n">vds</span><span class="o">.</span><span class="n">variant_data</span>
+    <span class="n">vd</span> <span class="o">=</span> <span class="n">vd</span><span class="o">.</span><span class="n">filter_rows</span><span class="p">(</span>
+        <span class="p">(</span><span class="n">hl</span><span class="o">.</span><span class="n">len</span><span class="p">(</span><span class="n">vd</span><span class="o">.</span><span class="n">alleles</span><span class="p">)</span> <span class="o">==</span> <span class="mi">2</span><span class="p">)</span> <span class="o">&amp;</span> <span class="n">hl</span><span class="o">.</span><span class="n">is_snp</span><span class="p">(</span><span class="n">vd</span><span class="o">.</span><span class="n">alleles</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">vd</span><span class="o">.</span><span class="n">alleles</span><span class="p">[</span><span class="mi">1</span><span class="p">])</span>
+    <span class="p">)</span>
+    <span class="n">vd</span> <span class="o">=</span> <span class="n">vd</span><span class="o">.</span><span class="n">transmute_entries</span><span class="p">(</span><span class="n">GT</span><span class="o">=</span><span class="n">hl</span><span class="o">.</span><span class="n">vds</span><span class="o">.</span><span class="n">lgt_to_gt</span><span class="p">(</span><span class="n">vd</span><span class="o">.</span><span class="n">LGT</span><span class="p">,</span> <span class="n">vd</span><span class="o">.</span><span class="n">LA</span><span class="p">))</span>
+
+    <span class="k">if</span> <span class="n">approx_af_and_no_callrate</span><span class="p">:</span>
+        <span class="n">n_samples</span> <span class="o">=</span> <span class="n">vd</span><span class="o">.</span><span class="n">count_cols</span><span class="p">()</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Number of samples: </span><span class="si">%d</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">n_samples</span><span class="p">)</span>
+        <span class="n">ht</span> <span class="o">=</span> <span class="n">vd</span><span class="o">.</span><span class="n">select_rows</span><span class="p">(</span>
+            <span class="n">AF</span><span class="o">=</span><span class="n">hl</span><span class="o">.</span><span class="n">agg</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">vd</span><span class="o">.</span><span class="n">GT</span><span class="o">.</span><span class="n">n_alt_alleles</span><span class="p">())</span> <span class="o">/</span> <span class="p">(</span><span class="n">n_samples</span> <span class="o">*</span> <span class="mi">2</span><span class="p">),</span>
+        <span class="p">)</span><span class="o">.</span><span class="n">rows</span><span class="p">()</span>
+        <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">ht</span><span class="o">.</span><span class="n">AF</span> <span class="o">&gt;</span> <span class="n">min_af</span><span class="p">)</span>
+        <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">annotate_globals</span><span class="p">(</span>
+            <span class="n">min_approx_af</span><span class="o">=</span><span class="n">min_af</span><span class="p">,</span>
+        <span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">mt</span> <span class="o">=</span> <span class="n">hl</span><span class="o">.</span><span class="n">vds</span><span class="o">.</span><span class="n">to_dense_mt</span><span class="p">(</span><span class="n">hl</span><span class="o">.</span><span class="n">vds</span><span class="o">.</span><span class="n">VariantDataset</span><span class="p">(</span><span class="n">vds</span><span class="o">.</span><span class="n">reference_data</span><span class="p">,</span> <span class="n">vd</span><span class="p">))</span>
+        <span class="n">ht</span> <span class="o">=</span> <span class="n">hl</span><span class="o">.</span><span class="n">variant_qc</span><span class="p">(</span><span class="n">mt</span><span class="p">)</span><span class="o">.</span><span class="n">rows</span><span class="p">()</span>
+        <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span>
+            <span class="p">(</span><span class="n">ht</span><span class="o">.</span><span class="n">variant_qc</span><span class="o">.</span><span class="n">call_rate</span> <span class="o">&gt;</span> <span class="n">min_callrate</span><span class="p">)</span> <span class="o">&amp;</span> <span class="p">(</span><span class="n">ht</span><span class="o">.</span><span class="n">variant_qc</span><span class="o">.</span><span class="n">AF</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">&gt;</span> <span class="n">min_af</span><span class="p">)</span>
+        <span class="p">)</span>
+        <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">annotate</span><span class="p">(</span><span class="n">AF</span><span class="o">=</span><span class="n">ht</span><span class="o">.</span><span class="n">variant_qc</span><span class="o">.</span><span class="n">AF</span><span class="p">[</span><span class="mi">1</span><span class="p">])</span>
+        <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">annotate_globals</span><span class="p">(</span>
+            <span class="n">min_af</span><span class="o">=</span><span class="n">min_af</span><span class="p">,</span>
+            <span class="n">min_callrate</span><span class="o">=</span><span class="n">min_callrate</span><span class="p">,</span>
+        <span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">ht</span></div>
+
+
+<div class="viewcode-block" id="load_platform_ht"><a class="viewcode-back" href="../../../../api_reference/v4/sample_qc/sex_inference.html#gnomad_qc.v4.sample_qc.sex_inference.load_platform_ht">[docs]</a><span class="k">def</span> <span class="nf">load_platform_ht</span><span class="p">(</span>
+    <span class="n">test</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+    <span class="n">calling_interval_name</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;intersection&quot;</span><span class="p">,</span>
+    <span class="n">calling_interval_padding</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">50</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Load platform assignment Table or test Table and return an error if requested Table does not exist.</span>
+
+<span class="sd">    .. note::</span>
+
+<span class="sd">        If `test` is True and the test platform assignment Table does not exist, the</span>
+<span class="sd">        function will load the final platform assignment Table instead if it already</span>
+<span class="sd">        exists.</span>
+
+<span class="sd">    :param test: Whether a test platform assignment Table should be loaded.</span>
+<span class="sd">    :param calling_interval_name: Name of calling intervals to use for interval</span>
+<span class="sd">        coverage. One of: &#39;ukb&#39;, &#39;broad&#39;, or &#39;intersection&#39;. Only used if `test` is</span>
+<span class="sd">        True.</span>
+<span class="sd">    :param calling_interval_padding: Number of base pair padding to use on the calling</span>
+<span class="sd">        intervals. One of 0 or 50 bp. Only used if `test` is True.</span>
+<span class="sd">    :return: Platform assignment Table.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Loading platform information...&quot;</span><span class="p">)</span>
+    <span class="n">test_platform_path</span> <span class="o">=</span> <span class="n">get_checkpoint_path</span><span class="p">(</span>
+        <span class="sa">f</span><span class="s2">&quot;test_platform_assignment.</span><span class="si">{</span><span class="n">calling_interval_name</span><span class="si">}</span><span class="s2">.pad</span><span class="si">{</span><span class="n">calling_interval_padding</span><span class="si">}</span><span class="s2">&quot;</span>
+    <span class="p">)</span>
+    <span class="k">if</span> <span class="n">test</span> <span class="ow">and</span> <span class="n">file_exists</span><span class="p">(</span><span class="n">test_platform_path</span><span class="p">):</span>
+        <span class="n">ht</span> <span class="o">=</span> <span class="n">hl</span><span class="o">.</span><span class="n">read_table</span><span class="p">(</span><span class="n">test_platform_path</span><span class="p">)</span>
+    <span class="k">elif</span> <span class="n">file_exists</span><span class="p">(</span><span class="n">platform</span><span class="o">.</span><span class="n">path</span><span class="p">):</span>
+        <span class="n">ht</span> <span class="o">=</span> <span class="n">platform</span><span class="o">.</span><span class="n">ht</span><span class="p">()</span>
+        <span class="k">if</span> <span class="n">test</span><span class="p">:</span>
+            <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span>
+                <span class="s2">&quot;Test platform file does not exist for calling interval </span><span class="si">%s</span><span class="s2"> and interval&quot;</span>
+                <span class="s2">&quot; padding </span><span class="si">%s</span><span class="s2">, using final platform assignment Table instead. To use a&quot;</span>
+                <span class="s2">&quot; test platform assignment please run platform_inference.py&quot;</span>
+                <span class="s2">&quot; --assign-platforms with the --test argument and needed&quot;</span>
+                <span class="s2">&quot; --calling-interval-name/--calling-interval-padding arguments.&quot;</span><span class="p">,</span>
+                <span class="n">calling_interval_name</span><span class="p">,</span>
+                <span class="n">calling_interval_padding</span><span class="p">,</span>
+            <span class="p">)</span>
+    <span class="k">elif</span> <span class="n">test</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">FileNotFoundError</span><span class="p">(</span>
+            <span class="s2">&quot;There is no test platform assignment Table written for calling interval&quot;</span>
+            <span class="sa">f</span><span class="s2">&quot; </span><span class="si">{</span><span class="n">calling_interval_name</span><span class="si">}</span><span class="s2"> and interval padding&quot;</span>
+            <span class="sa">f</span><span class="s2">&quot; </span><span class="si">{</span><span class="n">calling_interval_padding</span><span class="si">}</span><span class="s2"> and a final platform assignment Table does&quot;</span>
+            <span class="s2">&quot; not exist. Please run platform_inference.py --assign-platforms with the&quot;</span>
+            <span class="s2">&quot; --test argument and needed&quot;</span>
+            <span class="s2">&quot; --calling-interval-name/--calling-interval-padding arguments.&quot;</span>
+        <span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">FileNotFoundError</span><span class="p">(</span>
+            <span class="sa">f</span><span class="s2">&quot;There is no final platform assignment Table written. Please run:&quot;</span>
+            <span class="sa">f</span><span class="s2">&quot; platform_inference.py --assign-platforms to compute the platform&quot;</span>
+            <span class="sa">f</span><span class="s2">&quot; assignment Table.&quot;</span>
+        <span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">ht</span></div>
+
+
+<div class="viewcode-block" id="prepare_sex_imputation_coverage_mt"><a class="viewcode-back" href="../../../../api_reference/v4/sample_qc/sex_inference.html#gnomad_qc.v4.sample_qc.sex_inference.prepare_sex_imputation_coverage_mt">[docs]</a><span class="k">def</span> <span class="nf">prepare_sex_imputation_coverage_mt</span><span class="p">(</span>
+    <span class="n">normalization_contig</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;chr20&quot;</span><span class="p">,</span>
+    <span class="n">test</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+    <span class="n">read_if_exists</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">hl</span><span class="o">.</span><span class="n">MatrixTable</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Prepare the sex imputation coverage MT.</span>
+
+<span class="sd">    Filter the full interval coverage MatrixTable to the specified normalization contig</span>
+<span class="sd">    and hard filtered samples (before sex hard filter) and union it with the sex</span>
+<span class="sd">    coverage MatrixTable after excluding intervals that overlap PAR regions.</span>
+
+<span class="sd">    :param normalization_contig: Which autosomal chromosome to use for normalizing the</span>
+<span class="sd">        coverage of chromosomes X and Y. Default is &#39;chr20&#39;.</span>
+<span class="sd">    :param test: Whether to use gnomAD v4 test dataset. Default is False.</span>
+<span class="sd">    :param read_if_exists: Whether to use the sex imputation coverage MT if it already</span>
+<span class="sd">        exists rather than remaking this intermediate temporary file. Default is False.</span>
+<span class="sd">    :return: Interval coverage MatrixTable for sex imputation.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span>
+        <span class="s2">&quot;Loading the full interval coverage MT and filtering to the desired&quot;</span>
+        <span class="s2">&quot; normalization contig...&quot;</span>
+    <span class="p">)</span>
+    <span class="n">coverage_mt</span> <span class="o">=</span> <span class="n">interval_coverage</span><span class="o">.</span><span class="n">mt</span><span class="p">()</span>
+    <span class="n">coverage_mt</span> <span class="o">=</span> <span class="n">coverage_mt</span><span class="o">.</span><span class="n">filter_rows</span><span class="p">(</span>
+        <span class="n">coverage_mt</span><span class="o">.</span><span class="n">interval</span><span class="o">.</span><span class="n">start</span><span class="o">.</span><span class="n">contig</span> <span class="o">==</span> <span class="n">normalization_contig</span>
+    <span class="p">)</span>
+
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Removing hard-filtered samples from the full interval coverage MT...&quot;</span><span class="p">)</span>
+    <span class="n">coverage_mt</span> <span class="o">=</span> <span class="n">coverage_mt</span><span class="o">.</span><span class="n">filter_cols</span><span class="p">(</span>
+        <span class="n">hl</span><span class="o">.</span><span class="n">is_missing</span><span class="p">(</span><span class="n">hard_filtered_samples_no_sex</span><span class="o">.</span><span class="n">ht</span><span class="p">()[</span><span class="n">coverage_mt</span><span class="o">.</span><span class="n">col_key</span><span class="p">])</span>
+    <span class="p">)</span>
+    <span class="k">if</span> <span class="n">test</span><span class="p">:</span>
+        <span class="n">sex_coverage_mt</span> <span class="o">=</span> <span class="n">hl</span><span class="o">.</span><span class="n">read_matrix_table</span><span class="p">(</span>
+            <span class="n">get_checkpoint_path</span><span class="p">(</span><span class="s2">&quot;test_sex_imputation_cov&quot;</span><span class="p">,</span> <span class="n">mt</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+        <span class="p">)</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span>
+            <span class="s2">&quot;Filtering to columns in both the coverage MT and the sex coverage MT for&quot;</span>
+            <span class="s2">&quot; testing...&quot;</span><span class="p">,</span>
+        <span class="p">)</span>
+        <span class="n">coverage_mt</span> <span class="o">=</span> <span class="n">coverage_mt</span><span class="o">.</span><span class="n">semi_join_cols</span><span class="p">(</span><span class="n">sex_coverage_mt</span><span class="o">.</span><span class="n">cols</span><span class="p">())</span>
+        <span class="n">sex_coverage_mt</span> <span class="o">=</span> <span class="n">sex_coverage_mt</span><span class="o">.</span><span class="n">semi_join_cols</span><span class="p">(</span><span class="n">coverage_mt</span><span class="o">.</span><span class="n">cols</span><span class="p">())</span>
+
+        <span class="c1"># The test sex HT columns are in a different order than the full cov MT because</span>
+        <span class="c1"># of a different loading order.</span>
+        <span class="c1"># This will reorder the sex test HT for the row_union, but doesn&#39;t need to</span>
+        <span class="c1"># be done on the full dataset run.</span>
+        <span class="n">sex_coverage_mt_tmp</span> <span class="o">=</span> <span class="n">sex_coverage_mt</span><span class="o">.</span><span class="n">annotate_cols</span><span class="p">(</span>
+            <span class="n">idx_in_cov_mt</span><span class="o">=</span><span class="n">coverage_mt</span><span class="o">.</span><span class="n">add_col_index</span><span class="p">()</span>
+            <span class="o">.</span><span class="n">index_cols</span><span class="p">(</span><span class="n">sex_coverage_mt</span><span class="o">.</span><span class="n">s</span><span class="p">)</span>
+            <span class="o">.</span><span class="n">col_idx</span>
+        <span class="p">)</span>
+        <span class="n">sex_coverage_mt_tmp</span> <span class="o">=</span> <span class="n">sex_coverage_mt_tmp</span><span class="o">.</span><span class="n">add_col_index</span><span class="p">()</span>
+        <span class="n">idx_in_sex_coverage_mt</span> <span class="o">=</span> <span class="n">sex_coverage_mt_tmp</span><span class="o">.</span><span class="n">aggregate_cols</span><span class="p">(</span>
+            <span class="n">hl</span><span class="o">.</span><span class="n">map</span><span class="p">(</span>
+                <span class="k">lambda</span> <span class="n">x</span><span class="p">:</span> <span class="n">x</span><span class="o">.</span><span class="n">col_idx</span><span class="p">,</span>
+                <span class="n">hl</span><span class="o">.</span><span class="n">sorted</span><span class="p">(</span>
+                    <span class="n">hl</span><span class="o">.</span><span class="n">agg</span><span class="o">.</span><span class="n">collect</span><span class="p">(</span>
+                        <span class="n">sex_coverage_mt_tmp</span><span class="o">.</span><span class="n">col</span><span class="o">.</span><span class="n">select</span><span class="p">(</span><span class="s2">&quot;idx_in_cov_mt&quot;</span><span class="p">,</span> <span class="s2">&quot;col_idx&quot;</span><span class="p">)</span>
+                    <span class="p">),</span>
+                    <span class="n">key</span><span class="o">=</span><span class="k">lambda</span> <span class="n">x</span><span class="p">:</span> <span class="n">x</span><span class="o">.</span><span class="n">idx_in_cov_mt</span><span class="p">,</span>
+                <span class="p">),</span>
+            <span class="p">)</span>
+        <span class="p">)</span>
+        <span class="n">sex_coverage_mt</span> <span class="o">=</span> <span class="n">sex_coverage_mt</span><span class="o">.</span><span class="n">choose_cols</span><span class="p">(</span><span class="n">idx_in_sex_coverage_mt</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">sex_coverage_mt</span> <span class="o">=</span> <span class="n">sex_chr_coverage</span><span class="o">.</span><span class="n">mt</span><span class="p">()</span>
+
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span>
+        <span class="s2">&quot;Excluding intervals that overlap PAR regions from the sex coverage MT...&quot;</span>
+    <span class="p">)</span>
+    <span class="n">sex_coverage_mt</span> <span class="o">=</span> <span class="n">sex_coverage_mt</span><span class="o">.</span><span class="n">filter_rows</span><span class="p">(</span><span class="o">~</span><span class="n">sex_coverage_mt</span><span class="o">.</span><span class="n">overlap_par</span><span class="p">)</span>
+    <span class="n">coverage_mt</span> <span class="o">=</span> <span class="n">coverage_mt</span><span class="o">.</span><span class="n">union_rows</span><span class="p">(</span><span class="n">sex_coverage_mt</span><span class="o">.</span><span class="n">drop</span><span class="p">(</span><span class="s2">&quot;overlap_par&quot;</span><span class="p">))</span>
+    <span class="n">coverage_mt</span> <span class="o">=</span> <span class="n">coverage_mt</span><span class="o">.</span><span class="n">annotate_globals</span><span class="p">(</span>
+        <span class="n">normalization_contig</span><span class="o">=</span><span class="n">normalization_contig</span>
+    <span class="p">)</span>
+    <span class="n">coverage_mt</span> <span class="o">=</span> <span class="n">coverage_mt</span><span class="o">.</span><span class="n">checkpoint</span><span class="p">(</span>
+        <span class="n">get_checkpoint_path</span><span class="p">(</span>
+            <span class="sa">f</span><span class="s2">&quot;temp_sex_imputation_cov.</span><span class="si">{</span><span class="n">normalization_contig</span><span class="si">}{</span><span class="s1">&#39;.test&#39;</span><span class="w"> </span><span class="k">if</span><span class="w"> </span><span class="n">test</span><span class="w"> </span><span class="k">else</span><span class="w"> </span><span class="s1">&#39;&#39;</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">,</span>
+            <span class="n">mt</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+        <span class="p">),</span>
+        <span class="n">_read_if_exists</span><span class="o">=</span><span class="n">read_if_exists</span><span class="p">,</span>
+        <span class="n">overwrite</span><span class="o">=</span><span class="ow">not</span> <span class="n">read_if_exists</span><span class="p">,</span>
+    <span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">coverage_mt</span><span class="o">.</span><span class="n">drop</span><span class="p">(</span><span class="s2">&quot;gq_thresholds&quot;</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="compute_sex_ploidy"><a class="viewcode-back" href="../../../../api_reference/v4/sample_qc/sex_inference.html#gnomad_qc.v4.sample_qc.sex_inference.compute_sex_ploidy">[docs]</a><span class="k">def</span> <span class="nf">compute_sex_ploidy</span><span class="p">(</span>
+    <span class="n">vds</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">vds</span><span class="o">.</span><span class="n">VariantDataset</span><span class="p">,</span>
+    <span class="n">coverage_mt</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">MatrixTable</span><span class="p">,</span>
+    <span class="n">interval_qc_ht</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">high_qual_per_platform</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+    <span class="n">platform_ht</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">normalization_contig</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;chr20&quot;</span><span class="p">,</span>
+    <span class="n">variant_depth_only_x_ploidy</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+    <span class="n">variant_depth_only_y_ploidy</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+    <span class="n">variant_depth_only_ploidy_filter_lcr</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span>
+    <span class="n">variant_depth_only_ploidy_filter_segdup</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span>
+    <span class="n">variant_depth_only_ploidy_snv_only</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+    <span class="n">compute_x_frac_variants_hom_alt</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+    <span class="n">freq_ht</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">min_af</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">0.001</span><span class="p">,</span>
+    <span class="n">f_stat_cutoff</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="o">-</span><span class="mf">1.0</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Impute sex chromosome ploidy, and optionally chrX heterozygosity and fraction homozygous alternate variants on chrX.</span>
+
+<span class="sd">    This function imputes sex chromosome ploidy from a VDS and a sex inference specific</span>
+<span class="sd">    coverage MT (created by `prepare_sex_imputation_coverage_mt`).</span>
+
+<span class="sd">    With no additional parameters passed, chrX and chrY ploidy will be imputed using</span>
+<span class="sd">    Hail&#39;s `hail.vds.impute_sex_chromosome_ploidy` method which computes chromosome</span>
+<span class="sd">    ploidy using reference block DP per calling interval (using intervals in</span>
+<span class="sd">    `coverage_mt`). This method breaks up the reference blocks at the calling interval</span>
+<span class="sd">    boundaries, maintaining all reference block END information for the mean DP per</span>
+<span class="sd">    interval computation.</span>
+
+<span class="sd">    There is also the option to impute ploidy using mean variant depth within the</span>
+<span class="sd">    specified calling intervals instead of using reference block depths. This can be</span>
+<span class="sd">    defined differently for chrX and chrY using `variant_depth_only_x_ploidy` and</span>
+<span class="sd">    `variant_depth_only_y_ploidy`.</span>
+
+<span class="sd">    If an `interval_qc_ht` Table is supplied, only high quality intervals will be used</span>
+<span class="sd">    in sex chromosome ploidy imputation. High quality intervals are defined by</span>
+<span class="sd">    &#39;interval_qc_ht.pass_interval_qc&#39;.</span>
+
+<span class="sd">    If `high_qual_per_platform` is True, `interval_qc_ht` and `platform_ht` must be</span>
+<span class="sd">    supplied, and &#39;interval_qc_ht.pass_interval_qc&#39; should be a Struct with one</span>
+<span class="sd">    BooleanExpression per platform.</span>
+
+<span class="sd">    :param vds: Input VDS for use in sex inference.</span>
+<span class="sd">    :param coverage_mt: Input sex inference specific interval coverage MatrixTable.</span>
+<span class="sd">    :param interval_qc_ht: Optional interval QC Table to use for filtering to high</span>
+<span class="sd">        quality intervals before sex ploidy imputation.</span>
+<span class="sd">    :param high_qual_per_platform: Whether to filter to per platform high quality</span>
+<span class="sd">        intervals for the sex ploidy imputation. Default is False.</span>
+<span class="sd">    :param platform_ht: Input platform assignment Table. This is only needed if</span>
+<span class="sd">        `high_qual_per_platform` is True.</span>
+<span class="sd">    :param normalization_contig: Which autosomal chromosome to use for normalizing the</span>
+<span class="sd">        coverage of chromosomes X and Y. Default is &#39;chr20&#39;.</span>
+<span class="sd">    :param variant_depth_only_x_ploidy: Whether to use depth of variant data within</span>
+<span class="sd">        calling intervals instead of reference data for chrX ploidy estimation. Default</span>
+<span class="sd">        will only use reference data.</span>
+<span class="sd">    :param variant_depth_only_y_ploidy: Whether to use depth of variant data within</span>
+<span class="sd">        calling intervals instead of reference data for chrY ploidy estimation. Default</span>
+<span class="sd">        will only use reference data.</span>
+<span class="sd">    :param variant_depth_only_ploidy_filter_lcr: Whether to filter out variants in LCR</span>
+<span class="sd">        regions for variants only ploidy estimation and fraction of homozygous</span>
+<span class="sd">        alternate variants on chromosome X. Default is True.</span>
+<span class="sd">    :param variant_depth_only_ploidy_filter_segdup: Whether to filter out variants in</span>
+<span class="sd">        segdup regions for variants only ploidy estimation and fraction of homozygous</span>
+<span class="sd">        alternate variants on chromosome X. Default is True.</span>
+<span class="sd">    :param variant_depth_only_ploidy_snv_only: Whether to filter to only single</span>
+<span class="sd">        nucleotide variants for variants only ploidy estimation and fraction of</span>
+<span class="sd">        homozygous alternate variants on chromosome X. Default is False.</span>
+<span class="sd">    :param compute_x_frac_variants_hom_alt: Whether to return an annotation for the</span>
+<span class="sd">        fraction of homozygous alternate variants on chromosome X. Default is True.</span>
+<span class="sd">    :param freq_ht: Optional Table to use for f-stat allele frequency cutoff. The input</span>
+<span class="sd">        VDS is filtered to sites in this Table prior to running Hail&#39;s `impute_sex`</span>
+<span class="sd">        module, and alternate allele frequency is used from this Table with a `min_af`</span>
+<span class="sd">        cutoff.</span>
+<span class="sd">    :param min_af: Minimum alternate allele frequency to be used in f-stat calculations.</span>
+<span class="sd">        Default is 0.001.</span>
+<span class="sd">    :param f_stat_cutoff: f-stat to roughly divide &#39;XX&#39; from &#39;XY&#39; samples. Assumes XX</span>
+<span class="sd">        samples are below cutoff and XY are above cutoff. Default is -1.0.</span>
+<span class="sd">    :return: Table with imputed ploidies.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="n">high_qual_per_platform</span> <span class="ow">and</span> <span class="n">platform_ht</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+            <span class="s2">&quot;&#39;platform_ht&#39; must be defined if &#39;high_qual_per_platform&#39; is True!&quot;</span>
+        <span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">high_qual_per_platform</span> <span class="ow">and</span> <span class="n">interval_qc_ht</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+            <span class="s2">&quot;&#39;interval_qc_ht&#39; must be defined if &#39;high_qual_per_platform&#39; is True!&quot;</span>
+        <span class="p">)</span>
+
+    <span class="n">add_globals</span> <span class="o">=</span> <span class="p">{}</span>
+
+    <span class="k">def</span> <span class="nf">_annotate_sex</span><span class="p">(</span>
+        <span class="n">vds</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">vds</span><span class="o">.</span><span class="n">VariantDataset</span><span class="p">,</span>
+        <span class="n">coverage_mt</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">MatrixTable</span><span class="p">,</span>
+        <span class="n">calling_intervals_ht</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">,</span>
+    <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Perform `annotate_sex` using unchanged parameters with changes to the VDS and calling intervals.</span>
+
+<span class="sd">        :param vds: Input VDS to use for sex ploidy annotation.</span>
+<span class="sd">        :param coverage_mt: Input precomputed coverage MT to use for sex ploidy</span>
+<span class="sd">            annotation.</span>
+<span class="sd">        :param calling_intervals_ht: Table including only intervals wanted for sex</span>
+<span class="sd">            annotation.</span>
+<span class="sd">        :return: Table containing sex ploidy estimates for samples in the input VDS.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">ploidy_ht</span> <span class="o">=</span> <span class="n">annotate_sex</span><span class="p">(</span>
+            <span class="n">vds</span><span class="p">,</span>
+            <span class="n">included_intervals</span><span class="o">=</span><span class="n">calling_intervals_ht</span><span class="p">,</span>
+            <span class="n">normalization_contig</span><span class="o">=</span><span class="n">normalization_contig</span><span class="p">,</span>
+            <span class="n">sites_ht</span><span class="o">=</span><span class="p">(</span>
+                <span class="n">freq_ht</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">hl</span><span class="o">.</span><span class="n">is_defined</span><span class="p">(</span><span class="n">calling_intervals_ht</span><span class="p">[</span><span class="n">freq_ht</span><span class="o">.</span><span class="n">locus</span><span class="p">]))</span>
+                <span class="k">if</span> <span class="n">freq_ht</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span>
+                <span class="k">else</span> <span class="kc">None</span>
+            <span class="p">),</span>
+            <span class="n">aaf_expr</span><span class="o">=</span><span class="s2">&quot;AF&quot;</span><span class="p">,</span>
+            <span class="n">gt_expr</span><span class="o">=</span><span class="s2">&quot;LGT&quot;</span><span class="p">,</span>
+            <span class="n">f_stat_cutoff</span><span class="o">=</span><span class="n">f_stat_cutoff</span><span class="p">,</span>
+            <span class="n">aaf_threshold</span><span class="o">=</span><span class="n">min_af</span><span class="p">,</span>
+            <span class="n">variants_only_x_ploidy</span><span class="o">=</span><span class="n">variant_depth_only_x_ploidy</span><span class="p">,</span>
+            <span class="n">variants_only_y_ploidy</span><span class="o">=</span><span class="n">variant_depth_only_y_ploidy</span><span class="p">,</span>
+            <span class="n">variants_filter_lcr</span><span class="o">=</span><span class="n">variant_depth_only_ploidy_filter_lcr</span><span class="p">,</span>
+            <span class="n">variants_filter_segdup</span><span class="o">=</span><span class="n">variant_depth_only_ploidy_filter_segdup</span><span class="p">,</span>
+            <span class="n">variants_snv_only</span><span class="o">=</span><span class="n">variant_depth_only_ploidy_snv_only</span><span class="p">,</span>
+            <span class="n">compute_x_frac_variants_hom_alt</span><span class="o">=</span><span class="n">compute_x_frac_variants_hom_alt</span><span class="p">,</span>
+            <span class="n">coverage_mt</span><span class="o">=</span><span class="n">coverage_mt</span><span class="p">,</span>
+            <span class="n">infer_karyotype</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+        <span class="p">)</span>
+        <span class="k">return</span> <span class="n">ploidy_ht</span>
+
+    <span class="k">if</span> <span class="n">interval_qc_ht</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">high_qual_cutoffs</span> <span class="o">=</span> <span class="p">(</span>
+            <span class="n">interval_qc_ht</span><span class="o">.</span><span class="n">index_globals</span><span class="p">()</span><span class="o">.</span><span class="n">high_qual_interval_parameters</span><span class="o">.</span><span class="n">collect</span><span class="p">()[</span><span class="mi">0</span><span class="p">]</span>
+        <span class="p">)</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span>
+            <span class="s2">&quot;Running sex ploidy imputation using only high quality intervals: </span><span class="si">%s</span><span class="s2">...&quot;</span><span class="p">,</span>
+            <span class="n">high_qual_cutoffs</span><span class="p">,</span>
+        <span class="p">)</span>
+        <span class="n">add_globals</span><span class="p">[</span><span class="s2">&quot;high_qual_interval_parameters&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">high_qual_cutoffs</span>
+
+        <span class="k">if</span> <span class="n">high_qual_per_platform</span><span class="p">:</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">interval_qc_ht</span><span class="o">.</span><span class="n">pass_interval_qc</span><span class="p">,</span> <span class="n">hl</span><span class="o">.</span><span class="n">StructExpression</span><span class="p">):</span>
+                <span class="ne">ValueError</span><span class="p">(</span>
+                    <span class="s2">&quot;&#39;interval_qc_ht.pass_interval_qc&#39; is not a StructExpression&quot;</span>
+                    <span class="s2">&quot; containing interval pass per platform!&quot;</span>
+                <span class="p">)</span>
+            <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span>
+                <span class="s2">&quot;Running sex ploidy imputation per platform using per platform high&quot;</span>
+                <span class="s2">&quot; quality intervals...&quot;</span>
+            <span class="p">)</span>
+            <span class="n">platforms</span> <span class="o">=</span> <span class="n">platform_ht</span><span class="o">.</span><span class="n">aggregate</span><span class="p">(</span>
+                <span class="n">hl</span><span class="o">.</span><span class="n">agg</span><span class="o">.</span><span class="n">collect_as_set</span><span class="p">(</span><span class="n">platform_ht</span><span class="o">.</span><span class="n">qc_platform</span><span class="p">)</span>
+            <span class="p">)</span>
+            <span class="n">per_platform_ploidy_hts</span> <span class="o">=</span> <span class="p">[]</span>
+            <span class="k">for</span> <span class="n">platform</span> <span class="ow">in</span> <span class="n">platforms</span><span class="p">:</span>
+                <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span>
+                    <span class="s2">&quot;Performing ploidy imputation using high quality intervals for&quot;</span>
+                    <span class="s2">&quot; platform </span><span class="si">%s</span><span class="s2">...&quot;</span><span class="p">,</span>
+                    <span class="n">platform</span><span class="p">,</span>
+                <span class="p">)</span>
+                <span class="n">filtered_platform_ht</span> <span class="o">=</span> <span class="n">platform_ht</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span>
+                    <span class="n">platform_ht</span><span class="o">.</span><span class="n">qc_platform</span> <span class="o">==</span> <span class="n">platform</span>
+                <span class="p">)</span>
+                <span class="n">ploidy_ht</span> <span class="o">=</span> <span class="n">_annotate_sex</span><span class="p">(</span>
+                    <span class="n">hl</span><span class="o">.</span><span class="n">vds</span><span class="o">.</span><span class="n">filter_samples</span><span class="p">(</span><span class="n">vds</span><span class="p">,</span> <span class="n">filtered_platform_ht</span><span class="p">),</span>
+                    <span class="n">coverage_mt</span><span class="o">.</span><span class="n">semi_join_cols</span><span class="p">(</span><span class="n">filtered_platform_ht</span><span class="p">),</span>
+                    <span class="n">interval_qc_ht</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">interval_qc_ht</span><span class="o">.</span><span class="n">pass_interval_qc</span><span class="p">[</span><span class="n">platform</span><span class="p">]),</span>
+                <span class="p">)</span>
+                <span class="n">per_platform_ploidy_hts</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">ploidy_ht</span><span class="p">)</span>
+
+            <span class="n">ploidy_ht</span> <span class="o">=</span> <span class="n">per_platform_ploidy_hts</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">union</span><span class="p">(</span><span class="o">*</span><span class="n">per_platform_ploidy_hts</span><span class="p">[</span><span class="mi">1</span><span class="p">:])</span>
+
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span>
+                <span class="s2">&quot;Running sex ploidy imputation using only high quality intervals in&quot;</span>
+                <span class="s2">&quot; &#39;interval_qc_ht&#39;...&quot;</span>
+            <span class="p">)</span>
+            <span class="n">ploidy_ht</span> <span class="o">=</span> <span class="n">_annotate_sex</span><span class="p">(</span>
+                <span class="n">vds</span><span class="p">,</span> <span class="n">coverage_mt</span><span class="p">,</span> <span class="n">interval_qc_ht</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">interval_qc_ht</span><span class="o">.</span><span class="n">pass_interval_qc</span><span class="p">)</span>
+            <span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Running sex ploidy imputation...&quot;</span><span class="p">)</span>
+        <span class="n">ploidy_ht</span> <span class="o">=</span> <span class="n">_annotate_sex</span><span class="p">(</span><span class="n">vds</span><span class="p">,</span> <span class="n">coverage_mt</span><span class="p">,</span> <span class="n">coverage_mt</span><span class="o">.</span><span class="n">rows</span><span class="p">())</span>
+
+    <span class="n">ploidy_ht</span> <span class="o">=</span> <span class="n">ploidy_ht</span><span class="o">.</span><span class="n">annotate_globals</span><span class="p">(</span>
+        <span class="n">f_stat_min_af</span><span class="o">=</span><span class="n">min_af</span><span class="p">,</span>
+        <span class="n">f_stat_cutoff</span><span class="o">=</span><span class="n">f_stat_cutoff</span><span class="p">,</span>
+        <span class="o">**</span><span class="n">add_globals</span><span class="p">,</span>
+    <span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">ploidy_ht</span></div>
+
+
+<div class="viewcode-block" id="annotate_sex_karyotype_from_ploidy_cutoffs"><a class="viewcode-back" href="../../../../api_reference/v4/sample_qc/sex_inference.html#gnomad_qc.v4.sample_qc.sex_inference.annotate_sex_karyotype_from_ploidy_cutoffs">[docs]</a><span class="k">def</span> <span class="nf">annotate_sex_karyotype_from_ploidy_cutoffs</span><span class="p">(</span>
+    <span class="n">ploidy_ht</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">,</span>
+    <span class="n">sex_karyotype_ploidy_cutoffs</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span>
+        <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">float</span><span class="p">]]],</span>
+        <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">float</span><span class="p">]],</span>
+    <span class="p">],</span>
+    <span class="n">per_platform</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+    <span class="n">apply_x_frac_hom_alt_cutoffs</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Determine sex karyotype annotation based on chromosome X and chromosome Y ploidy estimates and ploidy cutoffs.</span>
+
+<span class="sd">    `ploidy_ht` must include the following annotations:</span>
+
+<span class="sd">        - chrX_ploidy: chromosome X ploidy estimate</span>
+<span class="sd">        - chrY_ploidy: chromosome X ploidy estimate</span>
+
+<span class="sd">    The expected format of `sex_karyotype_ploidy_cutoffs` is one of:</span>
+
+<span class="sd">        - If `per_platform` is False:</span>
+
+<span class="sd">        .. code-block::</span>
+
+<span class="sd">            {</span>
+<span class="sd">                &quot;x_ploidy_cutoffs&quot;: {</span>
+<span class="sd">                    &quot;upper_cutoff_X&quot;: 2.6,</span>
+<span class="sd">                    &quot;lower_cutoff_XX&quot;: 1.9,</span>
+<span class="sd">                    &quot;upper_cutoff_XX&quot;: 6.8,</span>
+<span class="sd">                    &quot;lower_cutoff_XXX&quot;: 6.6</span>
+<span class="sd">                },</span>
+<span class="sd">                &quot;y_ploidy_cutoffs&quot;: {</span>
+<span class="sd">                    &quot;lower_cutoff_Y&quot;: 0.2,</span>
+<span class="sd">                    &quot;upper_cutoff_Y&quot;: 1.3,</span>
+<span class="sd">                    &quot;lower_cutoff_YY&quot;: 1.4</span>
+<span class="sd">                }</span>
+<span class="sd">            }</span>
+
+<span class="sd">        - If `per_platform` is True:</span>
+
+<span class="sd">        .. code-block::</span>
+
+<span class="sd">            {</span>
+<span class="sd">                &quot;x_ploidy_cutoffs&quot;: {</span>
+<span class="sd">                    &quot;platform_1&quot;: {</span>
+<span class="sd">                        &quot;upper_cutoff_X&quot;: 2.6,</span>
+<span class="sd">                        &quot;lower_cutoff_XX&quot;: 1.9,</span>
+<span class="sd">                        &quot;upper_cutoff_XX&quot;: 6.2,</span>
+<span class="sd">                        &quot;lower_cutoff_XXX&quot;: 6.6</span>
+<span class="sd">                    },</span>
+<span class="sd">                    &quot;platform_0&quot;: {</span>
+<span class="sd">                        &quot;upper_cutoff_X&quot;: 1.6,</span>
+<span class="sd">                        &quot;lower_cutoff_XX&quot;: 1.5,</span>
+<span class="sd">                        &quot;upper_cutoff_XX&quot;: 3.3,</span>
+<span class="sd">                        &quot;lower_cutoff_XXX&quot;: 3.5</span>
+<span class="sd">                    },</span>
+<span class="sd">                    ...</span>
+<span class="sd">                },</span>
+<span class="sd">                &quot;y_ploidy_cutoffs&quot;: {</span>
+<span class="sd">                    &quot;platform_1&quot;: {</span>
+<span class="sd">                        &quot;lower_cutoff_Y&quot;: 0.2,</span>
+<span class="sd">                        &quot;upper_cutoff_Y&quot;: 1.3,</span>
+<span class="sd">                        &quot;lower_cutoff_YY&quot;: 1.4</span>
+<span class="sd">                    },</span>
+<span class="sd">                    &quot;platform_0&quot;: {</span>
+<span class="sd">                        &quot;lower_cutoff_Y&quot;: 0.1,</span>
+<span class="sd">                        &quot;upper_cutoff_Y&quot;: 1.2,</span>
+<span class="sd">                        &quot;lower_cutoff_YY&quot;: 1.1</span>
+<span class="sd">                    },</span>
+<span class="sd">                    ...</span>
+<span class="sd">                }</span>
+<span class="sd">            }</span>
+
+<span class="sd">    Returns a Table with the following annotations:</span>
+
+<span class="sd">        - X_karyotype: Sample assigned X karyotype.</span>
+<span class="sd">        - Y_karyotype: Sample assigned Y karyotype.</span>
+<span class="sd">        - sex_karyotype: Combination of X_karyotype and Y_karyotype.</span>
+
+<span class="sd">    :param ploidy_ht: Table with chromosome X and chromosome Y ploidies.</span>
+<span class="sd">    :param sex_karyotype_ploidy_cutoffs: Dictionary of sex karyotype ploidy cutoffs.</span>
+<span class="sd">    :param per_platform: Whether the `sex_karyotype_ploidy_cutoffs` should be applied</span>
+<span class="sd">        per platform.</span>
+<span class="sd">    :param apply_x_frac_hom_alt_cutoffs: Whether to apply cutoffs for the fraction</span>
+<span class="sd">        homozygous alternate genotypes (hom-alt/(hom-alt + het)) on chromosome X.</span>
+<span class="sd">    :return: Sex karyotype Table.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">x_ploidy_cutoffs</span> <span class="o">=</span> <span class="n">sex_karyotype_ploidy_cutoffs</span><span class="p">[</span><span class="s2">&quot;x_ploidy_cutoffs&quot;</span><span class="p">]</span>
+    <span class="n">y_ploidy_cutoffs</span> <span class="o">=</span> <span class="n">sex_karyotype_ploidy_cutoffs</span><span class="p">[</span><span class="s2">&quot;y_ploidy_cutoffs&quot;</span><span class="p">]</span>
+
+    <span class="n">all_cutoff_values</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">x_ploidy_cutoffs</span><span class="o">.</span><span class="n">values</span><span class="p">())</span> <span class="o">+</span> <span class="nb">list</span><span class="p">(</span>
+        <span class="n">y_ploidy_cutoffs</span><span class="o">.</span><span class="n">values</span><span class="p">()</span>
+    <span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">apply_x_frac_hom_alt_cutoffs</span><span class="p">:</span>
+        <span class="n">x_frac_hom_alt_cutoffs</span> <span class="o">=</span> <span class="n">sex_karyotype_ploidy_cutoffs</span><span class="p">[</span><span class="s2">&quot;x_frac_hom_alt_cutoffs&quot;</span><span class="p">]</span>
+        <span class="n">all_cutoff_values</span> <span class="o">+=</span> <span class="nb">list</span><span class="p">(</span><span class="n">x_frac_hom_alt_cutoffs</span><span class="o">.</span><span class="n">values</span><span class="p">())</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">x_frac_hom_alt_cutoffs</span> <span class="o">=</span> <span class="kc">None</span>
+
+    <span class="n">ploidy_cutoffs_isdict</span> <span class="o">=</span> <span class="nb">all</span><span class="p">(</span><span class="nb">map</span><span class="p">(</span><span class="k">lambda</span> <span class="n">x</span><span class="p">:</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="nb">dict</span><span class="p">),</span> <span class="n">all_cutoff_values</span><span class="p">))</span>
+    <span class="n">ploidy_cutoffs_isstr</span> <span class="o">=</span> <span class="nb">all</span><span class="p">(</span><span class="nb">map</span><span class="p">(</span><span class="k">lambda</span> <span class="n">x</span><span class="p">:</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="nb">str</span><span class="p">),</span> <span class="n">all_cutoff_values</span><span class="p">))</span>
+
+    <span class="k">def</span> <span class="nf">_format_ploidy_cutoffs</span><span class="p">(</span>
+        <span class="n">x_ploidy_cutoffs</span><span class="p">:</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">float</span><span class="p">],</span>
+        <span class="n">y_ploidy_cutoffs</span><span class="p">:</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">float</span><span class="p">],</span>
+        <span class="n">x_frac_hom_alt_cutoffs</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">float</span><span class="p">]]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Tuple</span><span class="p">[</span>
+        <span class="n">Tuple</span><span class="p">[</span><span class="nb">float</span><span class="p">,</span> <span class="n">Tuple</span><span class="p">[</span><span class="nb">float</span><span class="p">,</span> <span class="nb">float</span><span class="p">],</span> <span class="nb">float</span><span class="p">],</span>
+        <span class="n">Tuple</span><span class="p">[</span><span class="n">Tuple</span><span class="p">[</span><span class="nb">float</span><span class="p">,</span> <span class="nb">float</span><span class="p">],</span> <span class="nb">float</span><span class="p">],</span>
+        <span class="n">Union</span><span class="p">[</span><span class="n">Tuple</span><span class="p">[</span><span class="n">Tuple</span><span class="p">[</span><span class="nb">float</span><span class="p">,</span> <span class="nb">float</span><span class="p">],</span> <span class="nb">float</span><span class="p">],</span> <span class="kc">None</span><span class="p">],</span>
+    <span class="p">]:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Reformat ploidy cutoffs for input to `get_sex_expr`.</span>
+
+<span class="sd">        :param x_ploidy_cutoffs: Dictionary of X ploidy cutoffs for karyotype assignment.</span>
+<span class="sd">        :param y_ploidy_cutoffs: Dictionary of Y ploidy cutoffs for karyotype assignment.</span>
+<span class="sd">        :return: Tuple of ploidy cutoff tuples: ((x_ploidy_cutoffs), (y_ploidy_cutoffs))</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">x_ploidy_cutoffs</span> <span class="o">=</span> <span class="p">(</span>
+            <span class="n">x_ploidy_cutoffs</span><span class="p">[</span><span class="s2">&quot;upper_cutoff_X&quot;</span><span class="p">],</span>
+            <span class="p">(</span><span class="n">x_ploidy_cutoffs</span><span class="p">[</span><span class="s2">&quot;lower_cutoff_XX&quot;</span><span class="p">],</span> <span class="n">x_ploidy_cutoffs</span><span class="p">[</span><span class="s2">&quot;upper_cutoff_XX&quot;</span><span class="p">]),</span>
+            <span class="n">x_ploidy_cutoffs</span><span class="p">[</span><span class="s2">&quot;lower_cutoff_XXX&quot;</span><span class="p">],</span>
+        <span class="p">)</span>
+        <span class="n">y_ploidy_cutoffs</span> <span class="o">=</span> <span class="p">(</span>
+            <span class="p">(</span><span class="n">y_ploidy_cutoffs</span><span class="p">[</span><span class="s2">&quot;lower_cutoff_Y&quot;</span><span class="p">],</span> <span class="n">y_ploidy_cutoffs</span><span class="p">[</span><span class="s2">&quot;upper_cutoff_Y&quot;</span><span class="p">]),</span>
+            <span class="n">y_ploidy_cutoffs</span><span class="p">[</span><span class="s2">&quot;lower_cutoff_YY&quot;</span><span class="p">],</span>
+        <span class="p">)</span>
+
+        <span class="k">if</span> <span class="n">x_frac_hom_alt_cutoffs</span><span class="p">:</span>
+            <span class="n">x_frac_hom_alt_cutoffs</span> <span class="o">=</span> <span class="p">(</span>
+                <span class="p">(</span>
+                    <span class="n">x_frac_hom_alt_cutoffs</span><span class="p">[</span><span class="s2">&quot;lower_cutoff_more_than_one_X&quot;</span><span class="p">],</span>
+                    <span class="n">x_frac_hom_alt_cutoffs</span><span class="p">[</span><span class="s2">&quot;upper_cutoff_more_than_one_X&quot;</span><span class="p">],</span>
+                <span class="p">),</span>
+                <span class="n">x_frac_hom_alt_cutoffs</span><span class="p">[</span><span class="s2">&quot;lower_cutoff_single_X&quot;</span><span class="p">],</span>
+            <span class="p">)</span>
+
+        <span class="k">return</span> <span class="n">x_ploidy_cutoffs</span><span class="p">,</span> <span class="n">y_ploidy_cutoffs</span><span class="p">,</span> <span class="n">x_frac_hom_alt_cutoffs</span>
+
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Annotating sex karyotype based on input ploidy cutoffs&quot;</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">per_platform</span><span class="p">:</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">ploidy_cutoffs_isdict</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+                <span class="s2">&quot;If running per platform X ploidy and Y ploidy cutoff dictionary values&quot;</span>
+                <span class="s2">&quot; must be dictionaries (one per platform)&quot;</span>
+            <span class="p">)</span>
+        <span class="n">platforms</span> <span class="o">=</span> <span class="n">ploidy_ht</span><span class="o">.</span><span class="n">aggregate</span><span class="p">(</span><span class="n">hl</span><span class="o">.</span><span class="n">agg</span><span class="o">.</span><span class="n">collect_as_set</span><span class="p">(</span><span class="n">ploidy_ht</span><span class="o">.</span><span class="n">platform</span><span class="p">))</span>
+        <span class="n">per_platform_karyotype_hts</span> <span class="o">=</span> <span class="p">[]</span>
+
+        <span class="k">for</span> <span class="n">platform</span> <span class="ow">in</span> <span class="n">platforms</span><span class="p">:</span>
+            <span class="n">platform_ploidy_ht</span> <span class="o">=</span> <span class="n">ploidy_ht</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">ploidy_ht</span><span class="o">.</span><span class="n">platform</span> <span class="o">==</span> <span class="n">platform</span><span class="p">)</span>
+            <span class="p">(</span>
+                <span class="n">x_ploidy_platform_cutoffs</span><span class="p">,</span>
+                <span class="n">y_ploidy_platform_cutoffs</span><span class="p">,</span>
+                <span class="n">x_frac_hom_alt_platform_cutoffs</span><span class="p">,</span>
+            <span class="p">)</span> <span class="o">=</span> <span class="n">_format_ploidy_cutoffs</span><span class="p">(</span>
+                <span class="n">x_ploidy_cutoffs</span><span class="p">[</span><span class="n">platform</span><span class="p">],</span>
+                <span class="n">y_ploidy_cutoffs</span><span class="p">[</span><span class="n">platform</span><span class="p">],</span>
+                <span class="n">x_frac_hom_alt_cutoffs</span><span class="p">[</span><span class="n">platform</span><span class="p">]</span> <span class="k">if</span> <span class="n">x_frac_hom_alt_cutoffs</span> <span class="k">else</span> <span class="kc">None</span><span class="p">,</span>
+            <span class="p">)</span>
+            <span class="n">karyotype_ht</span> <span class="o">=</span> <span class="n">platform_ploidy_ht</span><span class="o">.</span><span class="n">select</span><span class="p">(</span>
+                <span class="o">**</span><span class="n">get_sex_expr</span><span class="p">(</span>
+                    <span class="n">platform_ploidy_ht</span><span class="o">.</span><span class="n">chrX_ploidy</span><span class="p">,</span>
+                    <span class="n">platform_ploidy_ht</span><span class="o">.</span><span class="n">chrY_ploidy</span><span class="p">,</span>
+                    <span class="n">x_ploidy_platform_cutoffs</span><span class="p">,</span>
+                    <span class="n">y_ploidy_platform_cutoffs</span><span class="p">,</span>
+                    <span class="n">chr_x_frac_hom_alt_expr</span><span class="o">=</span><span class="p">(</span>
+                        <span class="n">platform_ploidy_ht</span><span class="o">.</span><span class="n">chrx_frac_hom_alt_adj</span>
+                        <span class="k">if</span> <span class="n">x_frac_hom_alt_cutoffs</span>
+                        <span class="k">else</span> <span class="kc">None</span>
+                    <span class="p">),</span>
+                    <span class="n">chr_x_frac_hom_alt_cutoffs</span><span class="o">=</span><span class="n">x_frac_hom_alt_platform_cutoffs</span><span class="p">,</span>
+                <span class="p">)</span>
+            <span class="p">)</span>
+            <span class="n">per_platform_karyotype_hts</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">karyotype_ht</span><span class="p">)</span>
+
+        <span class="n">karyotype_ht</span> <span class="o">=</span> <span class="n">per_platform_karyotype_hts</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">union</span><span class="p">(</span>
+            <span class="o">*</span><span class="n">per_platform_karyotype_hts</span><span class="p">[</span><span class="mi">1</span><span class="p">:]</span>
+        <span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">ploidy_cutoffs_isstr</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+                <span class="s2">&quot;X ploidy and Y ploidy cutoff dictionary values must be strings when&quot;</span>
+                <span class="s2">&quot; not running per platform!&quot;</span>
+            <span class="p">)</span>
+        <span class="p">(</span>
+            <span class="n">x_ploidy_cutoffs</span><span class="p">,</span>
+            <span class="n">y_ploidy_cutoffs</span><span class="p">,</span>
+            <span class="n">x_frac_hom_alt_cutoffs</span><span class="p">,</span>
+        <span class="p">)</span> <span class="o">=</span> <span class="n">_format_ploidy_cutoffs</span><span class="p">(</span>
+            <span class="n">x_ploidy_cutoffs</span><span class="p">,</span> <span class="n">y_ploidy_cutoffs</span><span class="p">,</span> <span class="n">x_frac_hom_alt_cutoffs</span>
+        <span class="p">)</span>
+        <span class="n">karyotype_ht</span> <span class="o">=</span> <span class="n">ploidy_ht</span><span class="o">.</span><span class="n">select</span><span class="p">(</span>
+            <span class="o">**</span><span class="n">get_sex_expr</span><span class="p">(</span>
+                <span class="n">ploidy_ht</span><span class="o">.</span><span class="n">chrX_ploidy</span><span class="p">,</span>
+                <span class="n">ploidy_ht</span><span class="o">.</span><span class="n">chrY_ploidy</span><span class="p">,</span>
+                <span class="n">x_ploidy_cutoffs</span><span class="p">,</span>
+                <span class="n">y_ploidy_cutoffs</span><span class="p">,</span>
+                <span class="n">chr_x_frac_hom_alt_expr</span><span class="o">=</span><span class="p">(</span>
+                    <span class="kc">None</span>
+                    <span class="k">if</span> <span class="n">x_frac_hom_alt_cutoffs</span> <span class="ow">is</span> <span class="kc">None</span>
+                    <span class="k">else</span> <span class="n">ploidy_ht</span><span class="o">.</span><span class="n">chrx_frac_hom_alt_adj</span>
+                <span class="p">),</span>
+                <span class="n">chr_x_frac_hom_alt_cutoffs</span><span class="o">=</span><span class="n">x_frac_hom_alt_cutoffs</span><span class="p">,</span>
+            <span class="p">)</span>
+        <span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">_to_struct</span><span class="p">(</span><span class="n">x</span><span class="p">):</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="nb">dict</span><span class="p">):</span>
+            <span class="k">return</span> <span class="n">hl</span><span class="o">.</span><span class="n">struct</span><span class="p">(</span><span class="o">**</span><span class="p">{</span><span class="n">v</span><span class="p">:</span> <span class="n">_to_struct</span><span class="p">(</span><span class="n">x</span><span class="p">[</span><span class="n">v</span><span class="p">])</span> <span class="k">for</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">x</span><span class="p">})</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">x</span>
+
+    <span class="n">karyotype_ht</span> <span class="o">=</span> <span class="n">karyotype_ht</span><span class="o">.</span><span class="n">annotate_globals</span><span class="p">(</span>
+        <span class="o">**</span><span class="n">_to_struct</span><span class="p">(</span><span class="n">sex_karyotype_ploidy_cutoffs</span><span class="p">)</span>
+    <span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">karyotype_ht</span></div>
+
+
+<div class="viewcode-block" id="infer_sex_karyotype_from_ploidy"><a class="viewcode-back" href="../../../../api_reference/v4/sample_qc/sex_inference.html#gnomad_qc.v4.sample_qc.sex_inference.infer_sex_karyotype_from_ploidy">[docs]</a><span class="k">def</span> <span class="nf">infer_sex_karyotype_from_ploidy</span><span class="p">(</span>
+    <span class="n">ploidy_ht</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">,</span>
+    <span class="n">per_platform</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+    <span class="n">f_stat_cutoff</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="o">-</span><span class="mf">1.0</span><span class="p">,</span>
+    <span class="n">use_gmm_for_ploidy_cutoffs</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+    <span class="n">apply_x_frac_hom_alt_cutoffs</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Create a Table with X_karyotype, Y_karyotype, and sex_karyotype.</span>
+
+<span class="sd">    :param ploidy_ht: Table with chromosome X and chromosome Y ploidies, and f-stat if</span>
+<span class="sd">        not `use_gmm_for_ploidy_cutoffs`.</span>
+<span class="sd">    :param per_platform: Whether the sex karyotype ploidy cutoff inference should be</span>
+<span class="sd">        applied per platform.</span>
+<span class="sd">    :param f_stat_cutoff: f-stat to roughly divide &#39;XX&#39; from &#39;XY&#39; samples. Assumes XX</span>
+<span class="sd">        samples are below cutoff and XY are above cutoff.</span>
+<span class="sd">    :param use_gmm_for_ploidy_cutoffs: Use Gaussian mixture model to split samples into</span>
+<span class="sd">        &#39;XX&#39; and &#39;XY&#39; instead of f-stat.</span>
+<span class="sd">    :param apply_x_frac_hom_alt_cutoffs: Whether to apply cutoffs for the fraction</span>
+<span class="sd">        homozygous alternate genotypes (hom-alt/(hom-alt + het)) on chromosome X.</span>
+<span class="sd">    :return: Table of imputed sex karyotypes.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Running sex karyotype inference&quot;</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">per_platform</span><span class="p">:</span>
+        <span class="n">platforms</span> <span class="o">=</span> <span class="n">ploidy_ht</span><span class="o">.</span><span class="n">aggregate</span><span class="p">(</span><span class="n">hl</span><span class="o">.</span><span class="n">agg</span><span class="o">.</span><span class="n">collect_as_set</span><span class="p">(</span><span class="n">ploidy_ht</span><span class="o">.</span><span class="n">platform</span><span class="p">))</span>
+        <span class="n">per_platform_karyotype_hts</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="n">x_ploidy_cutoffs</span> <span class="o">=</span> <span class="p">{}</span>
+        <span class="n">y_ploidy_cutoffs</span> <span class="o">=</span> <span class="p">{}</span>
+        <span class="n">x_frac_hom_alt_cutoffs</span> <span class="o">=</span> <span class="p">{}</span>
+
+        <span class="k">for</span> <span class="n">platform</span> <span class="ow">in</span> <span class="n">platforms</span><span class="p">:</span>
+            <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span>
+                <span class="s2">&quot;Performing sex karyotype inference for platform </span><span class="si">%s</span><span class="s2">...&quot;</span><span class="p">,</span>
+                <span class="n">platform</span><span class="p">,</span>
+            <span class="p">)</span>
+            <span class="n">ploidy_platform_ht</span> <span class="o">=</span> <span class="n">ploidy_ht</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">ploidy_ht</span><span class="o">.</span><span class="n">platform</span> <span class="o">==</span> <span class="n">platform</span><span class="p">)</span>
+
+            <span class="k">if</span> <span class="n">apply_x_frac_hom_alt_cutoffs</span><span class="p">:</span>
+                <span class="n">chr_x_frac_hom_alt_expr</span> <span class="o">=</span> <span class="n">ploidy_platform_ht</span><span class="o">.</span><span class="n">chrx_frac_hom_alt_adj</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">chr_x_frac_hom_alt_expr</span> <span class="o">=</span> <span class="kc">None</span>
+
+            <span class="n">karyotype_ht</span> <span class="o">=</span> <span class="n">infer_sex_karyotype</span><span class="p">(</span>
+                <span class="n">ploidy_platform_ht</span><span class="p">,</span>
+                <span class="n">f_stat_cutoff</span><span class="p">,</span>
+                <span class="n">use_gmm_for_ploidy_cutoffs</span><span class="p">,</span>
+                <span class="n">chr_x_frac_hom_alt_expr</span><span class="o">=</span><span class="n">chr_x_frac_hom_alt_expr</span><span class="p">,</span>
+            <span class="p">)</span>
+
+            <span class="n">karyotype_ht</span> <span class="o">=</span> <span class="n">karyotype_ht</span><span class="o">.</span><span class="n">checkpoint</span><span class="p">(</span>
+                <span class="n">get_checkpoint_path</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;karyotype_platform_</span><span class="si">{</span><span class="n">platform</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">),</span> <span class="n">overwrite</span><span class="o">=</span><span class="kc">True</span>
+            <span class="p">)</span>
+            <span class="n">per_platform_karyotype_hts</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">karyotype_ht</span><span class="p">)</span>
+            <span class="n">x_ploidy_cutoffs</span><span class="p">[</span><span class="n">platform</span><span class="p">]</span> <span class="o">=</span> <span class="n">karyotype_ht</span><span class="o">.</span><span class="n">index_globals</span><span class="p">()</span><span class="o">.</span><span class="n">x_ploidy_cutoffs</span>
+            <span class="n">y_ploidy_cutoffs</span><span class="p">[</span><span class="n">platform</span><span class="p">]</span> <span class="o">=</span> <span class="n">karyotype_ht</span><span class="o">.</span><span class="n">index_globals</span><span class="p">()</span><span class="o">.</span><span class="n">y_ploidy_cutoffs</span>
+            <span class="k">if</span> <span class="n">apply_x_frac_hom_alt_cutoffs</span><span class="p">:</span>
+                <span class="n">x_frac_hom_alt_cutoffs</span><span class="p">[</span><span class="n">platform</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span>
+                    <span class="n">karyotype_ht</span><span class="o">.</span><span class="n">index_globals</span><span class="p">()</span><span class="o">.</span><span class="n">x_frac_hom_alt_cutoffs</span>
+                <span class="p">)</span>
+
+        <span class="n">karyotype_ht</span> <span class="o">=</span> <span class="n">per_platform_karyotype_hts</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">union</span><span class="p">(</span>
+            <span class="o">*</span><span class="n">per_platform_karyotype_hts</span><span class="p">[</span><span class="mi">1</span><span class="p">:]</span>
+        <span class="p">)</span>
+        <span class="n">karyotype_ht</span> <span class="o">=</span> <span class="n">karyotype_ht</span><span class="o">.</span><span class="n">annotate_globals</span><span class="p">(</span>
+            <span class="n">x_ploidy_cutoffs</span><span class="o">=</span><span class="n">hl</span><span class="o">.</span><span class="n">struct</span><span class="p">(</span><span class="o">**</span><span class="n">x_ploidy_cutoffs</span><span class="p">),</span>
+            <span class="n">y_ploidy_cutoffs</span><span class="o">=</span><span class="n">hl</span><span class="o">.</span><span class="n">struct</span><span class="p">(</span><span class="o">**</span><span class="n">y_ploidy_cutoffs</span><span class="p">),</span>
+        <span class="p">)</span>
+        <span class="k">if</span> <span class="n">apply_x_frac_hom_alt_cutoffs</span><span class="p">:</span>
+            <span class="n">karyotype_ht</span> <span class="o">=</span> <span class="n">karyotype_ht</span><span class="o">.</span><span class="n">annotate_globals</span><span class="p">(</span>
+                <span class="n">x_frac_hom_alt_cutoffs</span><span class="o">=</span><span class="n">hl</span><span class="o">.</span><span class="n">struct</span><span class="p">(</span><span class="o">**</span><span class="n">x_frac_hom_alt_cutoffs</span><span class="p">),</span>
+            <span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">apply_x_frac_hom_alt_cutoffs</span><span class="p">:</span>
+            <span class="n">chr_x_frac_hom_alt_expr</span> <span class="o">=</span> <span class="n">ploidy_ht</span><span class="o">.</span><span class="n">chrx_frac_hom_alt_adj</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">chr_x_frac_hom_alt_expr</span> <span class="o">=</span> <span class="kc">None</span>
+
+        <span class="n">karyotype_ht</span> <span class="o">=</span> <span class="n">infer_sex_karyotype</span><span class="p">(</span>
+            <span class="n">ploidy_ht</span><span class="p">,</span>
+            <span class="n">f_stat_cutoff</span><span class="p">,</span>
+            <span class="n">use_gmm_for_ploidy_cutoffs</span><span class="p">,</span>
+            <span class="n">chr_x_frac_hom_alt_expr</span><span class="o">=</span><span class="n">chr_x_frac_hom_alt_expr</span><span class="p">,</span>
+        <span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">karyotype_ht</span></div>
+
+
+<div class="viewcode-block" id="reformat_ploidy_cutoffs_for_json"><a class="viewcode-back" href="../../../../api_reference/v4/sample_qc/sex_inference.html#gnomad_qc.v4.sample_qc.sex_inference.reformat_ploidy_cutoffs_for_json">[docs]</a><span class="k">def</span> <span class="nf">reformat_ploidy_cutoffs_for_json</span><span class="p">(</span>
+    <span class="n">ht</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">,</span>
+    <span class="n">per_platform</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+    <span class="n">include_x_frac_hom_alt_cutoffs</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Format x_ploidy_cutoffs and y_ploidy_cutoffs global annotations for JSON export.</span>
+
+<span class="sd">    :param ht: Table including globals for x_ploidy_cutoffs and y_ploidy_cutoffs.</span>
+<span class="sd">    :param per_platform: Whether the ploidy global cutoffs are per platform.</span>
+<span class="sd">    :param include_x_frac_hom_alt_cutoffs: Whether to include cutoffs for the fraction</span>
+<span class="sd">        homozygous alternate genotypes (hom-alt/(hom-alt + het)) on chromosome X.</span>
+<span class="sd">    :return: Dictionary of X and Y ploidy cutoffs for JSON export.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">x_ploidy_cutoffs</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">(</span><span class="n">ht</span><span class="o">.</span><span class="n">index_globals</span><span class="p">()</span><span class="o">.</span><span class="n">x_ploidy_cutoffs</span><span class="o">.</span><span class="n">collect</span><span class="p">()[</span><span class="mi">0</span><span class="p">])</span>
+    <span class="n">y_ploidy_cutoffs</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">(</span><span class="n">ht</span><span class="o">.</span><span class="n">index_globals</span><span class="p">()</span><span class="o">.</span><span class="n">y_ploidy_cutoffs</span><span class="o">.</span><span class="n">collect</span><span class="p">()[</span><span class="mi">0</span><span class="p">])</span>
+    <span class="k">if</span> <span class="n">include_x_frac_hom_alt_cutoffs</span><span class="p">:</span>
+        <span class="n">x_frac_hom_alt_cutoffs</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">(</span>
+            <span class="n">ht</span><span class="o">.</span><span class="n">index_globals</span><span class="p">()</span><span class="o">.</span><span class="n">x_frac_hom_alt_cutoffs</span><span class="o">.</span><span class="n">collect</span><span class="p">()[</span><span class="mi">0</span><span class="p">]</span>
+        <span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">per_platform</span><span class="p">:</span>
+        <span class="n">x_ploidy_cutoffs</span> <span class="o">=</span> <span class="p">{</span><span class="n">k</span><span class="p">:</span> <span class="nb">dict</span><span class="p">(</span><span class="n">v</span><span class="p">)</span> <span class="k">for</span> <span class="n">k</span><span class="p">,</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">x_ploidy_cutoffs</span><span class="o">.</span><span class="n">items</span><span class="p">()}</span>
+        <span class="n">y_ploidy_cutoffs</span> <span class="o">=</span> <span class="p">{</span><span class="n">k</span><span class="p">:</span> <span class="nb">dict</span><span class="p">(</span><span class="n">v</span><span class="p">)</span> <span class="k">for</span> <span class="n">k</span><span class="p">,</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">y_ploidy_cutoffs</span><span class="o">.</span><span class="n">items</span><span class="p">()}</span>
+        <span class="k">if</span> <span class="n">include_x_frac_hom_alt_cutoffs</span><span class="p">:</span>
+            <span class="n">x_frac_hom_alt_cutoffs</span> <span class="o">=</span> <span class="p">{</span>
+                <span class="n">k</span><span class="p">:</span> <span class="nb">dict</span><span class="p">(</span><span class="n">v</span><span class="p">)</span> <span class="k">for</span> <span class="n">k</span><span class="p">,</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">x_frac_hom_alt_cutoffs</span><span class="o">.</span><span class="n">items</span><span class="p">()</span>
+            <span class="p">}</span>
+
+    <span class="n">cutoffs</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="s2">&quot;x_ploidy_cutoffs&quot;</span><span class="p">:</span> <span class="n">x_ploidy_cutoffs</span><span class="p">,</span>
+        <span class="s2">&quot;y_ploidy_cutoffs&quot;</span><span class="p">:</span> <span class="n">y_ploidy_cutoffs</span><span class="p">,</span>
+    <span class="p">}</span>
+    <span class="k">if</span> <span class="n">include_x_frac_hom_alt_cutoffs</span><span class="p">:</span>
+        <span class="n">cutoffs</span><span class="o">.</span><span class="n">update</span><span class="p">({</span><span class="s2">&quot;x_frac_hom_alt_cutoffs&quot;</span><span class="p">:</span> <span class="n">x_frac_hom_alt_cutoffs</span><span class="p">})</span>
+
+    <span class="k">return</span> <span class="n">cutoffs</span></div>
+
+
+<div class="viewcode-block" id="main"><a class="viewcode-back" href="../../../../api_reference/v4/sample_qc/sex_inference.html#gnomad_qc.v4.sample_qc.sex_inference.main">[docs]</a><span class="k">def</span> <span class="nf">main</span><span class="p">(</span><span class="n">args</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Impute chromosomal sex karyotype annotation.&quot;&quot;&quot;</span>
+    <span class="n">hl</span><span class="o">.</span><span class="n">init</span><span class="p">(</span>
+        <span class="n">log</span><span class="o">=</span><span class="s2">&quot;/sex_inference.log&quot;</span><span class="p">,</span>
+        <span class="n">default_reference</span><span class="o">=</span><span class="s2">&quot;GRCh38&quot;</span><span class="p">,</span>
+        <span class="n">tmp_dir</span><span class="o">=</span><span class="s2">&quot;gs://gnomad-tmp-4day&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="c1"># NOTE: remove this flag when the new shuffle method is the default.</span>
+    <span class="n">hl</span><span class="o">.</span><span class="n">_set_flags</span><span class="p">(</span><span class="n">use_new_shuffle</span><span class="o">=</span><span class="s2">&quot;1&quot;</span><span class="p">)</span>
+
+    <span class="n">test</span> <span class="o">=</span> <span class="n">args</span><span class="o">.</span><span class="n">test</span>
+    <span class="n">normalization_contig</span> <span class="o">=</span> <span class="n">args</span><span class="o">.</span><span class="n">normalization_contig</span>
+    <span class="n">high_qual_intervals</span> <span class="o">=</span> <span class="n">args</span><span class="o">.</span><span class="n">high_qual_intervals</span>
+    <span class="n">high_qual_per_platform</span> <span class="o">=</span> <span class="n">args</span><span class="o">.</span><span class="n">high_qual_per_platform</span>
+    <span class="n">high_qual_all_platforms</span> <span class="o">=</span> <span class="n">args</span><span class="o">.</span><span class="n">high_qual_all_platforms</span>
+    <span class="n">per_platform</span> <span class="o">=</span> <span class="n">args</span><span class="o">.</span><span class="n">per_platform</span>
+    <span class="n">overwrite</span> <span class="o">=</span> <span class="n">args</span><span class="o">.</span><span class="n">overwrite</span>
+    <span class="n">read_sex_cov_if_exists</span> <span class="o">=</span> <span class="n">args</span><span class="o">.</span><span class="n">read_sex_imputation_coverage_mt_if_exists</span>
+    <span class="n">apply_x_frac_hom_alt_cutoffs</span> <span class="o">=</span> <span class="n">args</span><span class="o">.</span><span class="n">apply_x_frac_hom_alt_cutoffs</span>
+
+    <span class="k">try</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">determine_fstat_sites</span><span class="p">:</span>
+            <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Determining sites to use for f-stat computations...&quot;</span><span class="p">)</span>
+            <span class="n">vds</span> <span class="o">=</span> <span class="n">get_gnomad_v4_vds</span><span class="p">(</span>
+                <span class="n">remove_hard_filtered_samples</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+                <span class="n">remove_hard_filtered_samples_no_sex</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+                <span class="n">test</span><span class="o">=</span><span class="n">test</span><span class="p">,</span>
+            <span class="p">)</span>
+            <span class="n">ht</span> <span class="o">=</span> <span class="n">determine_fstat_sites</span><span class="p">(</span>
+                <span class="n">vds</span><span class="p">,</span>
+                <span class="n">approx_af_and_no_callrate</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">approx_af_and_no_callrate</span><span class="p">,</span>
+                <span class="n">min_af</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">min_af</span><span class="p">,</span>
+                <span class="n">min_callrate</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">min_callrate</span><span class="p">,</span>
+            <span class="p">)</span>
+            <span class="n">ht</span><span class="o">.</span><span class="n">naive_coalesce</span><span class="p">(</span><span class="n">args</span><span class="o">.</span><span class="n">fstat_n_partitions</span><span class="p">)</span><span class="o">.</span><span class="n">write</span><span class="p">(</span>
+                <span class="n">get_checkpoint_path</span><span class="p">(</span><span class="s2">&quot;test_f_stat_sites&quot;</span><span class="p">)</span> <span class="k">if</span> <span class="n">test</span> <span class="k">else</span> <span class="n">f_stat_sites</span><span class="o">.</span><span class="n">path</span><span class="p">,</span>
+                <span class="n">overwrite</span><span class="o">=</span><span class="n">overwrite</span><span class="p">,</span>
+            <span class="p">)</span>
+
+        <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">sex_imputation_interval_qc</span><span class="p">:</span>
+            <span class="n">sex_coverage_mt</span> <span class="o">=</span> <span class="n">prepare_sex_imputation_coverage_mt</span><span class="p">(</span>
+                <span class="n">normalization_contig</span><span class="p">,</span>
+                <span class="n">test</span><span class="p">,</span>
+                <span class="n">read_sex_cov_if_exists</span><span class="p">,</span>
+            <span class="p">)</span>
+            <span class="n">platform_ht</span> <span class="o">=</span> <span class="n">load_platform_ht</span><span class="p">(</span>
+                <span class="n">test</span><span class="p">,</span>
+                <span class="n">sex_coverage_mt</span><span class="o">.</span><span class="n">calling_interval_name</span><span class="o">.</span><span class="n">collect</span><span class="p">()[</span><span class="mi">0</span><span class="p">],</span>
+                <span class="n">sex_coverage_mt</span><span class="o">.</span><span class="n">calling_interval_padding</span><span class="o">.</span><span class="n">collect</span><span class="p">()[</span><span class="mi">0</span><span class="p">],</span>
+            <span class="p">)</span>
+            <span class="n">ht</span> <span class="o">=</span> <span class="n">compute_interval_qc</span><span class="p">(</span>
+                <span class="n">sex_coverage_mt</span><span class="p">,</span>
+                <span class="n">platform_ht</span><span class="o">=</span><span class="n">platform_ht</span><span class="p">,</span>
+                <span class="n">mean_dp_thresholds</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">mean_dp_thresholds</span><span class="p">,</span>
+            <span class="p">)</span>
+            <span class="n">ht</span><span class="o">.</span><span class="n">naive_coalesce</span><span class="p">(</span><span class="n">args</span><span class="o">.</span><span class="n">interval_qc_n_partitions</span><span class="p">)</span><span class="o">.</span><span class="n">write</span><span class="p">(</span>
+                <span class="p">(</span>
+                    <span class="n">get_checkpoint_path</span><span class="p">(</span><span class="s2">&quot;test_sex_chr_interval_qc&quot;</span><span class="p">)</span>
+                    <span class="k">if</span> <span class="n">test</span>
+                    <span class="k">else</span> <span class="n">sex_imputation_interval_qc</span><span class="o">.</span><span class="n">path</span>
+                <span class="p">),</span>
+                <span class="n">overwrite</span><span class="o">=</span><span class="n">overwrite</span><span class="p">,</span>
+            <span class="p">)</span>
+
+        <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">impute_sex_ploidy</span><span class="p">:</span>
+            <span class="n">vds</span> <span class="o">=</span> <span class="n">get_gnomad_v4_vds</span><span class="p">(</span>
+                <span class="n">remove_hard_filtered_samples</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+                <span class="n">remove_hard_filtered_samples_no_sex</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+                <span class="n">test</span><span class="o">=</span><span class="n">test</span><span class="p">,</span>
+            <span class="p">)</span>
+            <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">f_stat_ukb_var</span><span class="p">:</span>
+                <span class="c1"># The UK Biobank f-stat table contains only variants that were high</span>
+                <span class="c1"># callrate (0.99) and common (AF &gt;0.001) within the UK Biobank 200K</span>
+                <span class="c1"># Regeneron exome dataset and it includes the UK Biobank 200K allele</span>
+                <span class="c1"># frequency information that can be used in the hl.impute_sex f-stat</span>
+                <span class="c1"># computation allele frequency cutoff (args.min-af).</span>
+                <span class="n">freq_ht</span> <span class="o">=</span> <span class="n">ukb_f_stat</span><span class="o">.</span><span class="n">ht</span><span class="p">()</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">freq_ht</span> <span class="o">=</span> <span class="p">(</span>
+                    <span class="n">hl</span><span class="o">.</span><span class="n">read_table</span><span class="p">(</span><span class="n">get_checkpoint_path</span><span class="p">(</span><span class="s2">&quot;test_f_stat_sites&quot;</span><span class="p">))</span>
+                    <span class="k">if</span> <span class="n">test</span>
+                    <span class="k">else</span> <span class="n">f_stat_sites</span><span class="o">.</span><span class="n">ht</span><span class="p">()</span>
+                <span class="p">)</span>
+
+            <span class="n">ploidy_ht_path</span> <span class="o">=</span> <span class="p">(</span>
+                <span class="n">get_checkpoint_path</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;ploidy_imputation&quot;</span><span class="p">)</span> <span class="k">if</span> <span class="n">test</span> <span class="k">else</span> <span class="n">ploidy</span><span class="o">.</span><span class="n">path</span>
+            <span class="p">)</span>
+
+            <span class="c1"># Added because without this impute_sex_chromosome_ploidy will still run</span>
+            <span class="c1"># even with overwrite=False.</span>
+            <span class="k">if</span> <span class="n">file_exists</span><span class="p">(</span><span class="n">ploidy_ht_path</span><span class="p">)</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">overwrite</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="n">DataException</span><span class="p">(</span>
+                    <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">ploidy_ht_path</span><span class="si">}</span><span class="s2"> already exists and the --overwrite option was&quot;</span>
+                    <span class="s2">&quot; not used!&quot;</span>
+                <span class="p">)</span>
+
+            <span class="n">coverage_mt</span> <span class="o">=</span> <span class="n">prepare_sex_imputation_coverage_mt</span><span class="p">(</span>
+                <span class="n">normalization_contig</span><span class="p">,</span>
+                <span class="n">test</span><span class="p">,</span>
+                <span class="n">read_sex_cov_if_exists</span><span class="p">,</span>
+            <span class="p">)</span>
+            <span class="n">platform_ht</span> <span class="o">=</span> <span class="n">load_platform_ht</span><span class="p">(</span>
+                <span class="n">test</span><span class="p">,</span>
+                <span class="n">coverage_mt</span><span class="o">.</span><span class="n">calling_interval_name</span><span class="o">.</span><span class="n">collect</span><span class="p">()[</span><span class="mi">0</span><span class="p">],</span>
+                <span class="n">coverage_mt</span><span class="o">.</span><span class="n">calling_interval_padding</span><span class="o">.</span><span class="n">collect</span><span class="p">()[</span><span class="mi">0</span><span class="p">],</span>
+            <span class="p">)</span>
+
+            <span class="n">high_qual_cutoffs</span> <span class="o">=</span> <span class="kc">None</span>
+            <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">high_qual_by_mean_fraction_over_dp_0</span><span class="p">:</span>
+                <span class="c1"># The same cutoffs are used for x_non_par, and y_non_par within their</span>
+                <span class="c1"># respective dictionaries and the same annotations are used for</span>
+                <span class="c1"># autosome_par, x_non_par, and y_non_par within their respective</span>
+                <span class="c1"># dictionaries.</span>
+                <span class="n">high_qual_cutoffs</span> <span class="o">=</span> <span class="n">get_high_qual_cutoff_dict</span><span class="p">(</span>
+                    <span class="n">args</span><span class="o">.</span><span class="n">norm_mean_fraction_over_dp_0</span><span class="p">,</span>
+                    <span class="o">*</span><span class="p">[</span><span class="n">args</span><span class="o">.</span><span class="n">sex_mean_fraction_over_dp_0</span><span class="p">]</span> <span class="o">*</span> <span class="mi">2</span><span class="p">,</span>
+                    <span class="o">*</span><span class="p">[</span><span class="s2">&quot;mean_fraction_over_dp_0&quot;</span><span class="p">]</span> <span class="o">*</span> <span class="mi">3</span><span class="p">,</span>
+                <span class="p">)</span>
+            <span class="k">elif</span> <span class="n">args</span><span class="o">.</span><span class="n">high_qual_by_fraction_samples_over_cov</span><span class="p">:</span>
+                <span class="n">high_qual_cutoffs</span> <span class="o">=</span> <span class="n">get_high_qual_cutoff_dict</span><span class="p">(</span>
+                    <span class="n">args</span><span class="o">.</span><span class="n">fraction_samples_norm</span><span class="p">,</span>
+                    <span class="n">args</span><span class="o">.</span><span class="n">fraction_samples_x</span><span class="p">,</span>
+                    <span class="n">args</span><span class="o">.</span><span class="n">fraction_samples_y</span><span class="p">,</span>
+                    <span class="sa">f</span><span class="s2">&quot;fraction_over_</span><span class="si">{</span><span class="n">args</span><span class="o">.</span><span class="n">norm_cov</span><span class="si">}</span><span class="s2">x&quot;</span><span class="p">,</span>
+                    <span class="sa">f</span><span class="s2">&quot;fraction_over_</span><span class="si">{</span><span class="n">args</span><span class="o">.</span><span class="n">x_cov</span><span class="si">}</span><span class="s2">x&quot;</span><span class="p">,</span>
+                    <span class="sa">f</span><span class="s2">&quot;fraction_over_</span><span class="si">{</span><span class="n">args</span><span class="o">.</span><span class="n">y_cov</span><span class="si">}</span><span class="s2">x&quot;</span><span class="p">,</span>
+                <span class="p">)</span>
+
+            <span class="n">interval_qc_ht</span> <span class="o">=</span> <span class="kc">None</span>
+            <span class="k">if</span> <span class="n">high_qual_intervals</span> <span class="ow">or</span> <span class="n">high_qual_per_platform</span> <span class="ow">or</span> <span class="n">high_qual_all_platforms</span><span class="p">:</span>
+                <span class="n">interval_qc_ht</span> <span class="o">=</span> <span class="p">(</span>
+                    <span class="n">hl</span><span class="o">.</span><span class="n">read_table</span><span class="p">(</span><span class="n">get_checkpoint_path</span><span class="p">(</span><span class="s2">&quot;test_sex_chr_interval_qc&quot;</span><span class="p">))</span>
+                    <span class="k">if</span> <span class="n">test</span>
+                    <span class="k">else</span> <span class="n">sex_imputation_interval_qc</span><span class="o">.</span><span class="n">ht</span><span class="p">()</span>
+                <span class="p">)</span>
+                <span class="k">if</span> <span class="p">(</span>
+                    <span class="n">interval_qc_ht</span><span class="o">.</span><span class="n">normalization_contig</span><span class="o">.</span><span class="n">collect</span><span class="p">()[</span><span class="mi">0</span><span class="p">]</span>
+                    <span class="o">!=</span> <span class="n">normalization_contig</span>
+                <span class="p">):</span>
+                    <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+                        <span class="sa">f</span><span class="s2">&quot;Normalization contig </span><span class="si">{</span><span class="n">normalization_contig</span><span class="si">}</span><span class="s2"> is not in the sex&quot;</span>
+                        <span class="s2">&quot; imputation interval QC HT, rerun&quot;</span>
+                        <span class="s2">&quot; &#39;--sex-imputation-interval-qc&#39; to use a different&quot;</span>
+                        <span class="s2">&quot; normalization contig than&quot;</span>
+                        <span class="sa">f</span><span class="s2">&quot; </span><span class="si">{</span><span class="n">interval_qc_ht</span><span class="o">.</span><span class="n">normalization_contig</span><span class="o">.</span><span class="n">collect</span><span class="p">()[</span><span class="mi">0</span><span class="p">]</span><span class="si">}</span><span class="s2">.&quot;</span><span class="p">,</span>
+                    <span class="p">)</span>
+
+                <span class="n">interval_qc_ht</span> <span class="o">=</span> <span class="n">get_interval_qc_pass</span><span class="p">(</span>
+                    <span class="n">interval_qc_ht</span><span class="p">,</span>
+                    <span class="n">high_qual_cutoffs</span><span class="p">,</span>
+                    <span class="n">per_platform</span><span class="o">=</span><span class="n">high_qual_per_platform</span><span class="p">,</span>
+                    <span class="n">all_platforms</span><span class="o">=</span><span class="n">high_qual_all_platforms</span><span class="p">,</span>
+                    <span class="n">min_platform_size</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">min_platform_size</span><span class="p">,</span>
+                <span class="p">)</span>
+
+            <span class="n">ploidy_ht</span> <span class="o">=</span> <span class="n">compute_sex_ploidy</span><span class="p">(</span>
+                <span class="n">vds</span><span class="p">,</span>
+                <span class="n">coverage_mt</span><span class="p">,</span>
+                <span class="n">interval_qc_ht</span><span class="o">=</span><span class="n">interval_qc_ht</span><span class="p">,</span>
+                <span class="n">high_qual_per_platform</span><span class="o">=</span><span class="n">high_qual_per_platform</span><span class="p">,</span>
+                <span class="n">platform_ht</span><span class="o">=</span><span class="n">platform_ht</span><span class="p">,</span>
+                <span class="n">normalization_contig</span><span class="o">=</span><span class="n">normalization_contig</span><span class="p">,</span>
+                <span class="n">variant_depth_only_x_ploidy</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">variant_depth_only_x_ploidy</span><span class="p">,</span>
+                <span class="n">variant_depth_only_y_ploidy</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">variant_depth_only_y_ploidy</span><span class="p">,</span>
+                <span class="n">variant_depth_only_ploidy_filter_lcr</span><span class="o">=</span><span class="ow">not</span> <span class="n">args</span><span class="o">.</span><span class="n">omit_variant_depth_ploidy_lcr_filter</span><span class="p">,</span>
+                <span class="n">variant_depth_only_ploidy_filter_segdup</span><span class="o">=</span><span class="ow">not</span> <span class="n">args</span><span class="o">.</span><span class="n">omit_variant_depth_ploidy_segdup_filter</span><span class="p">,</span>
+                <span class="n">variant_depth_only_ploidy_snv_only</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">variant_depth_ploidy_snv_only</span><span class="p">,</span>
+                <span class="n">compute_x_frac_variants_hom_alt</span><span class="o">=</span><span class="ow">not</span> <span class="n">args</span><span class="o">.</span><span class="n">omit_compute_x_frac_variants_hom_alt</span><span class="p">,</span>
+                <span class="n">freq_ht</span><span class="o">=</span><span class="n">freq_ht</span><span class="p">,</span>
+                <span class="n">min_af</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">min_af</span><span class="p">,</span>
+                <span class="n">f_stat_cutoff</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">f_stat_cutoff</span><span class="p">,</span>
+            <span class="p">)</span>
+            <span class="n">ploidy_ht</span> <span class="o">=</span> <span class="n">ploidy_ht</span><span class="o">.</span><span class="n">annotate</span><span class="p">(</span>
+                <span class="n">platform</span><span class="o">=</span><span class="n">platform_ht</span><span class="p">[</span><span class="n">ploidy_ht</span><span class="o">.</span><span class="n">key</span><span class="p">]</span><span class="o">.</span><span class="n">qc_platform</span>
+            <span class="p">)</span>
+            <span class="n">ploidy_ht</span> <span class="o">=</span> <span class="n">ploidy_ht</span><span class="o">.</span><span class="n">annotate_globals</span><span class="p">(</span><span class="n">f_stat_ukb_var</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">f_stat_ukb_var</span><span class="p">)</span>
+            <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Writing ploidy Table...&quot;</span><span class="p">)</span>
+            <span class="n">ploidy_ht</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">ploidy_ht_path</span><span class="p">,</span> <span class="n">overwrite</span><span class="o">=</span><span class="n">overwrite</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">annotate_sex_karyotype</span><span class="p">:</span>
+            <span class="c1"># TODO: Add drop of `is_female` in future versions.</span>
+            <span class="n">ploidy_ht</span> <span class="o">=</span> <span class="p">(</span>
+                <span class="n">hl</span><span class="o">.</span><span class="n">read_table</span><span class="p">(</span><span class="n">get_checkpoint_path</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;ploidy_imputation&quot;</span><span class="p">))</span>
+                <span class="k">if</span> <span class="n">test</span>
+                <span class="k">else</span> <span class="n">ploidy</span><span class="o">.</span><span class="n">ht</span><span class="p">()</span>
+            <span class="p">)</span>
+
+            <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">sex_karyotype_cutoffs</span><span class="p">:</span>
+                <span class="k">with</span> <span class="n">hl</span><span class="o">.</span><span class="n">hadoop_open</span><span class="p">(</span><span class="n">args</span><span class="o">.</span><span class="n">sex_karyotype_cutoffs</span><span class="p">,</span> <span class="s2">&quot;r&quot;</span><span class="p">)</span> <span class="k">as</span> <span class="n">d</span><span class="p">:</span>
+                    <span class="n">ploidy_cutoffs</span> <span class="o">=</span> <span class="n">json</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="n">d</span><span class="p">)</span>
+                <span class="n">karyotype_ht</span> <span class="o">=</span> <span class="n">annotate_sex_karyotype_from_ploidy_cutoffs</span><span class="p">(</span>
+                    <span class="n">ploidy_ht</span><span class="p">,</span>
+                    <span class="n">ploidy_cutoffs</span><span class="p">,</span>
+                    <span class="n">per_platform</span><span class="o">=</span><span class="n">per_platform</span><span class="p">,</span>
+                    <span class="n">apply_x_frac_hom_alt_cutoffs</span><span class="o">=</span><span class="n">apply_x_frac_hom_alt_cutoffs</span><span class="p">,</span>
+                <span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">karyotype_ht</span> <span class="o">=</span> <span class="n">infer_sex_karyotype_from_ploidy</span><span class="p">(</span>
+                    <span class="n">ploidy_ht</span><span class="p">,</span>
+                    <span class="n">per_platform</span><span class="o">=</span><span class="n">per_platform</span><span class="p">,</span>
+                    <span class="n">f_stat_cutoff</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">f_stat_cutoff</span><span class="p">,</span>
+                    <span class="n">use_gmm_for_ploidy_cutoffs</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">use_gmm_for_ploidy_cutoffs</span><span class="p">,</span>
+                    <span class="n">apply_x_frac_hom_alt_cutoffs</span><span class="o">=</span><span class="n">apply_x_frac_hom_alt_cutoffs</span><span class="p">,</span>
+                <span class="p">)</span>
+            <span class="n">sex_ht</span> <span class="o">=</span> <span class="n">ploidy_ht</span><span class="o">.</span><span class="n">annotate</span><span class="p">(</span><span class="o">**</span><span class="n">karyotype_ht</span><span class="p">[</span><span class="n">ploidy_ht</span><span class="o">.</span><span class="n">key</span><span class="p">])</span>
+            <span class="n">sex_ht</span> <span class="o">=</span> <span class="n">sex_ht</span><span class="o">.</span><span class="n">annotate_globals</span><span class="p">(</span><span class="o">**</span><span class="n">karyotype_ht</span><span class="o">.</span><span class="n">index_globals</span><span class="p">())</span>
+
+            <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Writing sex HT with karyotype annotation...&quot;</span><span class="p">)</span>
+            <span class="n">sex_ht</span><span class="o">.</span><span class="n">write</span><span class="p">(</span>
+                <span class="n">get_checkpoint_path</span><span class="p">(</span><span class="s2">&quot;sex&quot;</span><span class="p">)</span> <span class="k">if</span> <span class="n">test</span> <span class="k">else</span> <span class="n">sex</span><span class="o">.</span><span class="n">path</span><span class="p">,</span>
+                <span class="n">overwrite</span><span class="o">=</span><span class="n">overwrite</span><span class="p">,</span>
+            <span class="p">)</span>
+
+            <span class="n">ploidy_cutoffs</span> <span class="o">=</span> <span class="n">reformat_ploidy_cutoffs_for_json</span><span class="p">(</span>
+                <span class="n">sex_ht</span><span class="p">,</span>
+                <span class="n">per_platform</span><span class="o">=</span><span class="n">per_platform</span><span class="p">,</span>
+                <span class="n">include_x_frac_hom_alt_cutoffs</span><span class="o">=</span><span class="n">apply_x_frac_hom_alt_cutoffs</span><span class="p">,</span>
+            <span class="p">)</span>
+            <span class="n">cutoff_json_path</span> <span class="o">=</span> <span class="n">get_ploidy_cutoff_json_path</span><span class="p">(</span><span class="n">test</span><span class="o">=</span><span class="n">test</span><span class="p">)</span>
+            <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Writing ploidy cutoffs dictionary to </span><span class="si">%s</span><span class="s2">.&quot;</span><span class="p">,</span> <span class="n">cutoff_json_path</span><span class="p">)</span>
+            <span class="k">with</span> <span class="n">hl</span><span class="o">.</span><span class="n">hadoop_open</span><span class="p">(</span><span class="n">cutoff_json_path</span><span class="p">,</span> <span class="s2">&quot;w&quot;</span><span class="p">)</span> <span class="k">as</span> <span class="n">d</span><span class="p">:</span>
+                <span class="n">d</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">json</span><span class="o">.</span><span class="n">dumps</span><span class="p">(</span><span class="n">ploidy_cutoffs</span><span class="p">))</span>
+    <span class="k">finally</span><span class="p">:</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Copying log to logging bucket...&quot;</span><span class="p">)</span>
+        <span class="n">hl</span><span class="o">.</span><span class="n">copy_log</span><span class="p">(</span><span class="n">get_logging_path</span><span class="p">(</span><span class="s2">&quot;sex_inference&quot;</span><span class="p">))</span></div>
+
+
+<span class="k">def</span> <span class="nf">get_script_argument_parser</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="n">argparse</span><span class="o">.</span><span class="n">ArgumentParser</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Get script argument parser.&quot;&quot;&quot;</span>
+    <span class="n">parser</span> <span class="o">=</span> <span class="n">argparse</span><span class="o">.</span><span class="n">ArgumentParser</span><span class="p">()</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--overwrite&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Overwrite output files.&quot;</span><span class="p">,</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--test&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Test the pipeline using the gnomAD v4 test dataset.&quot;</span><span class="p">,</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--slack-channel&quot;</span><span class="p">,</span> <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Slack channel to post results and notifications to.&quot;</span>
+    <span class="p">)</span>
+
+    <span class="n">fstat_args</span> <span class="o">=</span> <span class="n">parser</span><span class="o">.</span><span class="n">add_argument_group</span><span class="p">(</span>
+        <span class="s2">&quot;Determine f-stat sites&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;Arguments used for determining sites to use for f-stat calculations.&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">fstat_args</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--determine-fstat-sites&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="p">(</span>
+            <span class="s2">&quot;Create Table of common (&gt; value specified by &#39;--min-af&#39;), bi-allelic SNPs&quot;</span>
+            <span class="s2">&quot; on chromosome X for f-stat calculations. Additionally filter to high&quot;</span>
+            <span class="s2">&quot; callrate (&gt; value specified by &#39;--min-callrate&#39;) variants if&quot;</span>
+            <span class="s2">&quot; &#39;--approx-af-and-no-callrate&#39; is not used. NOTE: This requires a densify&quot;</span>
+            <span class="s2">&quot; of chrX!&quot;</span>
+        <span class="p">),</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">fstat_args</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--min-callrate&quot;</span><span class="p">,</span> <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Minimum variant callrate.&quot;</span><span class="p">,</span> <span class="n">default</span><span class="o">=</span><span class="mf">0.99</span><span class="p">,</span> <span class="nb">type</span><span class="o">=</span><span class="nb">float</span>
+    <span class="p">)</span>
+    <span class="n">fstat_args</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--approx-af-and-no-callrate&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="p">(</span>
+            <span class="s2">&quot;Whether to approximate allele frequency with AC/(n_samples * 2) and use no&quot;</span>
+            <span class="s2">&quot; callrate cutoff for determination of f-stat sites.&quot;</span>
+        <span class="p">),</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">fstat_args</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--fstat-n-partitions&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Number of desired partitions for the f-stat sites output Table.&quot;</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="mi">1000</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">int</span><span class="p">,</span>
+    <span class="p">)</span>
+
+    <span class="n">sex_imputation_interval_qc_args</span> <span class="o">=</span> <span class="n">parser</span><span class="o">.</span><span class="n">add_argument_group</span><span class="p">(</span>
+        <span class="s2">&quot;Sex chromosome interval QC&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;Arguments used for making an interval QC HT from the sex imputation interval&quot;</span>
+        <span class="s2">&quot; coverage MT.&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">sex_imputation_interval_qc_args</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--sex-imputation-interval-qc&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="p">(</span>
+            <span class="s2">&quot;Create a Table of the fraction of samples per interval and per platform&quot;</span>
+            <span class="s2">&quot; with mean DP over thresholds specified by &#39;--mean-dp-thresholds&#39;.&quot;</span>
+        <span class="p">),</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">sex_cov_mt_read_if_exists_action</span> <span class="o">=</span> <span class="n">sex_imputation_interval_qc_args</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--read-sex-imputation-coverage-mt-if-exists&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="p">(</span>
+            <span class="s2">&quot;Whether to use the sex imputation coverage MT if it already exists rather&quot;</span>
+            <span class="s2">&quot; than remaking this intermediate temporary file.&quot;</span>
+        <span class="p">),</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">norm_contig_action</span> <span class="o">=</span> <span class="n">sex_imputation_interval_qc_args</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--normalization-contig&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="p">(</span>
+            <span class="s2">&quot;Which autosomal chromosome to use for normalizing the coverage of&quot;</span>
+            <span class="s2">&quot; chromosomes X and Y.&quot;</span>
+        <span class="p">),</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">str</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="s2">&quot;chr20&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">sex_imputation_interval_qc_args</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--mean-dp-thresholds&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="p">(</span>
+            <span class="s2">&quot;List of mean DP cutoffs to determining the fraction of samples with mean&quot;</span>
+            <span class="s2">&quot; coverage &gt;= the cutoff for each interval.&quot;</span>
+        <span class="p">),</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">int</span><span class="p">,</span>
+        <span class="n">nargs</span><span class="o">=</span><span class="s2">&quot;+&quot;</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="p">[</span><span class="mi">5</span><span class="p">,</span> <span class="mi">10</span><span class="p">,</span> <span class="mi">15</span><span class="p">,</span> <span class="mi">20</span><span class="p">,</span> <span class="mi">25</span><span class="p">],</span>
+    <span class="p">)</span>
+    <span class="n">sex_imputation_interval_qc_args</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--interval-qc-n-partitions&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="p">(</span>
+            <span class="s2">&quot;Number of desired partitions for the sex imputation interval QC output&quot;</span>
+            <span class="s2">&quot; Table.&quot;</span>
+        <span class="p">),</span>
+        <span class="n">default</span><span class="o">=</span><span class="mi">500</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">int</span><span class="p">,</span>
+    <span class="p">)</span>
+
+    <span class="n">sex_ploidy_args</span> <span class="o">=</span> <span class="n">parser</span><span class="o">.</span><span class="n">add_argument_group</span><span class="p">(</span>
+        <span class="s2">&quot;Impute sex ploidy&quot;</span><span class="p">,</span> <span class="s2">&quot;Arguments used for imputing sex chromosome ploidy.&quot;</span>
+    <span class="p">)</span>
+    <span class="n">sex_ploidy_args</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--impute-sex-ploidy&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Run sex chromosome ploidy imputation.&quot;</span><span class="p">,</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="c1"># Indicate that the --normalization-contig and</span>
+    <span class="c1"># --read-sex-imputation-coverage-mt-if-exists options are available for the</span>
+    <span class="c1"># &quot;sex_ploidy_args&quot; argument group as well.</span>
+    <span class="n">sex_ploidy_args</span><span class="o">.</span><span class="n">_group_actions</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">norm_contig_action</span><span class="p">)</span>
+    <span class="n">sex_ploidy_args</span><span class="o">.</span><span class="n">_group_actions</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">sex_cov_mt_read_if_exists_action</span><span class="p">)</span>
+    <span class="n">sex_ploidy_args</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--f-stat-ukb-var&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="p">(</span>
+            <span class="s2">&quot;Whether to use UK Biobank high callrate (0.99) and common variants (UKB&quot;</span>
+            <span class="s2">&quot; allele frequency &gt; value specified by &#39;--min-af&#39;) for f-stat computation&quot;</span>
+            <span class="s2">&quot; instead of the sites determined by &#39;--determine-fstat-sites&#39;.&quot;</span>
+        <span class="p">),</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">sex_ploidy_args</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--min-af&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Minimum variant allele frequency to retain variant.&quot;</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="mf">0.001</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">float</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">sex_ploidy_args</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--f-stat-cutoff&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="p">(</span>
+            <span class="s2">&quot;Cutoff for f-stat to roughly divide &#39;XX&#39; from &#39;XY&#39; samples. Assumes XX&quot;</span>
+            <span class="s2">&quot; samples are below cutoff and XY are above cutoff.&quot;</span>
+        <span class="p">),</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">float</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=-</span><span class="mf">1.0</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">sex_ploidy_high_qual_method_parser</span> <span class="o">=</span> <span class="n">sex_ploidy_args</span><span class="o">.</span><span class="n">add_mutually_exclusive_group</span><span class="p">(</span>
+        <span class="n">required</span><span class="o">=</span><span class="kc">False</span>
+    <span class="p">)</span>
+    <span class="n">sex_ploidy_high_qual_method_parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--high-qual-intervals&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="p">(</span>
+            <span class="s2">&quot;Whether to filter to high quality intervals for the sex ploidy imputation.&quot;</span>
+            <span class="s2">&quot; Can&#39;t be used at the same time as &#39;--high-qual-per-platform&#39; or&quot;</span>
+            <span class="s2">&quot; &#39;--high-qual-all-platforms&#39;.&quot;</span>
+        <span class="p">),</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">sex_ploidy_high_qual_method_parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--high-qual-per-platform&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="p">(</span>
+            <span class="s2">&quot;Whether to filter to per platform high quality intervals for the sex&quot;</span>
+            <span class="s2">&quot; ploidy imputation. Can&#39;t be used at the same time as&quot;</span>
+            <span class="s2">&quot; &#39;--high-qual-intervals&#39; or &#39;--high-qual-all-platforms&#39;.&quot;</span>
+        <span class="p">),</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">sex_ploidy_high_qual_method_parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--high-qual-all-platforms&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="p">(</span>
+            <span class="s2">&quot;Whether to filter to high quality intervals for the sex ploidy imputation.&quot;</span>
+            <span class="s2">&quot; Use only intervals that are considered high quality across all platforms.&quot;</span>
+            <span class="s2">&quot; Can&#39;t be used at the same time as &#39;--high-qual-intervals&#39; or&quot;</span>
+            <span class="s2">&quot; &#39;--high-qual-per-platform&#39;&quot;</span>
+        <span class="p">),</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">sex_ploidy_args</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--min-platform-size&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="p">(</span>
+            <span class="s2">&quot;Required size of a platform to be considered in&quot;</span>
+            <span class="s2">&quot; &#39;--high-qual-all-platforms&#39;. Only platforms that have # of samples &gt;&quot;</span>
+            <span class="s2">&quot; &#39;min_platform_size&#39; are used to determine intervals that have a high&quot;</span>
+            <span class="s2">&quot; quality across all platforms.&quot;</span>
+        <span class="p">),</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">int</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="mi">100</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">sex_ploidy_args</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--variant-depth-only-x-ploidy&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="p">(</span>
+            <span class="s2">&quot;Whether to use depth of variant data for the x ploidy estimation instead&quot;</span>
+            <span class="s2">&quot; of the default behavior that will use reference blocks.&quot;</span>
+        <span class="p">),</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">sex_ploidy_args</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--variant-depth-only-y-ploidy&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="p">(</span>
+            <span class="s2">&quot;Whether to use depth of variant data for the y ploidy estimation instead&quot;</span>
+            <span class="s2">&quot; of the default behavior that will use reference blocks.&quot;</span>
+        <span class="p">),</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">sex_ploidy_args</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--omit-variant-depth-ploidy-lcr-filter&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="p">(</span>
+            <span class="s2">&quot;Whether to omit filtering out variants in LCR regions for the variants&quot;</span>
+            <span class="s2">&quot; only ploidy estimation and fraction of homozygous alternate variants on&quot;</span>
+            <span class="s2">&quot; chromosome X.&quot;</span>
+        <span class="p">),</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">sex_ploidy_args</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--omit-variant-depth-ploidy-segdup-filter&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="p">(</span>
+            <span class="s2">&quot;Whether to omit filtering out variants in segdup regions for the variants&quot;</span>
+            <span class="s2">&quot; only ploidy estimation and fraction of homozygous alternate variants on&quot;</span>
+            <span class="s2">&quot; chromosome X.&quot;</span>
+        <span class="p">),</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">sex_ploidy_args</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--variant-depth-ploidy-snv-only&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="p">(</span>
+            <span class="s2">&quot;Whether to filter to only single nucleotide variants for variants only&quot;</span>
+            <span class="s2">&quot; ploidy estimation and fraction of homozygous alternate variants on&quot;</span>
+            <span class="s2">&quot; chromosome X.&quot;</span>
+        <span class="p">),</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">sex_ploidy_args</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--omit-compute-x-frac-variants-hom-alt&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="p">(</span>
+            <span class="s2">&quot;Whether to omit the computation of the fraction of homozygous alternate&quot;</span>
+            <span class="s2">&quot; variants on chromosome X.&quot;</span>
+        <span class="p">),</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">sex_ploidy_high_qual_opt_parser</span> <span class="o">=</span> <span class="n">sex_ploidy_args</span><span class="o">.</span><span class="n">add_mutually_exclusive_group</span><span class="p">(</span>
+        <span class="n">required</span><span class="o">=</span><span class="kc">False</span>
+    <span class="p">)</span>
+    <span class="n">sex_ploidy_high_qual_opt_parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--high-qual-by-mean-fraction-over-dp-0&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="p">(</span>
+            <span class="s2">&quot;Whether to use the mean fraction of bases over DP 0 to determine high&quot;</span>
+            <span class="s2">&quot; quality intervals. Can&#39;t be set at the same time as&quot;</span>
+            <span class="s2">&quot; &#39;--high-qual-by-fraction-samples-over-cov&#39;.&quot;</span>
+        <span class="p">),</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">sex_ploidy_high_qual_opt_parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--high-qual-by-fraction-samples-over-cov&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="p">(</span>
+            <span class="s2">&quot;Whether to determine high quality intervals using the fraction of samples&quot;</span>
+            <span class="s2">&quot; with a mean interval quality over a specified quality for chrX (--x-cov),&quot;</span>
+            <span class="s2">&quot; chrY (--y-cov), and the normalization contig (--norm-cov). Can&#39;t be set&quot;</span>
+            <span class="s2">&quot; at the same time as &#39;--high-qual-by-mean-fraction-over-dp-0&#39;.&quot;</span>
+        <span class="p">),</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">sex_ploidy_args</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--sex-mean-fraction-over-dp-0&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="p">(</span>
+            <span class="s2">&quot;Mean fraction of bases over DP 0 used to define high quality intervals on&quot;</span>
+            <span class="s2">&quot; sex chromosomes.&quot;</span>
+        <span class="p">),</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">float</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="mf">0.4</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">sex_ploidy_args</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--norm-mean-fraction-over-dp-0&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="p">(</span>
+            <span class="s2">&quot;Mean fraction of bases over DP 0 used to define high quality intervals on&quot;</span>
+            <span class="s2">&quot; the normalization chromosome.&quot;</span>
+        <span class="p">),</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">float</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="mf">0.99</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">sex_ploidy_args</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--x-cov&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="p">(</span>
+            <span class="s2">&quot;Mean coverage level used to define high quality intervals on chromosome X.&quot;</span>
+            <span class="s2">&quot; Aggregate mean for this coverage level must be in the sex chromosome&quot;</span>
+            <span class="s2">&quot; interval QC HT (must be value in &#39;--mean-dp-thresholds&#39; list used to&quot;</span>
+            <span class="s2">&quot; create the QC HT)!&quot;</span>
+        <span class="p">),</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">int</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="mi">10</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">sex_ploidy_args</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--y-cov&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="p">(</span>
+            <span class="s2">&quot;Mean coverage level used to define high quality intervals on chromosome Y.&quot;</span>
+            <span class="s2">&quot; Aggregate mean for this coverage level must be in the sex chromosome&quot;</span>
+            <span class="s2">&quot; interval QC HT (must be value in &#39;--mean-dp-thresholds&#39; list used to&quot;</span>
+            <span class="s2">&quot; create the QC HT)!&quot;</span>
+        <span class="p">),</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">int</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="mi">5</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">sex_ploidy_args</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--norm-cov&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="p">(</span>
+            <span class="s2">&quot;Mean coverage level used to define high quality intervals on the&quot;</span>
+            <span class="s2">&quot; normalization autosome. Aggregate mean for this coverage level must be in&quot;</span>
+            <span class="s2">&quot; the sex chromosome interval QC HT (must be value in&quot;</span>
+            <span class="s2">&quot; &#39;--mean-dp-thresholds&#39; list used to create the QC HT)!&quot;</span>
+        <span class="p">),</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">int</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="mi">20</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">sex_ploidy_args</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--fraction-samples-x&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="p">(</span>
+            <span class="s2">&quot;Fraction samples at specified coverage &#39;--x-cov&#39; to determine high quality&quot;</span>
+            <span class="s2">&quot; intervals on chromosome X.&quot;</span>
+        <span class="p">),</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">float</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="mf">0.80</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">sex_ploidy_args</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--fraction-samples-y&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="p">(</span>
+            <span class="s2">&quot;Fraction samples at specified coverage &#39;--y-cov&#39; to determine high quality&quot;</span>
+            <span class="s2">&quot; intervals on chromosome Y.&quot;</span>
+        <span class="p">),</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">float</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="mf">0.35</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">sex_ploidy_args</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--fraction-samples-norm&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="p">(</span>
+            <span class="s2">&quot;Fraction samples at specified coverage &#39;--norm-cov&#39; to determine high&quot;</span>
+            <span class="s2">&quot; quality intervals on the normalization chromosome specified by&quot;</span>
+            <span class="s2">&quot; &#39;--normalization-contig&#39;.&quot;</span>
+        <span class="p">),</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">float</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="mf">0.85</span><span class="p">,</span>
+    <span class="p">)</span>
+
+    <span class="n">sex_karyotype_args</span> <span class="o">=</span> <span class="n">parser</span><span class="o">.</span><span class="n">add_argument_group</span><span class="p">(</span>
+        <span class="s2">&quot;Annotate sex karyotype&quot;</span><span class="p">,</span> <span class="s2">&quot;Arguments used for annotating sex karyotype.&quot;</span>
+    <span class="p">)</span>
+    <span class="n">sex_karyotype_args</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--annotate-sex-karyotype&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Run sex karyotype inference.&quot;</span><span class="p">,</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">sex_karyotype_args</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--use-gmm-for-ploidy-cutoffs&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="p">(</span>
+            <span class="s2">&quot;Whether to use Gaussian mixture model to roughly split samples into &#39;XX&#39;&quot;</span>
+            <span class="s2">&quot; and &#39;XY&#39; instead of f-stat.&quot;</span>
+        <span class="p">),</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">sex_karyotype_args</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--apply-x-frac-hom-alt-cutoffs&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="p">(</span>
+            <span class="s2">&quot;Whether to apply &#39;XX&#39; and &#39;XY&#39; cutoffs for the fraction of homozygous&quot;</span>
+            <span class="s2">&quot; alternate genotypes on chromosome X and use them to infer sex karyotype.&quot;</span>
+        <span class="p">),</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">sex_karyotype_args</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--per-platform&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Whether to run the karyotype inference per platform.&quot;</span><span class="p">,</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">sex_karyotype_args</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--sex-karyotype-cutoffs&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="p">(</span>
+            <span class="s2">&quot;Optional path to JSON file containing sex karyotype X and Y ploidy cutoffs&quot;</span>
+            <span class="s2">&quot; to use for karyotype annotation instead of inferring cutoffs. If&quot;</span>
+            <span class="s2">&quot; &#39;--apply-x-frac-hom-alt-cutoffs&#39; is used, this file mustalso include&quot;</span>
+            <span class="s2">&quot; cutoffs for the fraction of homozygous alternate genotypes on&quot;</span>
+            <span class="s2">&quot; chromosome X.&quot;</span>
+        <span class="p">),</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">str</span><span class="p">,</span>
+    <span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">parser</span>
+
+
+<span class="k">if</span> <span class="vm">__name__</span> <span class="o">==</span> <span class="s2">&quot;__main__&quot;</span><span class="p">:</span>
+    <span class="n">parser</span> <span class="o">=</span> <span class="n">get_script_argument_parser</span><span class="p">()</span>
+    <span class="n">args</span> <span class="o">=</span> <span class="n">parser</span><span class="o">.</span><span class="n">parse_args</span><span class="p">()</span>
+
+    <span class="k">if</span> <span class="p">(</span>
+        <span class="n">args</span><span class="o">.</span><span class="n">high_qual_intervals</span>
+        <span class="ow">or</span> <span class="n">args</span><span class="o">.</span><span class="n">high_qual_per_platform</span>
+        <span class="ow">or</span> <span class="n">args</span><span class="o">.</span><span class="n">high_qual_all_platforms</span>
+    <span class="p">)</span> <span class="ow">and</span> <span class="ow">not</span> <span class="p">(</span>
+        <span class="n">args</span><span class="o">.</span><span class="n">high_qual_by_mean_fraction_over_dp_0</span>
+        <span class="ow">or</span> <span class="n">args</span><span class="o">.</span><span class="n">high_qual_by_fraction_samples_over_cov</span>
+    <span class="p">):</span>
+        <span class="n">parser</span><span class="o">.</span><span class="n">error</span><span class="p">(</span>
+            <span class="s2">&quot;One of --high-qual-by-mean-fraction-over-dp-0 or&quot;</span>
+            <span class="s2">&quot; --high-qual-by-fraction-samples-over-cov is required when a high quality&quot;</span>
+            <span class="s2">&quot; option (--high-qual-intervals, --high-qual-per-platform, or&quot;</span>
+            <span class="s2">&quot; --high-qual-all-platforms) is specified.&quot;</span>
+        <span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">slack_channel</span><span class="p">:</span>
+        <span class="k">with</span> <span class="n">slack_notifications</span><span class="p">(</span><span class="n">slack_token</span><span class="p">,</span> <span class="n">args</span><span class="o">.</span><span class="n">slack_channel</span><span class="p">):</span>
+            <span class="n">main</span><span class="p">(</span><span class="n">args</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">main</span><span class="p">(</span><span class="n">args</span><span class="p">)</span>
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p></p>
+  </div>
+
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>
