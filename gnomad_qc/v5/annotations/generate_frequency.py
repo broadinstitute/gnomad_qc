@@ -2,12 +2,14 @@
 Generate gnomAD v5 genome frequencies.
 
 gnomAD v5 adds no new gnomAD samples, so ``--process-gnomad`` reuses the v4 counts:
-it computes AC, homozygote counts and age histograms for the samples that withdrew
-consent after v4 and subtracts them, and keeps the v4 quality histograms as they are.
+it computes AC, AN, homozygote counts and age histograms for the samples that
+withdrew consent after v4 and subtracts them, and keeps the v4 adj quality histograms
+as they are.
 All of Us (AoU) via ``--process-aou`` aggregates AC, homozygote counts and histograms
-from the AoU VDS variant data. ``--merge-datasets`` combines the two tables, takes AN
-for every stratum from the all-sites AN release ``compute_coverage.py`` wrote, and
-adds AF, FAF, grpmax and the inbreeding coefficient.
+from the AoU VDS variant data. ``--merge-datasets`` combines the two tables, takes
+AoU's AN, and gnomAD's for variants gnomAD lacks, from the all-sites AN release
+``compute_coverage.py`` wrote, and adds AF, FAF, grpmax and the inbreeding
+coefficient.
 
 Genome-wide, ``--use-batch-fanout`` fans the AoU step out in Query-on-Batch using the
 interval chunk layout ``compute_coverage.py`` already wrote beside its AN table, and
@@ -16,13 +18,13 @@ interval chunk layout ``compute_coverage.py`` already wrote beside its AN table,
 Examples::
 
     # AoU: fan out, then merge.
-    generate_frequency.py --process-aou --use-batch-fanout --environment batch
-    generate_frequency.py --process-aou --merge-freq-chunks --environment batch
+    generate_frequency.py --process-aou --use-batch-fanout
+    generate_frequency.py --process-aou --merge-freq-chunks
     # AoU as a single job on a test region.
     generate_frequency.py --process-aou --test-region chr22:10510002-11110002
-    # gnomAD, then the merge.
-    generate_frequency.py --process-gnomad --environment batch
-    generate_frequency.py --merge-datasets --environment batch
+    # gnomAD, then the merge, which needs both tables and the all-sites AN release.
+    generate_frequency.py --process-gnomad
+    generate_frequency.py --merge-datasets
 """
 
 import argparse
@@ -73,6 +75,7 @@ from gnomad_qc.v5.annotations.batch_fanout import (
     qob_sizing_flags,
     relay_context,
     resolve_commit,
+    resolve_methods_commit,
     run_chunk_fanout,
     select_chunks_for_contig,
     spans_sex_chromosome,
@@ -134,9 +137,7 @@ def _release_meta(project: str, environment: str) -> hl.Table:
     """
     ht = meta(data_type="genomes", environment=environment).ht()
     ht = ht.filter((ht.project_meta.project == project) & ht.release)
-    return ht.select("sex_karyotype", age=ht.project_meta.age).naive_coalesce(
-        10
-    )  # TODO: Confirm that the naive_coalesce to 10 instead of checkpointing then naive_coalesce is ok. Seems like its small enough and only done once?
+    return ht.select("sex_karyotype", age=ht.project_meta.age).naive_coalesce(10)
 
 
 def _age_distribution(ht: hl.Table) -> hl.Struct:
@@ -153,10 +154,9 @@ def _group_membership_ht(data_set: str, test: bool, environment: str) -> hl.Tabl
     """
     Read the group-membership HT ``compute_coverage.py`` built the AN with.
 
-    The merge matches AC to AN by stratum, so the strata and samples must be the
-    ones the AN was built with; a missing HT is an error rather than something to
-    rebuild here. The gnomAD HT holds the consent-withdrawal samples, and its
-    coverage-only ``v3_release`` stratum is dropped.
+    The strata and samples must match the ones the AN was built with, so a missing HT
+    is an error rather than something to rebuild. The gnomAD HT's coverage-only
+    ``v3_release`` stratum is dropped.
 
     :param data_set: ``"aou"`` or ``"gnomad"``.
     :param test: Read the test-scoped path.
@@ -303,6 +303,7 @@ def _aggregate_carriers(
     lt: hl.Table,
     group_membership_ht: hl.Table,
     hists: Callable[[hl.expr.StructExpression], hl.expr.StructExpression],
+    with_an: bool = False,
 ) -> hl.Table:
     """
     Aggregate per-stratum AC and homozygote counts and histograms over carriers.
@@ -314,25 +315,30 @@ def _aggregate_carriers(
         ``locus, alleles``, with a ``GT`` on each carrier.
     :param group_membership_ht: The membership HT ``lt``'s ``counted_in`` indexes.
     :param hists: Returns the histogram aggregators over one carrier.
+    :param with_an: Also sum ``AN``; only meaningful when ``lt`` is dense, so every
+        called sample is a carrier. Default is False.
     :return: Table with ``hist_fields`` and ``strata`` (array of ``AC`` /
-        ``homozygote_count`` structs, one per stratum).
+        ``homozygote_count`` structs, plus ``AN`` if requested, one per stratum).
     """
     n_groups = hl.eval(hl.len(group_membership_ht.freq_meta))
-    empty = hl.struct(AC=hl.int64(0), homozygote_count=hl.int64(0))
+
+    def _counts(c):
+        # Field order matches v4's freq structs, which the subtraction zips with.
+        counts = {"AC": hl.agg.sum(c.GT.n_alt_alleles())}
+        if with_an:
+            counts["AN"] = hl.agg.sum(c.GT.ploidy)
+        counts["homozygote_count"] = hl.agg.count_where(
+            c.GT.is_diploid() & c.GT.is_hom_var()
+        )
+        return hl.struct(**counts)
+
+    fields = ["AC"] + (["AN"] if with_an else []) + ["homozygote_count"]
+    empty = hl.struct(**{f: hl.int64(0) for f in fields})
     lt = lt.annotate(
         hist_fields=lt.carriers.aggregate(hists),
         _by_stratum=lt.carriers.aggregate(
             lambda c: hl.agg.explode(
-                lambda g: hl.agg.group_by(
-                    g,
-                    hl.struct(
-                        AC=hl.agg.sum(c.GT.n_alt_alleles()),
-                        homozygote_count=hl.agg.count_where(
-                            c.GT.is_diploid() & c.GT.is_hom_var()
-                        ),
-                    ),
-                ),
-                c.counted_in,
+                lambda g: hl.agg.group_by(g, _counts(c)), c.counted_in
             )
         ),
     )
@@ -346,14 +352,11 @@ def _int32_counts(strata: hl.expr.ArrayExpression) -> hl.expr.ArrayExpression:
     """
     Cast per-stratum counts to int32, the v4 release's type.
 
-    :param strata: Array of ``AC`` / ``homozygote_count`` structs.
+    :param strata: Array of count structs.
     :return: The array with int32 fields.
     """
-    return strata.map(
-        lambda s: hl.struct(
-            AC=hl.int32(s.AC), homozygote_count=hl.int32(s.homozygote_count)
-        )
-    )
+    fields = strata.dtype.element_type.fields
+    return strata.map(lambda s: hl.struct(**{f: hl.int32(s[f]) for f in fields}))
 
 
 def _merge_ac_homalt(
@@ -362,20 +365,22 @@ def _merge_ac_homalt(
     sample_counts: list[hl.expr.ArrayExpression],
     operation: str = "sum",
     set_negatives_to_zero: bool = False,
+    fields: tuple[str, ...] = ("AC", "homozygote_count"),
 ) -> tuple[hl.expr.ArrayExpression, list[dict[str, str]], hl.expr.ArrayExpression]:
     """
-    Sum or subtract per-stratum AC and homozygote counts, matching strata by meta.
+    Sum or subtract per-stratum counts, matching strata by meta.
 
     A missing array or stratum counts as 0. The output keeps the first array's
     strata order; ``"sum"`` appends strata found only in later arrays, ``"diff"``
     keeps only the first array's strata and errors on a negative result.
 
-    :param arrays: ``freq`` arrays of ``AC`` / ``homozygote_count`` structs.
+    :param arrays: ``freq`` arrays of count structs.
     :param metas: ``freq_meta`` of each array.
     :param sample_counts: ``freq_meta_sample_count`` of each array.
     :param operation: ``"sum"`` or ``"diff"``.
-    :param set_negatives_to_zero: Set a negative ``"diff"`` AC or homozygote count to
-        0 instead of erroring; a negative sample count still errors. Default is False.
+    :param set_negatives_to_zero: Set a negative ``"diff"`` count to 0 instead of
+        erroring; a negative sample count still errors. Default is False.
+    :param fields: Count fields of the structs. Default is AC and homozygote_count.
     :return: ``(freq, freq_meta, freq_meta_sample_count)``.
     """
     freq, freq_meta = merge_array_expressions(
@@ -383,7 +388,7 @@ def _merge_ac_homalt(
         metas,
         operation=operation,
         set_negatives_to_zero=set_negatives_to_zero,
-        struct_fields=["AC", "homozygote_count"],
+        struct_fields=list(fields),
     )
     # A negative sample count is a strata or sample mismatch, so it always errors.
     counts, _ = merge_array_expressions(sample_counts, metas, operation=operation)
@@ -404,8 +409,8 @@ def _prepare_aou_vds(
     """
     Prepare the AoU variant data for the frequency aggregation.
 
-    Rows stay unsplit, so adj is computed on ``LGT``/``LAD``;
-    :func:`_sparse_split_strata_and_hists` compacts to carriers before it splits.
+    adj is computed on the unsplit call, as the all-sites AN's is, so AC and AN count
+    the same genotypes.
 
     :param aou_vds: AoU VDS filtered to release samples.
     :param group_membership_ht: The cells HT from :func:`_group_membership_ht`.
@@ -440,12 +445,10 @@ def _sparse_split_strata_and_hists(
     """
     Split multi-allelics and aggregate per-stratum counts and histograms over carriers.
 
-    The entries array has a slot per sample but most variants have few carriers, so
-    splitting first would process mostly missing entries once per split row.
-    Compacting to carriers first makes every later step proportional to carriers.
-    The split matches ``sparse_split_multi`` with ``filter_changed_loci=True``, except
-    that bi-allelic rows are min-repped too when that keeps the locus; otherwise they
-    are kept as they are, as ``sparse_split_multi`` keeps them.
+    Compacting to carriers before the split keeps the work proportional to carriers
+    rather than samples. The split follows ``sparse_split_multi`` with
+    ``filter_changed_loci=True``, except that a bi-allelic row is min-repped when that
+    keeps its locus.
 
     :param mt: Prepared, unsplit variant MT from :func:`_prepare_aou_vds`.
     :param group_membership_ht: Membership HT whose ``group_membership`` array and
@@ -471,12 +474,13 @@ def _sparse_split_strata_and_hists(
             hl.min_rep(lt.locus, [lt.alleles[0], lt.alleles[i]]),
         )
 
+    # Sorted by alleles so the exploded rows are in key order for the re-key below.
     splits = hl.if_else(
         hl.len(lt.alleles) < 2,
         [hl.struct(locus=lt.locus, alleles=lt.alleles, a_index=1)],
-        hl._sort_by(
+        hl.sorted(
             hl.range(1, hl.len(lt.alleles)).map(_split_struct).filter(hl.is_defined),
-            lambda l, r: hl._compare(l.alleles, r.alleles) < 0,
+            key=lambda s: s.alleles,
         ),
     )
 
@@ -547,7 +551,8 @@ def process_aou_dataset(
     :param environment: Compute environment.
     :param test: Use test paths.
     :param test_vds: Read the test VDS.
-    :param test_partitions: Keep only this many leading VDS partitions.
+    :param test_partitions: Keep only this many leading VDS partitions. Ignored when
+        ``read_intervals`` is given.
     :param chrom: Single contig to scope the reads to.
     :param read_intervals: Read-time intervals (a region or a layout chunk).
     :return: Table with ``freq`` and ``histograms``.
@@ -602,15 +607,16 @@ def _prepare_consent_mt(
     chrom: str | None = None,
 ) -> hl.MatrixTable:
     """
-    Load and split the variant data of the samples that withdrew consent after v4.
+    Load, split and densify the samples that withdrew consent after v4.
 
-    The counts subtracted from v4 come only from carriers, so the reference data is
-    never read.
+    Dense so their AN is counted over the same genotypes as their AC, hom-ref
+    included, as v4's was.
 
     :param test_vds: Read the test VDS.
-    :param test_partitions: Keep only this many leading partitions.
+    :param test_partitions: Keep only this many leading partitions. Ignored when
+        ``chrom`` is given.
     :param chrom: Single contig to scope the load to.
-    :return: Split variant MT of the withdrawn samples.
+    :return: Split dense MT of the withdrawn samples.
     """
     vds = get_gnomad_v5_genomes_vds(
         release_only=True,
@@ -627,10 +633,10 @@ def _prepare_consent_mt(
     logger.info(
         "VDS filtered to %s consent-withdrawal samples.", vds.variant_data.count_cols()
     )
-    vmt = vds.variant_data
-    # Fewer, fuller partitions are cheaper for so few samples, and the QoB driver,
-    # which collects one result per partition, died at 1,480 on chr22 (batch 8447491).
-    vmt = vmt.naive_coalesce(max(1, vmt.n_partitions() // 15))
+    # Few samples, so fewer, fuller partitions: the QoB driver collects one result per
+    # partition and died at chr22's 1,480.
+    n_parts = max(1, vds.variant_data.n_partitions() // 15)
+    vmt = vds.variant_data.naive_coalesce(n_parts)
     meta = vmt.meta
     vmt = vmt.select_cols(
         sex_karyotype=meta.sex_imputation.sex_karyotype,
@@ -643,35 +649,33 @@ def _prepare_consent_mt(
     vmt = vmt.select_entries(
         "LA", "LAD", "LPL", "DP", "GQ", "LGT", _het_non_ref=vmt.LGT.is_het_non_ref()
     )
-    vmt = vmt.checkpoint(new_temp_file("consent_samples_variant_data", "mt"))
-    return hl.experimental.sparse_split_multi(vmt, filter_changed_loci=True)
+    vds = hl.vds.VariantDataset(vds.reference_data.naive_coalesce(n_parts), vmt)
+    vds = vds.checkpoint(new_temp_file("consent_samples_vds", "vds"))
+    return hl.vds.to_dense_mt(hl.vds.split_multi(vds, filter_changed_loci=True))
 
 
 def _consent_freq_ht(mt: hl.MatrixTable, test: bool, environment: str) -> hl.Table:
     """
-    AC, homozygote counts and age histograms of the consent-withdrawal samples.
+    AC, AN, homozygote counts and age histograms of the consent-withdrawal samples.
 
-    All three come only from non-reference genotypes, which are all entries of the
-    variant data, so nothing is densified. The strata and samples are the ones
-    ``compute_coverage.py`` subtracted from the v4 AN.
+    The strata and samples are the ones ``compute_coverage.py`` subtracted from the
+    v4 all-sites AN.
 
-    :param mt: Split variant MT from :func:`_prepare_consent_mt`.
+    :param mt: Split dense MT from :func:`_prepare_consent_mt`.
     :param test: Use test paths.
     :param environment: Compute environment.
-    :return: Table with ``freq`` (``AC`` / ``homozygote_count`` per stratum),
-        ``age_hists`` and the strata globals.
+    :return: Table with ``freq`` (``AC`` / ``AN`` / ``homozygote_count`` per
+        stratum), ``age_hists`` and the strata globals.
     """
-    # v3.1's order, which v4 inherited: adj from the diploid call, then sex ploidy,
-    # then the hom-alt fix using the v3.0 release AF.
-    # v4's counts used the pre-0.9.1 het-ref AB reading, so the subtraction must too.
+    # v3.1's order, which v4 inherited: adj, then sex ploidy, then the hom-alt fix.
+    # v4 counted with the het-ref AB reading gnomad_methods had before 0.9.1.
     mt = annotate_adj(mt, legacy_het_ab=True)
     mt = adjust_sex_ploidy(mt, mt.sex_karyotype, xy_str="XY", xx_str="XX")
     v30 = v3_release_sites(public=True).versions["3.0"].ht()[mt.row_key]
-    # Alleles no v3.0 release sample carried have no row in the public v3.0 release;
-    # here they come only from the 21 withdrawn samples outside that release. The
-    # internal v3.0 table v3.1's hom-alt fix read gave them AF 0, so use 0. It is
-    # wrong only where no v3.0 release sample had an adj call (AF was missing); the
-    # subtraction sets the resulting negatives to 0 and counts them.
+    # Alleles carried by no v3.0 release sample have no row in the public v3.0
+    # release. The internal v3.0 table v3.1's hom-alt fix read gave them AF 0, so use
+    # 0. Where that AF was missing instead, the subtraction zeroes and counts the
+    # resulting negatives.
     mt = mt.annotate_rows(_v30_af=hl.if_else(hl.is_defined(v30), v30.freq[0].AF, 0.0))
     mt = mt.annotate_entries(
         GT=hom_alt_depletion_fix(
@@ -683,8 +687,7 @@ def _consent_freq_ht(mt: hl.MatrixTable, test: bool, environment: str) -> hl.Tab
             ab_expr=mt.AD[1] / mt.DP,
             use_v3_1_correction=True,
         ),
-        # v4's age histograms are v3.1.1's, which the v3.1.2 het non-ref patch did not
-        # recompute, so they were built with the fix before its het non-ref check.
+        # v4's age histograms predate the v3.1.2 het non-ref patch, so skip its check.
         _age_GT=hom_alt_depletion_fix(
             mt.GT,
             het_non_ref_expr=hl.bool(False),
@@ -698,6 +701,7 @@ def _consent_freq_ht(mt: hl.MatrixTable, test: bool, environment: str) -> hl.Tab
         _localize_carriers(mt, gm_ht),
         gm_ht,
         lambda c: hl.struct(age_hists=age_hists_expr(c.adj, c._age_GT, c.age)),
+        with_an=True,
     )
     gg = gm_ht.index_globals()
     ht = ht.select(
@@ -708,29 +712,45 @@ def _consent_freq_ht(mt: hl.MatrixTable, test: bool, environment: str) -> hl.Tab
     return ht.checkpoint(new_temp_file("consent_freq_and_hists", "ht"))
 
 
-def _subtract_consent(v4_ht: hl.Table, consent_ht: hl.Table) -> hl.Table:
+def _subtract_consent(
+    v4_ht: hl.Table, consent_ht: hl.Table, consent_an_ht: hl.Table
+) -> hl.Table:
     """
     Subtract the consent-withdrawal counts and age histograms from the v4 table.
 
-    Sites the withdrawn samples do not carry subtract nothing, so every v4 row
-    passes through with its values intact. A count or age-histogram bin can only go
-    negative where a withdrawn genotype v4 never counted is subtracted; it is set to
-    0, as v4 did for the samples it subtracted. ``n_negative_set_to_zero`` counts the
-    strata whose AC or homozygote count was set to 0, not the age-histogram bins.
+    Where the withdrawn samples have no row for a variant they are hom-ref or
+    uncalled there, so only their all-sites AN at the locus is subtracted. A count or
+    age-histogram bin can only go negative where a withdrawn genotype v4 never counted
+    is subtracted; it is set to 0, as v4 did for the samples it subtracted.
+    ``n_negative_set_to_zero`` counts the strata whose AC or homozygote count was set
+    to 0, and ``n_an_below_ac`` the strata left with AN below AC.
 
-    :param v4_ht: v4 release table with ``freq`` of ``AC`` / ``homozygote_count``
-        structs.
+    :param v4_ht: v4 release table with ``freq`` of ``AC`` / ``AN`` /
+        ``homozygote_count`` structs.
     :param consent_ht: Table from :func:`_consent_freq_ht`.
+    :param consent_an_ht: All-sites AN of the withdrawn samples, keyed by locus.
     :return: v4 table with ``freq``, ``histograms.age_hists`` and the strata
-        globals updated, and ``n_negative_set_to_zero`` added.
+        globals updated, and ``n_negative_set_to_zero`` and ``n_an_below_ac`` added.
     """
     # The diff drops withdrawn strata v4 lacks without an error, so check first.
     v4_meta = hl.eval(v4_ht.freq_meta)
-    missing = [m for m in hl.eval(consent_ht.freq_meta) if m not in v4_meta]
-    if missing:
-        raise ValueError(f"Withdrawn-sample strata missing from v4: {missing}")
+    consent_meta = hl.eval(consent_ht.freq_meta)
+    site_meta = hl.eval(consent_an_ht.strata_meta)
+    for name, meta in (("v4", v4_meta), ("the all-sites AN", site_meta)):
+        missing = [m for m in consent_meta if m not in meta]
+        if missing:
+            raise ValueError(f"Withdrawn-sample strata missing from {name}: {missing}")
     consent = consent_ht[v4_ht.key]
-    ht = v4_ht.annotate(consent_freq=consent.freq, consent_age_hists=consent.age_hists)
+    site_an = consent_an_ht[v4_ht.locus].AN
+    hom_ref = hl.literal([site_meta.index(m) for m in consent_meta]).map(
+        lambda i: hl.struct(
+            AC=0, AN=hl.int32(hl.or_else(site_an[i], 0)), homozygote_count=0
+        )
+    )
+    ht = v4_ht.annotate(
+        consent_freq=hl.or_else(consent.freq, hom_ref),
+        consent_age_hists=consent.age_hists,
+    )
     ht = ht.annotate_globals(
         consent_freq_meta=consent_ht.index_globals().freq_meta,
         consent_freq_meta_sample_count=consent_ht.index_globals().freq_meta_sample_count,
@@ -742,6 +762,7 @@ def _subtract_consent(v4_ht: hl.Table, consent_ht: hl.Table) -> hl.Table:
         [g.freq_meta_sample_count, g.consent_freq_meta_sample_count],
         operation="diff",
         set_negatives_to_zero=True,
+        fields=("AC", "AN", "homozygote_count"),
     )
     # Strata where the withdrawn counts exceed v4's, so the diff above was set to 0.
     excess, _ = merge_array_expressions(
@@ -753,11 +774,10 @@ def _subtract_consent(v4_ht: hl.Table, consent_ht: hl.Table) -> hl.Table:
     )
     ht = ht.annotate(
         freq=freq,
-        n_negative_set_to_zero=hl.if_else(
-            hl.is_defined(ht.consent_freq),
-            hl.len(excess.filter(lambda x: (x.AC > 0) | (x.homozygote_count > 0))),
-            0,
+        n_negative_set_to_zero=hl.len(
+            excess.filter(lambda x: (x.AC > 0) | (x.homozygote_count > 0))
         ),
+        n_an_below_ac=hl.len(freq.filter(lambda x: x.AC > x.AN)),
         histograms=ht.histograms.annotate(
             age_hists=_merge_hist_struct(
                 ht.histograms.age_hists,
@@ -772,22 +792,25 @@ def _subtract_consent(v4_ht: hl.Table, consent_ht: hl.Table) -> hl.Table:
 
 def process_gnomad_dataset(
     environment: str,
+    an_environment: str,
     test: bool = False,
     test_vds: bool = False,
     test_partitions: int | None = None,
     chrom: str | None = None,
 ) -> hl.Table:
     """
-    Build the gnomAD v5 AC, homozygote-count and histogram table from the v4 release.
+    Build the gnomAD v5 count and histogram table from the v4 release.
 
     :param environment: Compute environment.
+    :param an_environment: Environment (bucket) of the withdrawn samples' all-sites AN.
     :param test: Use test paths and restrict v4 to the consent sites.
     :param test_vds: Read the test VDS.
-    :param test_partitions: Keep only this many leading partitions.
+    :param test_partitions: Keep only this many leading partitions. Ignored when
+        ``chrom`` is given.
     :param chrom: Single contig; the v4 table is scoped to it so a per-contig output
         holds only that contig.
-    :return: Table with ``freq`` (``AC`` / ``homozygote_count`` per stratum) and
-        ``histograms``.
+    :return: Table with ``freq`` (``AC`` / ``AN`` / ``homozygote_count`` per
+        stratum), ``histograms``, ``n_negative_set_to_zero`` and ``n_an_below_ac``.
     """
     v4_ht = release_sites(data_type="genomes").ht()
     # The HGDP/1KG subset strata have no all-sites AN to merge with AoU, so v5 drops
@@ -802,7 +825,7 @@ def process_gnomad_dataset(
         keep=False,
     )
     v4_ht = v4_ht.select(
-        freq=arrays["freq"].map(lambda f: f.select("AC", "homozygote_count")),
+        freq=arrays["freq"].map(lambda f: f.select("AC", "AN", "homozygote_count")),
         # v4 copied these from the v3.1.2 release, so variants new in v4 have none.
         # Only the age histograms are adjusted for the withdrawn samples, below.
         histograms=v4_ht.histograms.drop("raw_qual_hists"),
@@ -817,7 +840,10 @@ def process_gnomad_dataset(
     if test:
         v4_ht = v4_ht.filter(hl.is_defined(consent_ht[v4_ht.key]))
         v4_ht = v4_ht.naive_coalesce(100).checkpoint(new_temp_file("v4_test", "ht"))
-    ht = _subtract_consent(v4_ht, consent_ht)
+    consent_an_ht = coverage_and_an_path(
+        test=test, data_set="gnomad", environment=an_environment
+    ).ht()
+    ht = _subtract_consent(v4_ht, consent_ht, consent_an_ht)
     # Recomputed from the v5 meta, which already excludes the withdrawn samples,
     # rather than subtracted from v4's global.
     ht = ht.annotate_globals(
@@ -833,7 +859,7 @@ def process_gnomad_dataset(
 
 def select_final_dataset_fields(ht: hl.Table, dataset: str = "gnomad") -> hl.Table:
     """
-    Keep only the fields the next step reads.
+    Keep the fields of a per-dataset table or of the final merged table.
 
     :param ht: Table to trim.
     :param dataset: ``"gnomad"``, ``"aou"`` or ``"merged"``.
@@ -846,8 +872,10 @@ def select_final_dataset_fields(ht: hl.Table, dataset: str = "gnomad") -> hl.Tab
         if dataset == "aou":
             # Only AoU has downsamplings; the v4 genomes release carries none.
             final_globals.append("downsamplings")
-        # --process-gnomad logs it after the write; the merge drops it.
-        fields = ["n_negative_set_to_zero"] if dataset == "gnomad" else []
+        # --process-gnomad reports both after the write; the merge drops them.
+        fields = (
+            ["n_negative_set_to_zero", "n_an_below_ac"] if dataset == "gnomad" else []
+        )
         return ht.select("freq", "histograms", *fields).select_globals(*final_globals)
     ht = ht.annotate_globals(
         freq_index_dict=make_freq_index_dict_from_meta(ht.freq_meta),
@@ -870,18 +898,18 @@ def merge_gnomad_and_aou_frequencies(
     gnomad_freq_ht: hl.Table, aou_freq_ht: hl.Table, an_ht: hl.Table
 ) -> hl.Table:
     """
-    Combine the gnomAD and AoU AC and homozygote counts into one ``freq`` array.
+    Combine the gnomAD and AoU counts into one ``freq`` array.
 
-    The tables are outer-joined so a variant seen in only one dataset is kept. AC and
-    homozygote counts of the strata the two tables share are summed, and the AoU
-    strata are kept again as an ``aou`` subset so AoU can be reported on its own. AoU
-    downsamplings only mean something within AoU, so they appear only in the subset.
-    AN for every stratum comes from the all-sites AN release, so a variant absent from
-    one dataset still counts that dataset's samples in AN. Histograms and the age
-    distribution are summed too; a histogram one dataset lacks takes the other's.
-    Variants with raw AC 0 in both datasets are dropped.
+    The tables are outer-joined so a variant seen in only one dataset is kept. Counts
+    of the strata the two tables share are summed, and the AoU strata are kept again
+    as an ``aou`` subset (AoU downsamplings appear only there). Each dataset's AN is
+    counted the way its AC is: gnomAD's own per-variant AN where gnomAD has the
+    variant, and the all-sites AN for AoU and for a variant gnomAD lacks, as in the
+    v4.1 joint release. Histograms and the age distribution are summed too; a
+    histogram one dataset lacks takes the other's. Variants with raw AC 0 in both
+    datasets are dropped.
 
-    :param gnomad_freq_ht: gnomAD AC, homozygote-count and histogram table.
+    :param gnomad_freq_ht: gnomAD AC, AN, homozygote-count and histogram table.
     :param aou_freq_ht: AoU AC, homozygote-count and histogram table.
     :param an_ht: v5 all-sites AN release table, keyed by locus, built over the same
         strata and samples.
@@ -899,8 +927,9 @@ def merge_gnomad_and_aou_frequencies(
         aou_downsamplings=ag.downsamplings,
     )
     g = ht.index_globals()
+    has_gnomad = hl.is_defined(ht.freq)
     merged_freq, merged_meta, counts = _merge_ac_homalt(
-        [ht.freq, ht.aou_freq],
+        [ht.freq.map(lambda f: f.select("AC", "homozygote_count")), ht.aou_freq],
         [g.freq_meta, g.aou_freq_meta],
         [g.freq_meta_sample_count, g.aou_freq_meta_sample_count],
     )
@@ -933,16 +962,36 @@ def merge_gnomad_and_aou_frequencies(
         hl.or_else(ht.aou_freq, no_aou_row)
     )
     an = an_ht[ht.locus].AN
+    aou_metas = [dict(m) for m in aou_meta_list]
+    gnomad_metas = [dict(m) for m in hl.eval(gnomad_freq_ht.freq_meta)]
+
+    def _joint_an(j):
+        meta = freq_meta[j]
+        aou_an = (
+            hl.int32(an[an_meta.index({**meta, "subset": "aou"})])
+            if meta in aou_metas
+            else 0
+        )
+        # Read from gnomAD's own row: an expression shared across these branches
+        # would be recomputed in each one.
+        gnomad_an = (
+            hl.or_else(ht.freq[gnomad_metas.index(meta)].AN, 0)
+            if meta in gnomad_metas
+            else 0
+        )
+        return hl.if_else(has_gnomad, gnomad_an + aou_an, hl.int32(an[an_idx[j]]))
+
+    n_joint = len(global_idx)
+    an_expr = hl.array([_joint_an(j) for j in range(n_joint)]).extend(
+        hl.literal(an_idx[n_joint:]).map(lambda i: hl.int32(an[i]))
+    )
     ht = ht.annotate(
-        freq=hl.zip(ac_hom, hl.literal(an_idx)).map(
-            lambda x: hl.bind(
-                lambda an_i: hl.struct(
-                    AC=x[0].AC,
-                    AF=hl.or_missing(an_i > 0, x[0].AC / an_i),
-                    AN=an_i,
-                    homozygote_count=x[0].homozygote_count,
-                ),
-                hl.int32(an[x[1]]),
+        freq=hl.zip(ac_hom, an_expr).map(
+            lambda x: hl.struct(
+                AC=x[0].AC,
+                AF=hl.or_missing(x[1] > 0, x[0].AC / x[1]),
+                AN=x[1],
+                homozygote_count=x[0].homozygote_count,
             )
         ),
         histograms=hl.struct(
@@ -968,7 +1017,7 @@ def merge_gnomad_and_aou_frequencies(
 
 def calculate_faf_and_grpmax_annotations(ht: hl.Table) -> hl.Table:
     """
-    Add FAF, grpmax and fafmax overall and for the AoU subset, and the inbreeding coefficient.
+    Add FAF, grpmax and fafmax, overall and for the AoU subset, and inbreeding_coeff.
 
     ``faf_expr`` and ``grpmax_expr`` select strata by exact key set, so the
     ``subset`` key is removed from the AoU meta for the call and put back on the
@@ -1009,6 +1058,7 @@ def calculate_faf_and_grpmax_annotations(ht: hl.Table) -> hl.Table:
         faf=hl.flatten(faf_exprs),
         grpmax=hl.struct(**grpmax_exprs),
         fafmax=hl.struct(**fafmax_exprs),
+        # freq[1] is raw: the merge keeps v4's order, adj then raw.
         inbreeding_coeff=bi_allelic_site_inbreeding_expr(callstats_expr=ht.freq[1]),
     )
     return ht.annotate_globals(faf_meta=hl.flatten(faf_meta_exprs))
@@ -1035,7 +1085,6 @@ def _load_chunk_layout(
     :param test: Read the test-scoped path.
     :param n_chunks: ``--n-chunks`` fold target.
     :return: ``(layout, layout hash)``.
-    :raises FileNotFoundError: if the layout has not been written.
     """
     path = chunk_intervals_path(
         coverage_and_an_path(test=test, environment=an_environment).path
@@ -1098,20 +1147,22 @@ def _relay_flags(args: argparse.Namespace, chunk: bool) -> str:
 
 def _relay_context(
     args: argparse.Namespace,
-) -> tuple[str, str, str, Callable[[str, list[RelayJobSpec], str], int | None]]:
+) -> tuple[
+    tuple[str, str], str, str, Callable[[str, list[RelayJobSpec], str], int | None]
+]:
     """
-    Return the commit, setup command, script and submitter every relay shares.
+    Return the commits, setup command, script and submitter every relay shares.
 
     The Hail version comes from the image, so no pin is passed.
 
     :param args: Parsed CLI args.
-    :return: ``(commit, setup_cmd, script, submit)``. ``submit`` takes a batch name,
-        job specs and a log label, and honors ``--batch-dry-run``.
+    :return: ``(commits, setup_cmd, script, submit)``. ``commits`` is the gnomad_qc
+        and gnomad_methods commit the relays run. ``submit`` takes a batch name, job
+        specs and a log label, and honors ``--batch-dry-run``.
     """
-    commit = resolve_commit()
+    commits = (resolve_commit(), resolve_methods_commit(args.methods_branch))
     setup_cmd, backend_kwargs, script = relay_context(
-        commit,
-        args.methods_branch,
+        *commits,
         args.billing_project,
         args.batch_remote_tmpdir,
         "generate_frequency.py",
@@ -1119,7 +1170,7 @@ def _relay_context(
     submit = partial(
         submit_relay_batch, args.batch_image, backend_kwargs, dry_run=args.batch_dry_run
     )
-    return commit, setup_cmd, script, submit
+    return commits, setup_cmd, script, submit
 
 
 def _orchestrate_freq_fanout(args: argparse.Namespace, ht_path: str) -> None:
@@ -1131,7 +1182,7 @@ def _orchestrate_freq_fanout(args: argparse.Namespace, ht_path: str) -> None:
     :return: None.
     """
     eligible, n_total, intervals_hash = _chunk_scope(args)
-    commit, setup_cmd, script, submit = _relay_context(args)
+    commits, setup_cmd, script, submit = _relay_context(args)
     common = _relay_flags(args, chunk=True)
     scope = "region" if args.test_region else f"{len(eligible)}of{n_total}c"
 
@@ -1144,7 +1195,8 @@ def _orchestrate_freq_fanout(args: argparse.Namespace, ht_path: str) -> None:
             attempts=1,
             command=(
                 f"{setup_cmd}{script} --run-chunk --chunk-index {i}"
-                f" --chunk-output {chunk_path(ht_path, i, intervals_hash)} {common}"
+                f" --chunk-output {chunk_path(ht_path, i, intervals_hash)}"
+                f" --code-commits {' '.join(commits)} {common}"
             ),
         )
 
@@ -1160,7 +1212,7 @@ def _orchestrate_freq_fanout(args: argparse.Namespace, ht_path: str) -> None:
             args.chrom,
         ),
         wave_size=args.wave_size,
-        commit=commit,
+        commit=commits[0],
         app_name=args.app_name,
         overwrite=args.overwrite,
         dry_run=args.batch_dry_run,
@@ -1193,7 +1245,14 @@ def _run_freq_chunk(args: argparse.Namespace) -> None:
         test_vds=args.test_vds,
         read_intervals=sub_intervals,
     )
-    ht = ht.annotate_globals(freq_chunk_intervals_hash=intervals_hash)
+    # The merge refuses chunks whose code commits differ.
+    ht = ht.annotate_globals(
+        freq_chunk_intervals_hash=intervals_hash,
+        freq_chunk_code=hl.struct(
+            gnomad_qc=args.code_commits[0], gnomad_methods=args.code_commits[1]
+        ),
+    )
+    # The orchestrator dispatches only chunks that are missing or being overwritten.
     ht.write(args.chunk_output, overwrite=True)
     logger.info("Wrote chunk %d to %s", args.chunk_index, args.chunk_output)
 
@@ -1214,7 +1273,7 @@ def _orchestrate_freq_merge(args: argparse.Namespace, ht_path: str) -> None:
             f"{len(missing)} of {len(eligible)} chunks are missing (first:"
             f" {missing[:5]}); rerun --use-batch-fanout first."
         )
-    _commit, setup_cmd, script, submit = _relay_context(args)
+    _commits, setup_cmd, script, submit = _relay_context(args)
     gs = args.merge_group_size
     orchestrate_tree_merge(
         inputs=[chunk_path(ht_path, i, intervals_hash) for i in eligible],
@@ -1291,7 +1350,10 @@ def main(args):
     if args.run_merge:
         _initialize_hail(args)
         union_and_write_hts(
-            args.merge_inputs, args.merge_output, args.merge_coalesce_to
+            args.merge_inputs,
+            args.merge_output,
+            args.merge_coalesce_to,
+            same_globals=["freq_chunk_code"],
         )
         return
 
@@ -1356,6 +1418,7 @@ def main(args):
             )
             ht = process_gnomad_dataset(
                 environment=args.environment,
+                an_environment=args.an_environment,
                 test=args.test,
                 test_vds=args.test_vds,
                 test_partitions=args.test_partitions,
@@ -1363,7 +1426,14 @@ def main(args):
             )
             ht.write(gnomad_freq.path, overwrite=args.overwrite)
             ht = gnomad_freq.ht()
-            n_neg = ht.aggregate(hl.agg.sum(ht.n_negative_set_to_zero))
+            n_neg, n_an_below_ac = ht.aggregate(
+                (hl.agg.sum(ht.n_negative_set_to_zero), hl.agg.sum(ht.n_an_below_ac))
+            )
+            if n_an_below_ac:
+                logger.warning(
+                    "%d variant strata have AN below AC after the subtraction.",
+                    n_an_below_ac,
+                )
             if n_neg > args.max_negative_set_to_zero:
                 raise ValueError(
                     f"{n_neg} variant strata had withdrawn counts above v4's and were"
@@ -1426,7 +1496,17 @@ def main(args):
                 gnomad_freq.ht(), aou_freq.ht(), hl.read_table(an_path)
             )
             ht = ht.checkpoint(new_temp_file("merged_freq", "ht"))
-            n_no_an = ht.aggregate(hl.agg.count_where(hl.is_missing(ht.freq[0].AN)))
+            n_no_an, n_ac_above_an = ht.aggregate(
+                (
+                    hl.agg.count_where(hl.is_missing(ht.freq[0].AN)),
+                    hl.agg.count_where(hl.any(ht.freq.map(lambda f: f.AC > f.AN))),
+                )
+            )
+            if n_ac_above_an:
+                raise ValueError(
+                    f"{n_ac_above_an} merged variants have AC above AN in at least one"
+                    " stratum, so AC and AN were counted over different genotypes."
+                )
             if n_no_an:
                 logger.warning(
                     "%d merged variants have no all-sites AN at their locus; their AN"
@@ -1592,7 +1672,7 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         help=(
             "Bucket the AN tables and the chunk layout are read from. Default:"
             " dataproc, where prod compute_coverage writes them, or --environment"
-            " with --test."
+            " with --test. The group-membership HTs are read from --environment."
         ),
     )
     env_group.add_argument(
@@ -1620,7 +1700,11 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
     batch_group = parser.add_argument_group(
         "batch configuration", "QoB sizing for this process (--environment batch only)."
     )
-    batch_group.add_argument("--app-name", default=None, help="Hail Batch name.")
+    batch_group.add_argument(
+        "--app-name",
+        default=None,
+        help="Hail Batch name. Default: derived from the steps being run.",
+    )
     batch_group.add_argument(
         "--driver-cores", type=int, default=None, help="QoB driver cores."
     )
@@ -1722,7 +1806,10 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
     fanout.add_argument(
         "--methods-branch",
         default="main",
-        help="gnomad_methods branch or commit the relays pull. Default main.",
+        help=(
+            "gnomad_methods branch or commit the relays pull, resolved to a commit"
+            " once per run. Default main."
+        ),
     )
     fanout.add_argument(
         "--batch-dry-run",
@@ -1737,6 +1824,7 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
     worker.add_argument("--run-chunk", action="store_true", help=argparse.SUPPRESS)
     worker.add_argument("--chunk-index", type=int, default=None, help=argparse.SUPPRESS)
     worker.add_argument("--chunk-output", default=None, help=argparse.SUPPRESS)
+    worker.add_argument("--code-commits", nargs=2, help=argparse.SUPPRESS)
     worker.add_argument("--run-merge", action="store_true", help=argparse.SUPPRESS)
     worker.add_argument(
         "--merge-inputs", nargs="+", default=None, help=argparse.SUPPRESS
@@ -1767,6 +1855,24 @@ if __name__ == "__main__":
         )
     if args.test_region is not None and args.test_partitions is not None:
         parser.error("--test-region and --test-partitions are mutually exclusive.")
+    if args.test_partitions is not None and args.test_partitions < 1:
+        parser.error("--test-partitions must be at least 1.")
+    if args.test_region and args.process_gnomad:
+        parser.error("--test-region only scopes the AoU run; use --chrom for gnomAD.")
+    # --test alone only switches to the test paths, so a single job needs a scope.
+    scoped = args.test_vds or args.test_partitions is not None
+    single_aou_job = args.process_aou and not (
+        args.use_batch_fanout or args.merge_freq_chunks
+    )
+    if args.test and (
+        (single_aou_job and not (scoped or args.test_region))
+        or (args.process_gnomad and not (scoped or args.chrom))
+    ):
+        parser.error(
+            "A test run must limit what it reads: --test-vds, --test-partitions or"
+            " --test-region for --process-aou; --test-vds, --test-partitions or"
+            " --chrom for --process-gnomad."
+        )
     if args.test_region and args.chrom:
         parser.error("--test-region already scopes the contig; do not pass --chrom.")
     if args.assemble_chrom_freq:
@@ -1778,8 +1884,14 @@ if __name__ == "__main__":
             parser.error(
                 "--assemble-chrom-freq writes the contig-unscoped HT; do not pass --chrom."
             )
-    if args.run_chunk and (args.chunk_index is None or args.chunk_output is None):
-        parser.error("--run-chunk requires --chunk-index and --chunk-output.")
+    if args.run_chunk and None in (
+        args.chunk_index,
+        args.chunk_output,
+        args.code_commits,
+    ):
+        parser.error(
+            "--run-chunk requires --chunk-index, --chunk-output and --code-commits."
+        )
     if args.run_merge and not (args.merge_inputs and args.merge_output):
         parser.error("--run-merge requires --merge-inputs and --merge-output.")
 

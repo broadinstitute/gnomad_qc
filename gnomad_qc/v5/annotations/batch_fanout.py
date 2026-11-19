@@ -66,6 +66,31 @@ def resolve_commit() -> str:
     )
 
 
+def resolve_methods_commit(ref: str) -> str:
+    """
+    Return the gnomad_methods commit ``ref`` points to now.
+
+    Relays download gnomad_methods when they start, so a branch name would let one
+    run mix commits if the branch moved.
+
+    :param ref: Branch, tag or full commit hash.
+    :return: Full commit hash.
+    """
+    if re.fullmatch(r"[0-9a-f]{40}", ref):
+        return ref
+    refs = subprocess.check_output(
+        [
+            "git",
+            "ls-remote",
+            "https://github.com/broadinstitute/gnomad_methods.git",
+            ref,
+        ]
+    )
+    if not refs:
+        raise ValueError(f"gnomad_methods has no branch or tag named {ref}.")
+    return refs.decode().split()[0]
+
+
 def build_setup_command(
     commit: str,
     gcp_billing_project: str = "broad-mpg-gnomad",
@@ -192,6 +217,30 @@ def qob_sizing_flags(args: argparse.Namespace) -> List[str]:
     return flags
 
 
+def jobs_that_never_started(batch: Any) -> Set[str]:
+    """
+    Return the names of jobs that errored before their container started.
+
+    Only these are safe to resubmit: nothing ran, so no memory was used and no QoB
+    batch was launched. The worker must have reported the image pull and no run. A
+    job with no status, as when its machine died (one way running out of memory
+    shows up), is never included.
+
+    :param batch: Finished ``hailtop.batch_client`` Batch.
+    :return: Job names.
+    """
+    names = set()
+    for job in batch.jobs():
+        if job["state"] != "Error":
+            continue
+        status = batch.get_job(job["job_id"]).status().get("status") or {}
+        main = (status.get("container_statuses") or {}).get("main") or {}
+        timing = main.get("timing") or {}
+        if "pulling" in timing and "running" not in timing:
+            names.add(job["name"])
+    return names
+
+
 def submit_relay_batch(
     batch_image: str,
     backend_kwargs: Dict[str, str],
@@ -200,6 +249,7 @@ def submit_relay_batch(
     log_label: str,
     *,
     dry_run: bool,
+    resubmit_unstarted: bool = True,
 ) -> Optional[int]:
     """
     Submit one Hail Batch of relay jobs and wait for it.
@@ -207,7 +257,9 @@ def submit_relay_batch(
     Relays are non-spot because a preempted relay leaves the QoB batch it was
     waiting on running with nobody to collect it. For the same reason callers
     normally ask for one attempt: a Batch retry cannot cancel that orphaned batch
-    and would run alongside it.
+    and would run alongside it. Jobs that errored before their container started
+    (see :func:`jobs_that_never_started`) cannot have left one, so they are
+    resubmitted once.
 
     :param batch_image: Docker image for the relay containers.
     :param backend_kwargs: kwargs for ``hb.ServiceBackend``.
@@ -215,6 +267,7 @@ def submit_relay_batch(
     :param job_specs: Jobs to submit; nothing is submitted when empty.
     :param log_label: Noun for log messages ("chunk", "merge").
     :param dry_run: Validate the batch without running it.
+    :param resubmit_unstarted: Resubmit jobs that never started. Default is True.
     :return: Batch id, or None when nothing ran.
     """
     if not job_specs:
@@ -243,9 +296,32 @@ def submit_relay_batch(
             dry_run,
         )
         submitted = batch.run(dry_run=dry_run)
-        return getattr(submitted, "id", None)
+        unstarted = (
+            jobs_that_never_started(submitted)
+            if submitted is not None and resubmit_unstarted
+            else set()
+        )
     finally:
         backend.close()
+    if unstarted:
+        logger.warning(
+            "%d %s job(s) of '%s' errored before their container started;"
+            " resubmitting once: %s",
+            len(unstarted),
+            log_label,
+            batch_name,
+            sorted(unstarted),
+        )
+        submit_relay_batch(
+            batch_image,
+            backend_kwargs,
+            f"{batch_name}_resubmit",
+            [spec for spec in job_specs if spec.name in unstarted],
+            log_label,
+            dry_run=False,
+            resubmit_unstarted=False,
+        )
+    return getattr(submitted, "id", None)
 
 
 # ---------------------------------------------------------------------------
@@ -1019,6 +1095,14 @@ def orchestrate_tree_merge(
             ),
         )
 
+    def check_written(paths: Sequence[str], what: str) -> None:
+        missing = [p for p in paths if not file_exists(p)]
+        if missing:
+            raise FileNotFoundError(
+                f"{len(missing)} of {len(paths)} {what} output(s) missing after the"
+                f" batch (first: {missing[0]}); rerun to retry."
+            )
+
     inputs = list(inputs)
     level = 1
     while len(inputs) > gs:
@@ -1048,7 +1132,9 @@ def orchestrate_tree_merge(
             )
             for idx in pending
         ]
-        submit(f"{batch_prefix}_L{level:02d}", specs, "merge")
+        # A failed batch does not raise, so check the outputs before building on them.
+        if submit(f"{batch_prefix}_L{level:02d}", specs, "merge") is not None:
+            check_written(out_paths, f"level {level} merge group")
         inputs = out_paths
         level += 1
 
@@ -1060,11 +1146,15 @@ def orchestrate_tree_merge(
         final_coalesce_to,
         final_merge_storage,
     )
-    submit(f"{batch_prefix}_final", [final], "final-merge")
+    if submit(f"{batch_prefix}_final", [final], "final-merge") is not None:
+        check_written([final_output_path], "final HT")
 
 
 def union_and_write_hts(
-    input_paths: Sequence[str], output_path: str, coalesce_to: Optional[int] = None
+    input_paths: Sequence[str],
+    output_path: str,
+    coalesce_to: Optional[int] = None,
+    same_globals: Optional[Sequence[str]] = None,
 ) -> None:
     """
     Union HTs that share a schema and globals, and write the result.
@@ -1076,6 +1166,8 @@ def union_and_write_hts(
     :param input_paths: HT paths to union.
     :param output_path: Destination path, overwritten.
     :param coalesce_to: ``naive_coalesce`` target before writing, or None.
+    :param same_globals: Global fields that must be equal in every input; the write
+        errors if they are not. Default is None.
     :return: None.
     """
     logger.info(
@@ -1084,7 +1176,22 @@ def union_and_write_hts(
         output_path,
         coalesce_to,
     )
-    merged = hl.Table.union(*[hl.read_table(p) for p in input_paths])
+    hts = [hl.read_table(p) for p in input_paths]
+    merged = hl.Table.union(*hts)
+    if same_globals and len(hts) > 1:
+        first = merged.globals.select(*same_globals)
+        same = hl.all(
+            [ht.index_globals().select(*same_globals) == first for ht in hts[1:]]
+        )
+        merged = merged.annotate_globals(
+            **{
+                same_globals[0]: (
+                    hl.case()
+                    .when(same, merged.globals[same_globals[0]])
+                    .or_error(f"Inputs differ in globals {list(same_globals)}.")
+                )
+            }
+        )
     if coalesce_to is not None:
         merged = merged.naive_coalesce(coalesce_to)
     merged.write(output_path, overwrite=True)
