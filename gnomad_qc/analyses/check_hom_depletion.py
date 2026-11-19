@@ -19,7 +19,12 @@ import logging
 from typing import List
 
 import hail as hl
-from gnomad.resources.grch38.gnomad import GEN_ANC_GROUPS, constraint, public_release
+from gnomad.resources.grch38.gnomad import (
+    GEN_ANC_GROUPS,
+    constraint,
+    public_release,
+    sv_sites_vcf_path,
+)
 from gnomad.resources.grch38.reference_data import clinvar
 from gnomad.utils.filtering import filter_to_autosomes
 from gnomad.utils.vep import filter_vep_transcript_csqs_expr
@@ -33,10 +38,6 @@ logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
 logger = logging.getLogger("hom_depletion_check")
 logger.setLevel(logging.INFO)
 
-
-SV_SITES_VCF_PATH = (
-    "gs://gcp-public-data--gnomad/release/4.1/genome_sv/gnomad.v4.1.sv.sites.vcf.gz"
-)
 
 # TODO: Move resources to more stable path.
 OMIM_PATH = "gs://gnomad-kristen/hom_depletion/omim_2023.tsv"
@@ -920,12 +921,12 @@ def annotate_heyne_assoc(
     )
 
 
-def import_sv_sites_ht(sv_vcf_path: str = SV_SITES_VCF_PATH) -> hl.Table:
+def import_sv_sites_ht(sv_vcf_path: str = sv_sites_vcf_path()) -> hl.Table:
     """
     Import the gnomAD SV sites VCF as a rows-only Hail Table.
 
     :param sv_vcf_path: Path to the gnomAD SV sites VCF (bgzipped).
-        Default is SV_SITES_VCF_PATH.
+        Default is the current release from `sv_sites_vcf_path`.
     :return: Hail Table of SV sites (one row per SV), for use with
         `annotate_sv_cnv_overlap`.
     """
