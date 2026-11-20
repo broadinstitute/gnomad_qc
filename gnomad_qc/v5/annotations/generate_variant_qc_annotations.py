@@ -2159,7 +2159,7 @@ def main(args):
         or get_sib_stats(test=test, environment=environment).path
     )
     variant_qc_annotation_ht_path = get_variant_qc_annotations(
-        test=test, environment=environment
+        test=test, environment=environment, test_chroms=test_chrom
     ).path
     # The union output and the final join's input use the same derived "union"
     # path, so the two steps line up without manual path plumbing; per-stratum
@@ -2558,8 +2558,17 @@ def main(args):
                 },
                 overwrite=overwrite,
             )
+            info_ht = hl.read_table(info_ht_path)
+            if test_chrom:
+                info_ht = hl.filter_intervals(
+                    info_ht,
+                    [
+                        hl.parse_locus_interval(c, reference_genome="GRCh38")
+                        for c in test_chrom
+                    ],
+                )
             ht = create_variant_qc_annotation_ht(
-                hl.read_table(info_ht_path),
+                info_ht,
                 hl.read_table(trio_stats_ht_path),
                 hl.read_table(sib_stats_ht_path),
                 impute_features=args.impute_features,
@@ -2709,8 +2718,10 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--test-chrom",
         help=(
-            "Contig(s) (e.g. 'chr21') to cut the full info HT to for --export-info-vcf. "
-            "Use to match the contigs a downstream test run scores. Implies --test."
+            "Contig(s) (e.g. 'chr21') to cut the full info HT to for --export-info-vcf, "
+            "and to cut the info HT to for --create-variant-qc-annotation-ht (also added "
+            "to that output's file name). Use to match the contigs a downstream test run "
+            "scores. Implies --test."
         ),
         type=str,
         nargs="+",

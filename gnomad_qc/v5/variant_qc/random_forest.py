@@ -62,6 +62,7 @@ RF_COLS = {
 def load_variant_qc_annotations_ht(
     test: bool = False,
     environment: str = "rwb",
+    test_chroms: Optional[List[str]] = None,
 ) -> hl.Table:
     """
     Load the pre-computed variant QC annotations Table for RF training.
@@ -77,10 +78,14 @@ def load_variant_qc_annotations_ht(
 
     :param test: Whether to use test resources.
     :param environment: Environment to use. Default is "rwb".
+    :param test_chroms: Contigs the test Table was built with; picks which test
+        Table to read. Default is None.
     :return: Table with variant QC annotations for RF training.
     """
     logger.info("Loading variant QC annotations HT...")
-    ht = get_variant_qc_annotations(test=test, environment=environment).ht()
+    ht = get_variant_qc_annotations(
+        test=test, environment=environment, test_chroms=test_chroms
+    ).ht()
 
     # Extract info features from the info struct for RF training.
     ht = ht.transmute(**{f: ht.info[f] for f in INFO_FEATURES})
@@ -698,7 +703,8 @@ def get_or_create_model_id(
 def main(args):
     """Run random forest variant QC pipeline."""
     overwrite = args.overwrite
-    test = args.test
+    test_chrom = args.test_chrom
+    test = args.test or test_chrom is not None
     environment = args.environment
     if args.model_id is not None and _validate_model_id(args.model_id) != "rf":
         raise ValueError(f"model_id must start with 'rf_', but got {args.model_id}")
@@ -720,7 +726,7 @@ def main(args):
 
     # Get resource paths.
     vqc_annotations_ht_resource = get_variant_qc_annotations(
-        test=test, environment=environment
+        test=test, environment=environment, test_chroms=test_chrom
     )
     rf_training_ht_resource = get_rf_training(
         model_id=model_id, test=test, environment=environment
@@ -753,7 +759,7 @@ def main(args):
 
             logger.info("Loading variant QC annotations...")
             vqc_annotation_ht = load_variant_qc_annotations_ht(
-                test=test, environment=environment
+                test=test, environment=environment, test_chroms=test_chrom
             )
 
             logger.info("Training RF model...")
@@ -800,7 +806,7 @@ def main(args):
 
             logger.info("Loading variant QC annotations...")
             vqc_annotation_ht = load_variant_qc_annotations_ht(
-                test=test, environment=environment
+                test=test, environment=environment, test_chroms=test_chrom
             )
             ht = rf_ht.annotate(**vqc_annotation_ht[rf_ht.key].select(*rf_features))
             if environment == "batch":
@@ -851,6 +857,17 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
             " --test-intervals)."
         ),
         action="store_true",
+    )
+    parser.add_argument(
+        "--test-chrom",
+        help=(
+            "Contig(s) the test variant QC annotations HT was built with (its"
+            " --test-chrom in generate_variant_qc_annotations.py). Picks which test"
+            " HT to read. Implies --test."
+        ),
+        type=str,
+        nargs="+",
+        default=None,
     )
     parser.add_argument(
         "--model-id",

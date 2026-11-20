@@ -1,6 +1,6 @@
 """Script containing annotation related resources."""
 
-from typing import Optional
+from typing import List, Optional
 
 from gnomad.resources.resource_utils import TableResource, VersionedTableResource
 
@@ -426,7 +426,9 @@ def get_aou_annotated_sites_only_vcf(environment: str = "batch") -> str:
 
 
 def get_variant_qc_annotations(
-    test: bool = False, environment: str = "batch"
+    test: bool = False,
+    environment: str = "batch",
+    test_chroms: Optional[List[str]] = None,
 ) -> VersionedTableResource:
     """
     Return the VersionedTableResource to the variant QC annotation Table.
@@ -451,14 +453,17 @@ def get_variant_qc_annotations(
 
     :param test: Whether to use a tmp path for testing.
     :param environment: Environment to use. Default is "batch". Must be one of "rwb", "batch", or "dataproc".
+    :param test_chroms: Contigs the test Table was cut to. With `test`, they're
+        added to the file name (e.g. ".chr20_chr21"). Default is None (no suffix).
     :return: Table with variant QC annotations.
     """
     _validate_environment(environment, _ALL_ENVIRONMENTS)
+    suffix = f".{'_'.join(test_chroms)}" if test and test_chroms else ""
     return VersionedTableResource(
         CURRENT_ANNOTATION_VERSION,
         {
             version: TableResource(
-                f"{_annotations_root(version, test=test, environment=environment)}/gnomad.genomes.v{version}.variant_qc_annotations.ht"
+                f"{_annotations_root(version, test=test, environment=environment)}/gnomad.genomes.v{version}.variant_qc_annotations{suffix}.ht"
             )
             for version in ANNOTATION_VERSIONS
         },
