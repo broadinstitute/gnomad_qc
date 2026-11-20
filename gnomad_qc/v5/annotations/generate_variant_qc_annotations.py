@@ -1045,6 +1045,13 @@ def create_variant_qc_annotation_ht(
     truth_data_ht = get_truth_ht()
 
     ht = info_ht.transmute(**info_ht.AC_info, **info_ht.allele_info)
+    # AoU's AS_MQ divides by the allele's read count, so it is inf (or NaN) when
+    # there are no reads. Set it to 0, as gnomad_methods' get_as_info_expr did for v4.
+    ht = ht.annotate(
+        info=ht.info.annotate(
+            AS_MQ=hl.if_else(hl.is_finite(ht.info.AS_MQ), ht.info.AS_MQ, 0)
+        )
+    )
     ht = ht.annotate(**ht.info.select(*INFO_FEATURES))
 
     if impute_features:
