@@ -1,0 +1,27 @@
+gnomad_qc.v5.variant_qc.isolation_forest
+========================================
+
+Script to run the GATK isolation forest variant QC model on an AS-annotated sites VCF.
+
+SNPs and INDELs are modeled separately (GATK ``--mode``): for each variant type the
+workflow runs ExtractVariantAnnotations -> TrainVariantAnnotationsModel (PYTHON_IFOREST)
+-> ScoreVariantAnnotations (scattered over intervals). The two per-mode scored VCFs are
+merged into a single result HT in the ``--load-iforest`` step.
+
+
+
+
+
+.. argparse::
+   :ref: gnomad_qc.v5.variant_qc.isolation_forest.get_script_argument_parser
+   :prog: gnomad_qc.v5.variant_qc.isolation_forest.py
+
+
+
+Module Functions
+****************
+
+.. gnomad_automodulesummary:: gnomad_qc.v5.variant_qc.isolation_forest
+
+.. automodule:: gnomad_qc.v5.variant_qc.isolation_forest
+    :exclude-members: get_script_argument_parser

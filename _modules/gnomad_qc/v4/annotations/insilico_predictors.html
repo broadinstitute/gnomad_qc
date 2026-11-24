@@ -1,0 +1,796 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>gnomad_qc.v4.annotations.insilico_predictors &mdash; gnomad_qc master documentation</title>
+      <link rel="stylesheet" href="../../../../_static/pygments.css" type="text/css" />
+      <link rel="stylesheet" href="../../../../_static/css/theme.css" type="text/css" />
+      <link rel="stylesheet" href="../../../../_static/theme_overrides.css" type="text/css" />
+  <!--[if lt IE 9]>
+    <script src="../../../../_static/js/html5shiv.min.js"></script>
+  <![endif]-->
+  
+        <script src="../../../../_static/jquery.js"></script>
+        <script src="../../../../_static/_sphinx_javascript_frameworks_compat.js"></script>
+        <script data-url_root="../../../../" id="documentation_options" src="../../../../_static/documentation_options.js"></script>
+        <script src="../../../../_static/doctools.js"></script>
+        <script src="../../../../_static/sphinx_highlight.js"></script>
+        <script src="https://unpkg.com/mermaid@10.2.0/dist/mermaid.min.js"></script>
+        <script>mermaid.initialize({startOnLoad:true});</script>
+    <script src="../../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../../index.html" class="icon icon-home">
+            gnomad_qc
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../../api_reference/index.html">API Reference</a></li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/broadinstitute/gnomad_qc/tags">Change Log</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../../index.html">gnomad_qc</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../../index.html">Module code</a></li>
+      <li class="breadcrumb-item active">gnomad_qc.v4.annotations.insilico_predictors</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for gnomad_qc.v4.annotations.insilico_predictors</h1><div class="highlight"><pre>
+<span></span><span class="sd">&quot;&quot;&quot;Script to generate Hail Tables with in silico predictors.&quot;&quot;&quot;</span>
+
+<span class="kn">import</span> <span class="nn">argparse</span>
+<span class="kn">import</span> <span class="nn">logging</span>
+
+<span class="kn">import</span> <span class="nn">hail</span> <span class="k">as</span> <span class="nn">hl</span>
+<span class="kn">from</span> <span class="nn">gnomad.resources.resource_utils</span> <span class="kn">import</span> <span class="n">NO_CHR_TO_CHR_CONTIG_RECODING</span>
+<span class="kn">from</span> <span class="nn">gnomad.utils.slack</span> <span class="kn">import</span> <span class="n">slack_notifications</span>
+<span class="kn">from</span> <span class="nn">gnomad.utils.vep</span> <span class="kn">import</span> <span class="n">filter_vep_transcript_csqs</span><span class="p">,</span> <span class="n">process_consequences</span>
+<span class="kn">from</span> <span class="nn">hail.utils</span> <span class="kn">import</span> <span class="n">new_temp_file</span>
+
+<span class="kn">from</span> <span class="nn">gnomad_qc.slack_creds</span> <span class="kn">import</span> <span class="n">slack_token</span>
+<span class="kn">from</span> <span class="nn">gnomad_qc.v4.resources.annotations</span> <span class="kn">import</span> <span class="n">get_insilico_predictors</span>
+<span class="kn">from</span> <span class="nn">gnomad_qc.v4.resources.release</span> <span class="kn">import</span> <span class="n">release_sites</span>
+
+<span class="n">logging</span><span class="o">.</span><span class="n">basicConfig</span><span class="p">(</span>
+    <span class="nb">format</span><span class="o">=</span><span class="s2">&quot;</span><span class="si">%(asctime)s</span><span class="s2"> (</span><span class="si">%(name)s</span><span class="s2"> </span><span class="si">%(lineno)s</span><span class="s2">): </span><span class="si">%(message)s</span><span class="s2">&quot;</span><span class="p">,</span>
+    <span class="n">datefmt</span><span class="o">=</span><span class="s2">&quot;%m/</span><span class="si">%d</span><span class="s2">/%Y %I:%M:%S %p&quot;</span><span class="p">,</span>
+<span class="p">)</span>
+<span class="n">logger</span> <span class="o">=</span> <span class="n">logging</span><span class="o">.</span><span class="n">getLogger</span><span class="p">(</span><span class="vm">__name__</span><span class="p">)</span>
+<span class="n">logger</span><span class="o">.</span><span class="n">setLevel</span><span class="p">(</span><span class="n">logging</span><span class="o">.</span><span class="n">INFO</span><span class="p">)</span>
+
+
+<div class="viewcode-block" id="get_sift_polyphen_from_vep"><a class="viewcode-back" href="../../../../api_reference/v4/annotations/insilico_predictors.html#gnomad_qc.v4.annotations.insilico_predictors.get_sift_polyphen_from_vep">[docs]</a><span class="k">def</span> <span class="nf">get_sift_polyphen_from_vep</span><span class="p">(</span><span class="n">ht</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Get the max SIFT and PolyPhen scores from VEP 105 annotations.</span>
+
+<span class="sd">    This retrieves the max of SIFT and PolyPhen scores for a variant&#39;s MANE Select</span>
+<span class="sd">    transcript or, if MANE Select does not exist, canonical transcript.</span>
+
+<span class="sd">    :param ht: VEP 105 annotated Hail Table.</span>
+<span class="sd">    :return: Table annotated with max SIFT and PolyPhen scores.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">mane</span> <span class="o">=</span> <span class="n">filter_vep_transcript_csqs</span><span class="p">(</span>
+        <span class="n">ht</span><span class="p">,</span> <span class="n">synonymous</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">canonical</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">mane_select</span><span class="o">=</span><span class="kc">True</span>
+    <span class="p">)</span>
+    <span class="n">canonical</span> <span class="o">=</span> <span class="n">filter_vep_transcript_csqs</span><span class="p">(</span><span class="n">ht</span><span class="p">,</span> <span class="n">synonymous</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">canonical</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">annotate</span><span class="p">(</span>
+        <span class="n">sift_mane</span><span class="o">=</span><span class="n">mane</span><span class="p">[</span><span class="n">ht</span><span class="o">.</span><span class="n">key</span><span class="p">]</span><span class="o">.</span><span class="n">vep</span><span class="o">.</span><span class="n">transcript_consequences</span><span class="o">.</span><span class="n">sift_score</span><span class="p">,</span>
+        <span class="n">polyphen_mane</span><span class="o">=</span><span class="n">mane</span><span class="p">[</span><span class="n">ht</span><span class="o">.</span><span class="n">key</span><span class="p">]</span><span class="o">.</span><span class="n">vep</span><span class="o">.</span><span class="n">transcript_consequences</span><span class="o">.</span><span class="n">polyphen_score</span><span class="p">,</span>
+        <span class="n">sift_canonical</span><span class="o">=</span><span class="n">canonical</span><span class="p">[</span><span class="n">ht</span><span class="o">.</span><span class="n">key</span><span class="p">]</span><span class="o">.</span><span class="n">vep</span><span class="o">.</span><span class="n">transcript_consequences</span><span class="o">.</span><span class="n">sift_score</span><span class="p">,</span>
+        <span class="n">polyphen_canonical</span><span class="o">=</span><span class="n">canonical</span><span class="p">[</span><span class="n">ht</span><span class="o">.</span><span class="n">key</span><span class="p">]</span><span class="o">.</span><span class="n">vep</span><span class="o">.</span><span class="n">transcript_consequences</span><span class="o">.</span><span class="n">polyphen_score</span><span class="p">,</span>
+    <span class="p">)</span>
+
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">select</span><span class="p">(</span>
+        <span class="n">sift_max</span><span class="o">=</span><span class="n">hl</span><span class="o">.</span><span class="n">or_else</span><span class="p">(</span><span class="n">hl</span><span class="o">.</span><span class="n">max</span><span class="p">(</span><span class="n">ht</span><span class="o">.</span><span class="n">sift_mane</span><span class="p">),</span> <span class="n">hl</span><span class="o">.</span><span class="n">max</span><span class="p">(</span><span class="n">ht</span><span class="o">.</span><span class="n">sift_canonical</span><span class="p">)),</span>
+        <span class="n">polyphen_max</span><span class="o">=</span><span class="n">hl</span><span class="o">.</span><span class="n">or_else</span><span class="p">(</span>
+            <span class="n">hl</span><span class="o">.</span><span class="n">max</span><span class="p">(</span><span class="n">ht</span><span class="o">.</span><span class="n">polyphen_mane</span><span class="p">),</span> <span class="n">hl</span><span class="o">.</span><span class="n">max</span><span class="p">(</span><span class="n">ht</span><span class="o">.</span><span class="n">polyphen_canonical</span><span class="p">)</span>
+        <span class="p">),</span>
+    <span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">ht</span></div>
+
+
+<div class="viewcode-block" id="create_cadd_grch38_ht"><a class="viewcode-back" href="../../../../api_reference/v4/annotations/insilico_predictors.html#gnomad_qc.v4.annotations.insilico_predictors.create_cadd_grch38_ht">[docs]</a><span class="k">def</span> <span class="nf">create_cadd_grch38_ht</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Create a Hail Table with CADD scores for GRCh38.</span>
+
+<span class="sd">    The combined CADD scores in the returned table are from the following sources:</span>
+<span class="sd">        - all SNVs: `cadd.v1.6.whole_genome_SNVs.tsv.bgz` (81G) downloaded from</span>
+<span class="sd">          `https://krishna.gs.washington.edu/download/CADD/v1.6/GRCh38/whole_genome_SNVs.tsv.gz`.</span>
+<span class="sd">          It contains 8,812,917,339 SNVs.</span>
+<span class="sd">        - gnomad 3.0 indels: `cadd.v1.6.gnomad.genomes.v3.0.indel.tsv.bgz` (1.1G)</span>
+<span class="sd">          downloaded from `https://krishna.gs.washington.edu/download/CADD/v1.6/GRCh38/gnomad.genomes.r3.0.indel.tsv.gz`.</span>
+<span class="sd">          It contains 100,546,109 indels from gnomaD v3.0.</span>
+<span class="sd">        - gnomad 3.1 indels: `cadd.v1.6.gnomad.genomes.v3.1.indels.new.ht` was run</span>
+<span class="sd">          on gnomAD v3.1 with CADD v1.6 in 2020. It contains 166,122,720 new indels from</span>
+<span class="sd">          gnomAD v3.1 compared to v3.0.</span>
+<span class="sd">        - gnomad 3.1 complex indels: `cadd.v1.6.gnomad.genomes.v3.1.indels.complex.ht`</span>
+<span class="sd">          was run on gnomAD v3.1 with CADD v1.6 in 2020. It contains 2,307 complex</span>
+<span class="sd">          variants that do not fit Hail&#39;s criteria for an indel and thus exist in</span>
+<span class="sd">          a separate table than the gnomad 3.1 indels.</span>
+<span class="sd">        - gnomAD v4 exomes indels: `cadd.v1.6.gnomad.exomes.v4.0.indels.new.tsv.bgz`</span>
+<span class="sd">          (368M) was run on gnomAD v4 with CADD v1.6 in 2023. It contains 32,561,</span>
+<span class="sd">          253 indels that are new in gnomAD v4.</span>
+<span class="sd">        - gnomAD v4 genomes indels: `cadd.v1.6.gnomad.genomes.v4.0.indels.new.tsv.bgz`</span>
+<span class="sd">          (13M) was run on gnomAD v4 with CADD v1.6 in 2023. It contains 904,906 indels</span>
+<span class="sd">          that are new in gnomAD v4 genomes because of the addition of HGDP/TGP samples.</span>
+
+<span class="sd">    .. note::</span>
+
+<span class="sd">         ~1,9M indels were duplicated in gnomAD v3.0 and v4.0 or in gnomAD v3.1 and</span>
+<span class="sd">         v4.0. However, CADD only generates a score per loci. We keep only the latest</span>
+<span class="sd">         prediction, v4.0, for these loci.</span>
+<span class="sd">         The output generated a CADD HT with 9,110,177,520 rows.</span>
+
+<span class="sd">    :return: Hail Table with CADD scores for GRCh38.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="k">def</span> <span class="nf">_load_cadd_raw</span><span class="p">(</span><span class="n">cadd_tsv</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Functions to load CADD raw data in TSV format to Hail Table.&quot;&quot;&quot;</span>
+        <span class="n">column_names</span> <span class="o">=</span> <span class="p">{</span>
+            <span class="s2">&quot;f0&quot;</span><span class="p">:</span> <span class="s2">&quot;chr&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;f1&quot;</span><span class="p">:</span> <span class="s2">&quot;pos&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;f2&quot;</span><span class="p">:</span> <span class="s2">&quot;ref&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;f3&quot;</span><span class="p">:</span> <span class="s2">&quot;alt&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;f4&quot;</span><span class="p">:</span> <span class="s2">&quot;RawScore&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;f5&quot;</span><span class="p">:</span> <span class="s2">&quot;PHRED&quot;</span><span class="p">,</span>
+        <span class="p">}</span>
+        <span class="n">types</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;f0&quot;</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">tstr</span><span class="p">,</span> <span class="s2">&quot;f1&quot;</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">tint32</span><span class="p">,</span> <span class="s2">&quot;f4&quot;</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">tfloat32</span><span class="p">,</span> <span class="s2">&quot;f5&quot;</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">tfloat32</span><span class="p">}</span>
+        <span class="n">ht</span> <span class="o">=</span> <span class="n">hl</span><span class="o">.</span><span class="n">import_table</span><span class="p">(</span>
+            <span class="n">cadd_tsv</span><span class="p">,</span>
+            <span class="n">types</span><span class="o">=</span><span class="n">types</span><span class="p">,</span>
+            <span class="n">no_header</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+            <span class="n">force_bgz</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+            <span class="n">comment</span><span class="o">=</span><span class="s2">&quot;#&quot;</span><span class="p">,</span>
+            <span class="n">min_partitions</span><span class="o">=</span><span class="mi">1000</span><span class="p">,</span>
+        <span class="p">)</span>
+        <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">rename</span><span class="p">(</span><span class="n">column_names</span><span class="p">)</span>
+        <span class="nb">chr</span> <span class="o">=</span> <span class="n">hl</span><span class="o">.</span><span class="n">if_else</span><span class="p">(</span><span class="n">ht</span><span class="o">.</span><span class="n">chr</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s2">&quot;chr&quot;</span><span class="p">),</span> <span class="n">ht</span><span class="o">.</span><span class="n">chr</span><span class="p">,</span> <span class="n">hl</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="s2">&quot;chr</span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">ht</span><span class="o">.</span><span class="n">chr</span><span class="p">))</span>
+        <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">annotate</span><span class="p">(</span>
+            <span class="n">locus</span><span class="o">=</span><span class="n">hl</span><span class="o">.</span><span class="n">locus</span><span class="p">(</span><span class="nb">chr</span><span class="p">,</span> <span class="n">ht</span><span class="o">.</span><span class="n">pos</span><span class="p">,</span> <span class="n">reference_genome</span><span class="o">=</span><span class="s2">&quot;GRCh38&quot;</span><span class="p">),</span>
+            <span class="n">alleles</span><span class="o">=</span><span class="n">hl</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="n">ht</span><span class="o">.</span><span class="n">ref</span><span class="p">,</span> <span class="n">ht</span><span class="o">.</span><span class="n">alt</span><span class="p">]),</span>
+        <span class="p">)</span>
+        <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">select</span><span class="p">(</span><span class="s2">&quot;locus&quot;</span><span class="p">,</span> <span class="s2">&quot;alleles&quot;</span><span class="p">,</span> <span class="s2">&quot;RawScore&quot;</span><span class="p">,</span> <span class="s2">&quot;PHRED&quot;</span><span class="p">)</span>
+        <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">key_by</span><span class="p">(</span><span class="s2">&quot;locus&quot;</span><span class="p">,</span> <span class="s2">&quot;alleles&quot;</span><span class="p">)</span>
+        <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">checkpoint</span><span class="p">(</span><span class="n">new_temp_file</span><span class="p">(</span><span class="s2">&quot;cadd&quot;</span><span class="p">,</span> <span class="s2">&quot;ht&quot;</span><span class="p">))</span>
+        <span class="k">return</span> <span class="n">ht</span>
+
+    <span class="n">snvs</span> <span class="o">=</span> <span class="n">_load_cadd_raw</span><span class="p">(</span>
+        <span class="s2">&quot;gs://gnomad-insilico/cadd/cadd.v1.6.whole_genome_SNVs.tsv.bgz&quot;</span>
+    <span class="p">)</span>
+    <span class="n">indel3_0</span> <span class="o">=</span> <span class="n">_load_cadd_raw</span><span class="p">(</span>
+        <span class="s2">&quot;gs://gnomad-insilico/cadd/cadd.v1.6.gnomad.genomes.v3.0.indel.tsv.bgz&quot;</span>
+    <span class="p">)</span>
+    <span class="n">indel3_1</span> <span class="o">=</span> <span class="n">hl</span><span class="o">.</span><span class="n">read_table</span><span class="p">(</span>
+        <span class="s2">&quot;gs://gnomad-insilico/cadd/cadd.v1.6.gnomad.genomes.v3.1.indels.new.ht&quot;</span>
+    <span class="p">)</span>
+    <span class="n">indel3_1_complex</span> <span class="o">=</span> <span class="n">hl</span><span class="o">.</span><span class="n">read_table</span><span class="p">(</span>
+        <span class="s2">&quot;gs://gnomad-insilico/cadd/cadd.v1.6.gnomad.genomes.v3.1.indels.complex.ht&quot;</span>
+    <span class="p">)</span>
+    <span class="n">indel4_e</span> <span class="o">=</span> <span class="n">_load_cadd_raw</span><span class="p">(</span>
+        <span class="s2">&quot;gs://gnomad-insilico/cadd/cadd.v1.6.gnomad.exomes.v4.0.indels.new.tsv.bgz&quot;</span>
+    <span class="p">)</span>
+    <span class="n">indel4_g</span> <span class="o">=</span> <span class="n">_load_cadd_raw</span><span class="p">(</span>
+        <span class="s2">&quot;gs://gnomad-insilico/cadd/cadd.v1.6.gnomad.genomes.v4.0.indels.new.tsv.bgz&quot;</span>
+    <span class="p">)</span>
+
+    <span class="c1"># Merge the CADD predictions run for v3 versions.</span>
+    <span class="n">indel3</span> <span class="o">=</span> <span class="n">indel3_0</span><span class="o">.</span><span class="n">union</span><span class="p">(</span><span class="n">indel3_1</span><span class="p">,</span> <span class="n">indel3_1_complex</span><span class="p">)</span>
+
+    <span class="c1"># Merge the CADD predictions run for v4 versions.</span>
+    <span class="n">indel4</span> <span class="o">=</span> <span class="n">indel4_e</span><span class="o">.</span><span class="n">union</span><span class="p">(</span><span class="n">indel4_g</span><span class="p">)</span><span class="o">.</span><span class="n">distinct</span><span class="p">()</span>
+
+    <span class="c1"># This will avoid duplicated indels in gnomAD v3 and v4.</span>
+    <span class="n">indel3</span> <span class="o">=</span> <span class="n">indel3</span><span class="o">.</span><span class="n">anti_join</span><span class="p">(</span><span class="n">indel4</span><span class="p">)</span>
+
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">snvs</span><span class="o">.</span><span class="n">union</span><span class="p">(</span><span class="n">indel3</span><span class="p">,</span> <span class="n">indel4</span><span class="p">)</span>
+
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">select</span><span class="p">(</span><span class="n">cadd</span><span class="o">=</span><span class="n">hl</span><span class="o">.</span><span class="n">struct</span><span class="p">(</span><span class="n">phred</span><span class="o">=</span><span class="n">ht</span><span class="o">.</span><span class="n">PHRED</span><span class="p">,</span> <span class="n">raw_score</span><span class="o">=</span><span class="n">ht</span><span class="o">.</span><span class="n">RawScore</span><span class="p">))</span>
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">annotate_globals</span><span class="p">(</span><span class="n">cadd_version</span><span class="o">=</span><span class="s2">&quot;v1.6&quot;</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">ht</span></div>
+
+
+<div class="viewcode-block" id="create_spliceai_grch38_ht"><a class="viewcode-back" href="../../../../api_reference/v4/annotations/insilico_predictors.html#gnomad_qc.v4.annotations.insilico_predictors.create_spliceai_grch38_ht">[docs]</a><span class="k">def</span> <span class="nf">create_spliceai_grch38_ht</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Create a Hail Table with SpliceAI scores for GRCh38.</span>
+
+<span class="sd">    SpliceAI scores are from the following resources:</span>
+<span class="sd">        - Precomputed SNVs: spliceai_scores.masked.snv.hg38.vcf.bgz,</span>
+<span class="sd">          downloaded from https://basespace.illumina.com/s/5u6ThOblecrh</span>
+<span class="sd">        - Precomputed indels: spliceai_scores.masked.indel.hg38.vcf.bgz,</span>
+<span class="sd">          downloaded from https://basespace.illumina.com/s/5u6ThOblecrh</span>
+<span class="sd">        - gnomAD v3 indels: gnomad_v3_indel.spliceai_masked.vcf.bgz,</span>
+<span class="sd">          computed on v3.1 indels by Illumina in 2020.</span>
+<span class="sd">        - gnomAD v4 indels: gnomad_v4_new_indels.spliceai_masked.vcf.bgz,</span>
+<span class="sd">          computed on v4 indels that are new compared to v3 indels by Illumina in</span>
+<span class="sd">          February 2023.</span>
+<span class="sd">        - gnomAD v3 and v4 unscored indels:</span>
+<span class="sd">          spliceai_scores.masked.gnomad_v3_v4_unscored_indels.hg38.vcf.bgz,</span>
+<span class="sd">          another set of indels were not scored in v3 or v4 but computed by Illumina in</span>
+<span class="sd">          September 2023.</span>
+
+<span class="sd">    :return: Hail Table with SpliceAI scores for GRCh38.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">snvs_path</span> <span class="o">=</span> <span class="s2">&quot;gs://gnomad-insilico/spliceai/spliceai_scores.masked.snv.hg38.vcf.bgz&quot;</span>
+    <span class="n">indels_path</span> <span class="o">=</span> <span class="p">(</span>
+        <span class="s2">&quot;gs://gnomad-insilico/spliceai/spliceai_scores.masked.indel.hg38.vcf.bgz&quot;</span>
+    <span class="p">)</span>
+    <span class="n">v3_indels_path</span> <span class="o">=</span> <span class="s2">&quot;gs://gnomad-insilico/spliceai/spliceai_scores.masked.gnomad_v3_indel.hg38.vcf.bgz&quot;</span>
+    <span class="n">v4_indels_path</span> <span class="o">=</span> <span class="s2">&quot;gs://gnomad-insilico/spliceai/spliceai_scores.masked.gnomad_v4_new_indels.hg38.vcf.bgz&quot;</span>
+    <span class="n">v3_v4_unscored_path</span> <span class="o">=</span> <span class="s2">&quot;gs://gnomad-insilico/spliceai/spliceai_scores.masked.gnomad_v3_v4_unscored_indels.hg38.vcf.bgz&quot;</span>
+    <span class="n">header_file_path</span> <span class="o">=</span> <span class="s2">&quot;gs://gnomad-insilico/spliceai/spliceai.vcf.header&quot;</span>
+
+    <span class="k">def</span> <span class="nf">import_spliceai_vcf</span><span class="p">(</span><span class="n">path</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Import SpliceAI VCF into Hail Table.</span>
+
+<span class="sd">        :param str path: Path to SpliceAI VCF.</span>
+<span class="sd">        :return: Hail MatrixTable with SpliceAI scores.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">ht</span> <span class="o">=</span> <span class="n">hl</span><span class="o">.</span><span class="n">import_vcf</span><span class="p">(</span>
+            <span class="n">path</span><span class="p">,</span>
+            <span class="n">force_bgz</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+            <span class="n">header_file</span><span class="o">=</span><span class="n">header_file_path</span><span class="p">,</span>
+            <span class="n">reference_genome</span><span class="o">=</span><span class="s2">&quot;GRCh38&quot;</span><span class="p">,</span>
+            <span class="n">contig_recoding</span><span class="o">=</span><span class="n">NO_CHR_TO_CHR_CONTIG_RECODING</span><span class="p">,</span>
+            <span class="n">skip_invalid_loci</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+            <span class="n">min_partitions</span><span class="o">=</span><span class="mi">1000</span><span class="p">,</span>
+        <span class="p">)</span><span class="o">.</span><span class="n">rows</span><span class="p">()</span>
+        <span class="k">return</span> <span class="n">ht</span>
+
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Importing vcf of SpliceAI scores into HT...&quot;</span><span class="p">)</span>
+    <span class="n">spliceai_snvs</span> <span class="o">=</span> <span class="n">import_spliceai_vcf</span><span class="p">(</span><span class="n">snvs_path</span><span class="p">)</span>
+    <span class="n">spliceai_indels</span> <span class="o">=</span> <span class="n">import_spliceai_vcf</span><span class="p">(</span><span class="n">indels_path</span><span class="p">)</span>
+    <span class="n">v3_indels</span> <span class="o">=</span> <span class="n">import_spliceai_vcf</span><span class="p">(</span><span class="n">v3_indels_path</span><span class="p">)</span>
+    <span class="n">v4_indels</span> <span class="o">=</span> <span class="n">import_spliceai_vcf</span><span class="p">(</span><span class="n">v4_indels_path</span><span class="p">)</span>
+    <span class="n">v3_v4_unscored_indels</span> <span class="o">=</span> <span class="n">import_spliceai_vcf</span><span class="p">(</span><span class="n">v3_v4_unscored_path</span><span class="p">)</span>
+
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">spliceai_snvs</span><span class="o">.</span><span class="n">union</span><span class="p">(</span>
+        <span class="n">spliceai_indels</span><span class="p">,</span> <span class="n">v3_indels</span><span class="p">,</span> <span class="n">v4_indels</span><span class="p">,</span> <span class="n">v3_v4_unscored_indels</span>
+    <span class="p">)</span>
+
+    <span class="c1"># `explode` because some variants fall on multiple genes and have a score per gene.</span>
+    <span class="c1"># All rows without a SpliceAI score, an empty array, are removed through explode.</span>
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Exploding SpliceAI scores...&quot;</span><span class="p">)</span>
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">explode</span><span class="p">(</span><span class="n">ht</span><span class="o">.</span><span class="n">info</span><span class="o">.</span><span class="n">SpliceAI</span><span class="p">)</span>
+
+    <span class="c1"># delta_score array for 4 splicing consequences: DS_AG|DS_AL|DS_DG|DS_DL</span>
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Annotating SpliceAI scores...&quot;</span><span class="p">)</span>
+    <span class="n">delta_scores</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">info</span><span class="o">.</span><span class="n">SpliceAI</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="n">delim</span><span class="o">=</span><span class="s2">&quot;</span><span class="se">\\</span><span class="s2">|&quot;</span><span class="p">)[</span><span class="mi">2</span><span class="p">:</span><span class="mi">6</span><span class="p">]</span>
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">annotate</span><span class="p">(</span><span class="n">delta_scores</span><span class="o">=</span><span class="n">hl</span><span class="o">.</span><span class="n">map</span><span class="p">(</span><span class="k">lambda</span> <span class="n">x</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">float32</span><span class="p">(</span><span class="n">x</span><span class="p">),</span> <span class="n">delta_scores</span><span class="p">))</span>
+
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span>
+        <span class="s2">&quot;Getting the max SpliceAI score across consequences for each variant per&quot;</span>
+        <span class="s2">&quot; gene...&quot;</span>
+    <span class="p">)</span>
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">select</span><span class="p">(</span><span class="n">ds_max</span><span class="o">=</span><span class="n">hl</span><span class="o">.</span><span class="n">max</span><span class="p">(</span><span class="n">ht</span><span class="o">.</span><span class="n">delta_scores</span><span class="p">))</span>
+
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Getting the max SpliceAI score for each variant across genes...&quot;</span><span class="p">)</span>
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">collect_by_key</span><span class="p">()</span>
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">select</span><span class="p">(</span><span class="n">spliceai_ds_max</span><span class="o">=</span><span class="n">hl</span><span class="o">.</span><span class="n">max</span><span class="p">(</span><span class="n">ht</span><span class="o">.</span><span class="n">values</span><span class="o">.</span><span class="n">ds_max</span><span class="p">))</span>
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">annotate_globals</span><span class="p">(</span><span class="n">spliceai_version</span><span class="o">=</span><span class="s2">&quot;v1.3&quot;</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">ht</span></div>
+
+
+<div class="viewcode-block" id="create_pangolin_grch38_ht"><a class="viewcode-back" href="../../../../api_reference/v4/annotations/insilico_predictors.html#gnomad_qc.v4.annotations.insilico_predictors.create_pangolin_grch38_ht">[docs]</a><span class="k">def</span> <span class="nf">create_pangolin_grch38_ht</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Create a Hail Table with Pangolin score for splicing for GRCh38.</span>
+
+<span class="sd">    .. note::</span>
+
+<span class="sd">        The score was based on the splicing prediction tool Pangolin:</span>
+<span class="sd">        Zeng, T., Li, Y.I. Predicting RNA splicing from DNA sequence using Pangolin.</span>
+<span class="sd">        Genome Biol 23, 103 (2022). https://doi.org/10.1186/s13059-022-02664-4</span>
+
+<span class="sd">    There&#39;s no precomputed score for all possible variants, the scores were</span>
+<span class="sd">    generated for gnomAD v4 genomes (=v3 genomes) and v4 exomes variants in</span>
+<span class="sd">    gene body only with code from developers at Invitae:</span>
+<span class="sd">    https://github.com/invitae/pangolin. All v4 genomes variants (except ~20M</span>
+<span class="sd">    bug-affected and ~3M new variants from HGDP/TGP samples, noted below) were run on</span>
+<span class="sd">    Pangolin v1.3.12, the others were run on Pangolin v1.4.4.</span>
+
+<span class="sd">    :return: Hail Table with Pangolin score for splicing for GRCh38.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">v4_genomes</span> <span class="o">=</span> <span class="p">(</span>
+        <span class="s2">&quot;gs://gnomad-insilico/pangolin/gnomad.v4.0.genomes.pangolin.vcf.bgz/*.gz&quot;</span>
+    <span class="p">)</span>
+    <span class="c1"># ~3 million new variants in gnomAD v4 genomes from the addition of HGDP/TGP</span>
+    <span class="c1"># samples, they were run with the fixed code.</span>
+    <span class="n">v4_genomes_new</span> <span class="o">=</span> <span class="s2">&quot;gs://gnomad-insilico/pangolin/gnomad.v4.0.genomes.new_variants.pangolin.vcf.bgz/*.gz&quot;</span>
+    <span class="n">v4_exomes</span> <span class="o">=</span> <span class="s2">&quot;gs://gnomad-insilico/pangolin/gnomad.v4.0.exomes.pangolin.vcf.bgz/*.gz&quot;</span>
+
+    <span class="c1"># There was a bug in original Pangolin code, that would generate incorrect</span>
+    <span class="c1"># scores when a variant falls on multiple genes on the same strand. This bug</span>
+    <span class="c1"># impacted v4 genomes but was fixed before running v4 exomes, the affected</span>
+    <span class="c1">#  ~20M v4 genome variants were rerun.</span>
+    <span class="n">v4_bugfix</span> <span class="o">=</span> <span class="p">(</span>
+        <span class="s2">&quot;gs://gnomad-insilico/pangolin/gnomad.v4.0.genomes.bugfix.pangolin.vcf.bgz/*.gz&quot;</span>
+    <span class="p">)</span>
+
+    <span class="n">header_file_path</span> <span class="o">=</span> <span class="s2">&quot;gs://gnomad-insilico/pangolin/pangolin.vcf.header&quot;</span>
+
+    <span class="k">def</span> <span class="nf">import_pangolin_vcf</span><span class="p">(</span><span class="n">vcf_path</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Import Pangolin VCF to Hail Table.</span>
+
+<span class="sd">        :param vcf_path: Path to Pangolin VCF.</span>
+<span class="sd">        :return: Hail Table with Pangolin scores.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">ht</span> <span class="o">=</span> <span class="n">hl</span><span class="o">.</span><span class="n">import_vcf</span><span class="p">(</span>
+            <span class="n">vcf_path</span><span class="p">,</span>
+            <span class="n">min_partitions</span><span class="o">=</span><span class="mi">1000</span><span class="p">,</span>
+            <span class="n">force_bgz</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+            <span class="n">reference_genome</span><span class="o">=</span><span class="s2">&quot;GRCh38&quot;</span><span class="p">,</span>
+            <span class="n">skip_invalid_loci</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+            <span class="n">header_file</span><span class="o">=</span><span class="n">header_file_path</span><span class="p">,</span>
+        <span class="p">)</span><span class="o">.</span><span class="n">rows</span><span class="p">()</span>
+        <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">checkpoint</span><span class="p">(</span><span class="n">hl</span><span class="o">.</span><span class="n">utils</span><span class="o">.</span><span class="n">new_temp_file</span><span class="p">(</span><span class="s2">&quot;pangolin&quot;</span><span class="p">,</span> <span class="s2">&quot;ht&quot;</span><span class="p">))</span>
+        <span class="k">return</span> <span class="n">ht</span>
+
+    <span class="n">ht_g</span> <span class="o">=</span> <span class="n">import_pangolin_vcf</span><span class="p">(</span><span class="n">v4_genomes</span><span class="p">)</span>
+    <span class="n">ht_g_new</span> <span class="o">=</span> <span class="n">import_pangolin_vcf</span><span class="p">(</span><span class="n">v4_genomes_new</span><span class="p">)</span>
+    <span class="n">ht_e</span> <span class="o">=</span> <span class="n">import_pangolin_vcf</span><span class="p">(</span><span class="n">v4_exomes</span><span class="p">)</span>
+    <span class="n">ht_bugfix</span> <span class="o">=</span> <span class="n">import_pangolin_vcf</span><span class="p">(</span><span class="n">v4_bugfix</span><span class="p">)</span>
+    <span class="n">ht_g_correct</span> <span class="o">=</span> <span class="n">ht_g</span><span class="o">.</span><span class="n">anti_join</span><span class="p">(</span><span class="n">ht_bugfix</span><span class="p">)</span>
+    <span class="n">ht_g</span> <span class="o">=</span> <span class="n">ht_g_correct</span><span class="o">.</span><span class="n">union</span><span class="p">(</span><span class="n">ht_bugfix</span><span class="p">)</span>
+
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span>
+        <span class="sa">f</span><span class="s2">&quot;Number of rows in genomes Pangolin HT: </span><span class="si">{</span><span class="n">ht_g</span><span class="o">.</span><span class="n">count</span><span class="p">()</span><span class="si">}</span><span class="s2">;</span><span class="se">\n</span><span class="s2"> Number of rows in&quot;</span>
+        <span class="sa">f</span><span class="s2">&quot; raw exomes Pangolin HT: </span><span class="si">{</span><span class="n">ht_e</span><span class="o">.</span><span class="n">count</span><span class="p">()</span><span class="si">}</span><span class="s2">;</span><span class="se">\n</span><span class="s2"> Number of rows in Pangolin HT for&quot;</span>
+        <span class="sa">f</span><span class="s2">&quot; new variants of genomes: </span><span class="si">{</span><span class="n">ht_g_new</span><span class="o">.</span><span class="n">count</span><span class="p">()</span><span class="si">}</span><span class="s2">.</span><span class="se">\n</span><span class="s2">&quot;</span>
+    <span class="p">)</span>
+
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">ht_g</span><span class="o">.</span><span class="n">union</span><span class="p">(</span><span class="n">ht_e</span><span class="p">,</span> <span class="n">ht_g_new</span><span class="p">)</span>
+
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Exploding Pangolin scores...&quot;</span><span class="p">)</span>
+    <span class="c1"># `explode` will eliminate rows with empty array</span>
+    <span class="c1"># The Pangolin annotation is imported as an array of strings containing</span>
+    <span class="c1"># one element with the following format:</span>
+    <span class="c1"># gene1|pos_splice_gain:largest_increase|pos_splice_loss:largest_decrease|Warnings:||gene2...</span>
+    <span class="c1"># for example:</span>
+    <span class="c1"># Pangolin=ENSG00000121005.9|-86:0.25|38:-0.49|Warnings:||ENSG00000254238.1|-40:0.01|30:-0.17|Warnings:</span>
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">annotate</span><span class="p">(</span><span class="n">pangolin</span><span class="o">=</span><span class="n">ht</span><span class="o">.</span><span class="n">info</span><span class="o">.</span><span class="n">Pangolin</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="n">delim</span><span class="o">=</span><span class="s2">&quot;\|\|&quot;</span><span class="p">))</span>
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">explode</span><span class="p">(</span><span class="n">ht</span><span class="o">.</span><span class="n">pangolin</span><span class="p">)</span>
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Number of rows in exploded Pangolin Hail Table: </span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">ht</span><span class="o">.</span><span class="n">count</span><span class="p">())</span>
+
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Annotating Pangolin scores...&quot;</span><span class="p">)</span>
+    <span class="c1"># The Pangolin score is the delta score of splice gain and splice loss,</span>
+    <span class="c1"># which is the second and fourth element in the array after splitting.</span>
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">transmute</span><span class="p">(</span>
+        <span class="n">pangolin</span><span class="o">=</span><span class="n">hl</span><span class="o">.</span><span class="n">struct</span><span class="p">(</span>
+            <span class="n">delta_scores</span><span class="o">=</span><span class="p">(</span>
+                <span class="n">hl</span><span class="o">.</span><span class="n">empty_array</span><span class="p">(</span><span class="n">hl</span><span class="o">.</span><span class="n">tfloat64</span><span class="p">)</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
+                    <span class="n">hl</span><span class="o">.</span><span class="n">float</span><span class="p">(</span><span class="n">ht</span><span class="o">.</span><span class="n">pangolin</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="n">delim</span><span class="o">=</span><span class="s2">&quot;:|</span><span class="se">\\</span><span class="s2">|&quot;</span><span class="p">)[</span><span class="mi">2</span><span class="p">])</span>
+                <span class="p">)</span>
+            <span class="p">)</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">hl</span><span class="o">.</span><span class="n">float</span><span class="p">(</span><span class="n">ht</span><span class="o">.</span><span class="n">pangolin</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="n">delim</span><span class="o">=</span><span class="s2">&quot;:|</span><span class="se">\\</span><span class="s2">|&quot;</span><span class="p">)[</span><span class="mi">4</span><span class="p">])),</span>
+        <span class="p">)</span>
+    <span class="p">)</span>
+
+    <span class="c1"># Using &gt; instead of &gt;= in case where delta score of splice gain and splice</span>
+    <span class="c1"># loss are the same but different sign, we will keep the positive score of</span>
+    <span class="c1"># splice gain</span>
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">annotate</span><span class="p">(</span>
+        <span class="n">largest_ds_gene</span><span class="o">=</span><span class="n">hl</span><span class="o">.</span><span class="n">if_else</span><span class="p">(</span>
+            <span class="n">hl</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">hl</span><span class="o">.</span><span class="n">min</span><span class="p">(</span><span class="n">ht</span><span class="o">.</span><span class="n">pangolin</span><span class="o">.</span><span class="n">delta_scores</span><span class="p">))</span>
+            <span class="o">&gt;</span> <span class="n">hl</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">hl</span><span class="o">.</span><span class="n">max</span><span class="p">(</span><span class="n">ht</span><span class="o">.</span><span class="n">pangolin</span><span class="o">.</span><span class="n">delta_scores</span><span class="p">)),</span>
+            <span class="n">hl</span><span class="o">.</span><span class="n">min</span><span class="p">(</span><span class="n">ht</span><span class="o">.</span><span class="n">pangolin</span><span class="o">.</span><span class="n">delta_scores</span><span class="p">),</span>
+            <span class="n">hl</span><span class="o">.</span><span class="n">max</span><span class="p">(</span><span class="n">ht</span><span class="o">.</span><span class="n">pangolin</span><span class="o">.</span><span class="n">delta_scores</span><span class="p">),</span>
+        <span class="p">)</span>
+    <span class="p">)</span>
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">select</span><span class="p">(</span><span class="n">ht</span><span class="o">.</span><span class="n">largest_ds_gene</span><span class="p">)</span>
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">collect_by_key</span><span class="p">()</span>
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span>
+        <span class="s2">&quot;Number of rows in Pangolin Hail Table after collect_by_key: </span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">ht</span><span class="o">.</span><span class="n">count</span><span class="p">()</span>
+    <span class="p">)</span>
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">select</span><span class="p">(</span>
+        <span class="n">pangolin_largest_ds</span><span class="o">=</span><span class="n">hl</span><span class="o">.</span><span class="n">if_else</span><span class="p">(</span>
+            <span class="n">hl</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">hl</span><span class="o">.</span><span class="n">min</span><span class="p">(</span><span class="n">ht</span><span class="o">.</span><span class="n">values</span><span class="o">.</span><span class="n">largest_ds_gene</span><span class="p">))</span>
+            <span class="o">&gt;</span> <span class="n">hl</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">hl</span><span class="o">.</span><span class="n">max</span><span class="p">(</span><span class="n">ht</span><span class="o">.</span><span class="n">values</span><span class="o">.</span><span class="n">largest_ds_gene</span><span class="p">)),</span>
+            <span class="n">hl</span><span class="o">.</span><span class="n">min</span><span class="p">(</span><span class="n">ht</span><span class="o">.</span><span class="n">values</span><span class="o">.</span><span class="n">largest_ds_gene</span><span class="p">),</span>
+            <span class="n">hl</span><span class="o">.</span><span class="n">max</span><span class="p">(</span><span class="n">ht</span><span class="o">.</span><span class="n">values</span><span class="o">.</span><span class="n">largest_ds_gene</span><span class="p">),</span>
+        <span class="p">)</span>
+    <span class="p">)</span>
+    <span class="c1"># TODO: get the version for genomes run in May 2023.</span>
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">annotate_globals</span><span class="p">(</span><span class="n">pangolin_version</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;v1.3.12&quot;</span><span class="p">,</span> <span class="s2">&quot;v1.4.4&quot;</span><span class="p">])</span>
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span>
+        <span class="s2">&quot;</span><span class="se">\n</span><span class="s2">Number of variants indicating splice gain: </span><span class="si">%s</span><span class="s2">;</span><span class="se">\n</span><span class="s2">&quot;</span>
+        <span class="s2">&quot;Number of variants indicating splice loss: </span><span class="si">%s</span><span class="s2">; </span><span class="se">\n</span><span class="s2">&quot;</span>
+        <span class="s2">&quot;Number of variants with no splicing consequence: </span><span class="si">%s</span><span class="s2"> </span><span class="se">\n</span><span class="s2">&quot;</span><span class="p">,</span>
+        <span class="n">hl</span><span class="o">.</span><span class="n">agg</span><span class="o">.</span><span class="n">count_where</span><span class="p">(</span><span class="n">ht</span><span class="o">.</span><span class="n">pangolin_largest_ds</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">),</span>
+        <span class="n">hl</span><span class="o">.</span><span class="n">agg</span><span class="o">.</span><span class="n">count_where</span><span class="p">(</span><span class="n">ht</span><span class="o">.</span><span class="n">pangolin_largest_ds</span> <span class="o">&lt;</span> <span class="mi">0</span><span class="p">),</span>
+        <span class="n">hl</span><span class="o">.</span><span class="n">agg</span><span class="o">.</span><span class="n">count_where</span><span class="p">(</span><span class="n">ht</span><span class="o">.</span><span class="n">pangolin_largest_ds</span> <span class="o">==</span> <span class="mi">0</span><span class="p">),</span>
+    <span class="p">)</span>
+    <span class="k">return</span> <span class="n">ht</span></div>
+
+
+<div class="viewcode-block" id="create_revel_grch38_ht"><a class="viewcode-back" href="../../../../api_reference/v4/annotations/insilico_predictors.html#gnomad_qc.v4.annotations.insilico_predictors.create_revel_grch38_ht">[docs]</a><span class="k">def</span> <span class="nf">create_revel_grch38_ht</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Create a Hail Table with REVEL scores for GRCh38.</span>
+
+<span class="sd">    .. note::</span>
+
+<span class="sd">        Starting with gnomAD v4, we use REVEL scores for only MANE Select and</span>
+<span class="sd">        canonical transcripts. Even when a variant falls on multiple MANE/canonical</span>
+<span class="sd">        transcripts of different genes, the scores are equal.</span>
+
+<span class="sd">    REVEL scores were downloaded from:</span>
+<span class="sd">    https://rothsj06.dmz.hpc.mssm.edu/revel-v1.3_all_chromosomes.zip</span>
+<span class="sd">    size ~648M, ~82,100,677 variants</span>
+
+<span class="sd">    REVEL&#39;s Ensembl ID is not from Ensembl 105, so we filter to transcripts</span>
+<span class="sd">    that are in Ensembl 105. The Ensembl 105 ID file was downloaded from Ensembl</span>
+<span class="sd">    105 archive. It contains the following columns:</span>
+
+<span class="sd">        - Transcript stable ID</span>
+<span class="sd">        - Ensembl Canonical</span>
+<span class="sd">        - MANE Select</span>
+
+<span class="sd">    This deprecates the `has_duplicate` field present in gnomAD v3.1.</span>
+
+<span class="sd">    :return: Hail Table with REVEL scores for GRCh38.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">revel_csv</span> <span class="o">=</span> <span class="s2">&quot;gs://gnomad-insilico/revel/revel-v1.3_all_chromosomes_with_transcript_ids.csv.bgz&quot;</span>
+    <span class="n">ensembl_path</span> <span class="o">=</span> <span class="s2">&quot;gs://gnomad-insilico/ensembl/ensembl105id.grch38.tsv.bgz&quot;</span>
+
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">hl</span><span class="o">.</span><span class="n">import_table</span><span class="p">(</span>
+        <span class="n">revel_csv</span><span class="p">,</span>
+        <span class="n">delimiter</span><span class="o">=</span><span class="s2">&quot;,&quot;</span><span class="p">,</span>
+        <span class="n">min_partitions</span><span class="o">=</span><span class="mi">1000</span><span class="p">,</span>
+        <span class="n">types</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;grch38_pos&quot;</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">tstr</span><span class="p">,</span> <span class="s2">&quot;REVEL&quot;</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">tfloat64</span><span class="p">},</span>
+    <span class="p">)</span>
+
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Annotating REVEL table...&quot;</span><span class="p">)</span>
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">drop</span><span class="p">(</span><span class="s2">&quot;hg19_pos&quot;</span><span class="p">,</span> <span class="s2">&quot;aaref&quot;</span><span class="p">,</span> <span class="s2">&quot;aaalt&quot;</span><span class="p">)</span>
+    <span class="c1"># drop variants that have no position in GRCh38 when lifted over from GRCh37</span>
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">ht</span><span class="o">.</span><span class="n">grch38_pos</span><span class="o">.</span><span class="n">contains</span><span class="p">(</span><span class="s2">&quot;.&quot;</span><span class="p">),</span> <span class="n">keep</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">transmute</span><span class="p">(</span><span class="nb">chr</span><span class="o">=</span><span class="s2">&quot;chr&quot;</span> <span class="o">+</span> <span class="n">ht</span><span class="o">.</span><span class="n">chr</span><span class="p">)</span>
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">select</span><span class="p">(</span>
+        <span class="n">locus</span><span class="o">=</span><span class="n">hl</span><span class="o">.</span><span class="n">locus</span><span class="p">(</span><span class="n">ht</span><span class="o">.</span><span class="n">chr</span><span class="p">,</span> <span class="n">hl</span><span class="o">.</span><span class="n">int</span><span class="p">(</span><span class="n">ht</span><span class="o">.</span><span class="n">grch38_pos</span><span class="p">),</span> <span class="n">reference_genome</span><span class="o">=</span><span class="s2">&quot;GRCh38&quot;</span><span class="p">),</span>
+        <span class="n">alleles</span><span class="o">=</span><span class="n">hl</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="n">ht</span><span class="o">.</span><span class="n">ref</span><span class="p">,</span> <span class="n">ht</span><span class="o">.</span><span class="n">alt</span><span class="p">]),</span>
+        <span class="n">REVEL</span><span class="o">=</span><span class="n">ht</span><span class="o">.</span><span class="n">REVEL</span><span class="p">,</span>
+        <span class="n">Transcript_stable_ID</span><span class="o">=</span><span class="n">ht</span><span class="o">.</span><span class="n">Ensembl_transcriptid</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s2">&quot;;&quot;</span><span class="p">),</span>
+    <span class="p">)</span>
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">explode</span><span class="p">(</span><span class="s2">&quot;Transcript_stable_ID&quot;</span><span class="p">)</span>
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">key_by</span><span class="p">(</span><span class="s2">&quot;Transcript_stable_ID&quot;</span><span class="p">)</span>
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Number of rows in REVEL table: </span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">ht</span><span class="o">.</span><span class="n">count</span><span class="p">())</span>
+
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Import and process the ensembl ID file...&quot;</span><span class="p">)</span>
+    <span class="n">ensembl_ids_ht</span> <span class="o">=</span> <span class="n">hl</span><span class="o">.</span><span class="n">import_table</span><span class="p">(</span>
+        <span class="n">ensembl_path</span><span class="p">,</span> <span class="n">min_partitions</span><span class="o">=</span><span class="mi">200</span><span class="p">,</span> <span class="n">impute</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">key</span><span class="o">=</span><span class="s2">&quot;Transcript_stable_ID&quot;</span>
+    <span class="p">)</span>
+    <span class="n">ensembl_ids_ht</span> <span class="o">=</span> <span class="n">ensembl_ids_ht</span><span class="o">.</span><span class="n">select</span><span class="p">(</span><span class="s2">&quot;Ensembl_Canonical&quot;</span><span class="p">,</span> <span class="s2">&quot;MANE_Select&quot;</span><span class="p">)</span>
+
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Annotating REVEL HT with canonical and MANE Select transcripts...&quot;</span><span class="p">)</span>
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">annotate</span><span class="p">(</span><span class="o">**</span><span class="n">ensembl_ids_ht</span><span class="p">[</span><span class="n">ht</span><span class="o">.</span><span class="n">key</span><span class="p">])</span>
+
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span>
+        <span class="s2">&quot;Annotating REVEL scores for MANE Select transcripts and canonical&quot;</span>
+        <span class="s2">&quot; transcripts...&quot;</span>
+    <span class="p">)</span>
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">key_by</span><span class="p">(</span><span class="s2">&quot;locus&quot;</span><span class="p">,</span> <span class="s2">&quot;alleles&quot;</span><span class="p">)</span>
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">annotate</span><span class="p">(</span>
+        <span class="n">revel_mane</span><span class="o">=</span><span class="n">hl</span><span class="o">.</span><span class="n">or_missing</span><span class="p">(</span><span class="n">ht</span><span class="o">.</span><span class="n">MANE_Select</span> <span class="o">!=</span> <span class="s2">&quot;&quot;</span><span class="p">,</span> <span class="n">ht</span><span class="o">.</span><span class="n">REVEL</span><span class="p">),</span>
+        <span class="n">revel_canonical</span><span class="o">=</span><span class="n">hl</span><span class="o">.</span><span class="n">or_missing</span><span class="p">(</span><span class="n">ht</span><span class="o">.</span><span class="n">Ensembl_Canonical</span> <span class="o">==</span> <span class="s2">&quot;1&quot;</span><span class="p">,</span> <span class="n">ht</span><span class="o">.</span><span class="n">REVEL</span><span class="p">),</span>
+    <span class="p">)</span>
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">checkpoint</span><span class="p">(</span>
+        <span class="s2">&quot;gs://gnomad-tmp-4day/revel-v1.3_in_Ensembl105.ht&quot;</span><span class="p">,</span> <span class="n">overwrite</span><span class="o">=</span><span class="kc">True</span>
+    <span class="p">)</span>
+
+    <span class="c1"># Since the REVEL score for each variant is transcript-specific, we</span>
+    <span class="c1"># prioritize the scores predicted on MANE Select and canonical transcripts,</span>
+    <span class="c1"># and take the max if a variants falls on multiple MANE Select or canonical</span>
+    <span class="c1"># transcripts. Normally, the score should be equal across MANE Select</span>
+    <span class="c1"># and canonical.</span>
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Taking max REVEL scores for MANE Select transcripts...&quot;</span><span class="p">)</span>
+    <span class="n">mane_ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">hl</span><span class="o">.</span><span class="n">is_defined</span><span class="p">(</span><span class="n">ht</span><span class="o">.</span><span class="n">revel_mane</span><span class="p">),</span> <span class="n">keep</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="n">max_revel_mane</span> <span class="o">=</span> <span class="n">mane_ht</span><span class="o">.</span><span class="n">group_by</span><span class="p">(</span><span class="o">*</span><span class="n">mane_ht</span><span class="o">.</span><span class="n">key</span><span class="p">)</span><span class="o">.</span><span class="n">aggregate</span><span class="p">(</span>
+        <span class="n">revel_mane_max</span><span class="o">=</span><span class="n">hl</span><span class="o">.</span><span class="n">agg</span><span class="o">.</span><span class="n">max</span><span class="p">(</span><span class="n">mane_ht</span><span class="o">.</span><span class="n">revel_mane</span><span class="p">),</span>
+    <span class="p">)</span>
+
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Taking max REVEL scores for canonical transcripts...&quot;</span><span class="p">)</span>
+    <span class="n">canonical_ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span>
+        <span class="p">(</span><span class="o">~</span><span class="n">hl</span><span class="o">.</span><span class="n">is_defined</span><span class="p">(</span><span class="n">ht</span><span class="o">.</span><span class="n">revel_mane</span><span class="p">))</span> <span class="o">&amp;</span> <span class="p">(</span><span class="n">hl</span><span class="o">.</span><span class="n">is_defined</span><span class="p">(</span><span class="n">ht</span><span class="o">.</span><span class="n">revel_canonical</span><span class="p">)),</span> <span class="n">keep</span><span class="o">=</span><span class="kc">True</span>
+    <span class="p">)</span>
+    <span class="n">max_revel_canonical</span> <span class="o">=</span> <span class="n">canonical_ht</span><span class="o">.</span><span class="n">group_by</span><span class="p">(</span><span class="o">*</span><span class="n">canonical_ht</span><span class="o">.</span><span class="n">key</span><span class="p">)</span><span class="o">.</span><span class="n">aggregate</span><span class="p">(</span>
+        <span class="n">revel_canonical_max</span><span class="o">=</span><span class="n">hl</span><span class="o">.</span><span class="n">agg</span><span class="o">.</span><span class="n">max</span><span class="p">(</span><span class="n">canonical_ht</span><span class="o">.</span><span class="n">revel_canonical</span><span class="p">),</span>
+    <span class="p">)</span>
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span>
+        <span class="s2">&quot;Merge max REVEL scores for MANE Select transcripts and canonical transcripts&quot;</span>
+        <span class="s2">&quot; to one HT...&quot;</span>
+    <span class="p">)</span>
+    <span class="n">final_ht</span> <span class="o">=</span> <span class="n">max_revel_mane</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">max_revel_canonical</span><span class="p">,</span> <span class="n">how</span><span class="o">=</span><span class="s2">&quot;outer&quot;</span><span class="p">)</span>
+    <span class="n">final_ht</span> <span class="o">=</span> <span class="n">final_ht</span><span class="o">.</span><span class="n">select</span><span class="p">(</span>
+        <span class="n">revel_max</span><span class="o">=</span><span class="n">hl</span><span class="o">.</span><span class="n">or_else</span><span class="p">(</span><span class="n">final_ht</span><span class="o">.</span><span class="n">revel_mane_max</span><span class="p">,</span> <span class="n">final_ht</span><span class="o">.</span><span class="n">revel_canonical_max</span><span class="p">)</span>
+    <span class="p">)</span>
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Number of rows in final REVEL HT: </span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">final_ht</span><span class="o">.</span><span class="n">count</span><span class="p">())</span>
+    <span class="n">final_ht</span> <span class="o">=</span> <span class="n">final_ht</span><span class="o">.</span><span class="n">annotate_globals</span><span class="p">(</span><span class="n">revel_version</span><span class="o">=</span><span class="s2">&quot;v1.3&quot;</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">final_ht</span></div>
+
+
+<div class="viewcode-block" id="create_phylop_grch38_ht"><a class="viewcode-back" href="../../../../api_reference/v4/annotations/insilico_predictors.html#gnomad_qc.v4.annotations.insilico_predictors.create_phylop_grch38_ht">[docs]</a><span class="k">def</span> <span class="nf">create_phylop_grch38_ht</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Convert PhyloP scores to Hail Table.</span>
+
+<span class="sd">    BigWig format of Phylop was download from here:</span>
+<span class="sd">    https://cgl.gi.ucsc.edu/data/cactus/241-mammalian-2020v2-hub/Homo_sapiens/241-mammalian-2020v2.bigWig</span>
+<span class="sd">    and converted it to bedGraph format with bigWigToBedGraph from the kent packages</span>
+<span class="sd">    of UCSC (https://hgdownload.cse.ucsc.edu/admin/exe/) with the following command:</span>
+<span class="sd">    `./bigWigToBedGraph ~/Downloads/241-mammalian-2020v2.bigWig ~/Downloads/241-mammalian-2020v2.bedGraph`</span>
+<span class="sd">    The bedGraph file is bigzipped before importing to Hail.</span>
+
+<span class="sd">    .. note::</span>
+
+<span class="sd">        Different to other in silico predictors, the Phylop HT is keyed by locus only.</span>
+<span class="sd">        Since the PhyloP scores have one value per position, we exploded the interval</span>
+<span class="sd">        to store the HT by locus. In result, we have Phylop scores for 2,852,623,265</span>
+<span class="sd">        locus from 2,648,607,958 intervals.</span>
+
+<span class="sd">    :return: Hail Table with Phylop Scores for GRCh38</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">bg_path</span> <span class="o">=</span> <span class="s2">&quot;gs://gnomad-insilico/phylop/Human-GRCh38-Phylop-241-mammalian-2020v2.bedGraph.bgz&quot;</span>
+    <span class="n">columns</span> <span class="o">=</span> <span class="p">[</span><span class="s2">&quot;chr&quot;</span><span class="p">,</span> <span class="s2">&quot;start&quot;</span><span class="p">,</span> <span class="s2">&quot;end&quot;</span><span class="p">,</span> <span class="s2">&quot;phylop&quot;</span><span class="p">]</span>
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">hl</span><span class="o">.</span><span class="n">import_table</span><span class="p">(</span>
+        <span class="n">bg_path</span><span class="p">,</span>
+        <span class="n">min_partitions</span><span class="o">=</span><span class="mi">1000</span><span class="p">,</span>
+        <span class="n">impute</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+        <span class="n">no_header</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+    <span class="p">)</span><span class="o">.</span><span class="n">rename</span><span class="p">({</span><span class="sa">f</span><span class="s2">&quot;f</span><span class="si">{</span><span class="n">i</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">:</span> <span class="n">c</span> <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">c</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">columns</span><span class="p">)})</span>
+
+    <span class="c1"># We add 1 to both start and end because input bedGraph is 0-indexed interval and</span>
+    <span class="c1"># the interval is end exclusive</span>
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">annotate</span><span class="p">(</span><span class="n">pos</span><span class="o">=</span><span class="n">hl</span><span class="o">.</span><span class="n">range</span><span class="p">(</span><span class="n">ht</span><span class="o">.</span><span class="n">start</span> <span class="o">+</span> <span class="mi">1</span><span class="p">,</span> <span class="n">ht</span><span class="o">.</span><span class="n">end</span> <span class="o">+</span> <span class="mi">1</span><span class="p">))</span>
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">explode</span><span class="p">(</span><span class="s2">&quot;pos&quot;</span><span class="p">)</span>
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">annotate</span><span class="p">(</span><span class="n">locus</span><span class="o">=</span><span class="n">hl</span><span class="o">.</span><span class="n">locus</span><span class="p">(</span><span class="n">ht</span><span class="o">.</span><span class="n">chr</span><span class="p">,</span> <span class="n">ht</span><span class="o">.</span><span class="n">pos</span><span class="p">,</span> <span class="n">reference_genome</span><span class="o">=</span><span class="s2">&quot;GRCh38&quot;</span><span class="p">))</span>
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">select</span><span class="p">(</span><span class="s2">&quot;locus&quot;</span><span class="p">,</span> <span class="s2">&quot;phylop&quot;</span><span class="p">)</span>
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">key_by</span><span class="p">(</span><span class="s2">&quot;locus&quot;</span><span class="p">)</span>
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">annotate_globals</span><span class="p">(</span><span class="n">phylop_version</span><span class="o">=</span><span class="s2">&quot;v2&quot;</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">ht</span></div>
+
+
+<div class="viewcode-block" id="get_revel_for_unmatched_transcripts"><a class="viewcode-back" href="../../../../api_reference/v4/annotations/insilico_predictors.html#gnomad_qc.v4.annotations.insilico_predictors.get_revel_for_unmatched_transcripts">[docs]</a><span class="k">def</span> <span class="nf">get_revel_for_unmatched_transcripts</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Create Tables with alternative REVEL scores for variants in v4.1 release.</span>
+
+<span class="sd">    ..note:</span>
+
+<span class="sd">        REVEL was computed using transcripts from Ensembl v64. In the gnomAD v4.0</span>
+<span class="sd">        and v4.1 release Tables, transcript information from Ensembl v105 and variant</span>
+<span class="sd">        information (locus and alleles combination) were used to ascertain variant</span>
+<span class="sd">        REVEL scores for MANE select or canonical transcripts only. This means that</span>
+<span class="sd">        variants within 2,414 MANE select transcripts in gnomAD v4.0 and v4.1 are</span>
+<span class="sd">        missing REVEL scores because they are not present in Ensembl v64.</span>
+
+<span class="sd">        To address this, we annotated the variants within the 2,414 genes with the</span>
+<span class="sd">        maximum REVEL score found at the specific locus and allele, rather than the</span>
+<span class="sd">        score for the MANE Select transcript.</span>
+
+<span class="sd">        The exomes TSV adds REVEL scores to 1,936,321 out of 2,284,296 (87.77%)</span>
+<span class="sd">        missense variants within the 2,414 genes. The genomes TSV adds REVEL scores</span>
+<span class="sd">        to 528,204 out of 620,799 ( 85.08%) missense variants within the 2,414 genes.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="k">def</span> <span class="nf">_process_revel</span><span class="p">():</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Process REVEL scores.&quot;&quot;&quot;</span>
+        <span class="n">revel_csv</span> <span class="o">=</span> <span class="s2">&quot;gs://gnomad-insilico/revel/revel-v1.3_all_chromosomes_with_transcript_ids.csv.bgz&quot;</span>
+
+        <span class="n">ht</span> <span class="o">=</span> <span class="n">hl</span><span class="o">.</span><span class="n">import_table</span><span class="p">(</span>
+            <span class="n">revel_csv</span><span class="p">,</span>
+            <span class="n">delimiter</span><span class="o">=</span><span class="s2">&quot;,&quot;</span><span class="p">,</span>
+            <span class="n">min_partitions</span><span class="o">=</span><span class="mi">1000</span><span class="p">,</span>
+            <span class="n">types</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;grch38_pos&quot;</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">tstr</span><span class="p">,</span> <span class="s2">&quot;REVEL&quot;</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">tfloat64</span><span class="p">},</span>
+        <span class="p">)</span>
+        <span class="c1"># drop variants that have no position in GRCh38 when lifted over from GRCh37</span>
+        <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">ht</span><span class="o">.</span><span class="n">grch38_pos</span><span class="o">.</span><span class="n">contains</span><span class="p">(</span><span class="s2">&quot;.&quot;</span><span class="p">),</span> <span class="n">keep</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+        <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">select</span><span class="p">(</span>
+            <span class="n">locus</span><span class="o">=</span><span class="n">hl</span><span class="o">.</span><span class="n">locus</span><span class="p">(</span>
+                <span class="s2">&quot;chr&quot;</span> <span class="o">+</span> <span class="n">ht</span><span class="o">.</span><span class="n">chr</span><span class="p">,</span> <span class="n">hl</span><span class="o">.</span><span class="n">int</span><span class="p">(</span><span class="n">ht</span><span class="o">.</span><span class="n">grch38_pos</span><span class="p">),</span> <span class="n">reference_genome</span><span class="o">=</span><span class="s2">&quot;GRCh38&quot;</span>
+            <span class="p">),</span>
+            <span class="n">alleles</span><span class="o">=</span><span class="n">hl</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="n">ht</span><span class="o">.</span><span class="n">ref</span><span class="p">,</span> <span class="n">ht</span><span class="o">.</span><span class="n">alt</span><span class="p">]),</span>
+            <span class="n">REVEL</span><span class="o">=</span><span class="n">ht</span><span class="o">.</span><span class="n">REVEL</span><span class="p">,</span>
+            <span class="n">Transcript_stable_ID</span><span class="o">=</span><span class="n">ht</span><span class="o">.</span><span class="n">Ensembl_transcriptid</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s2">&quot;;&quot;</span><span class="p">),</span>
+        <span class="p">)</span>
+        <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">key_by</span><span class="p">(</span><span class="s2">&quot;locus&quot;</span><span class="p">,</span> <span class="s2">&quot;alleles&quot;</span><span class="p">)</span>
+        <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">group_by</span><span class="p">(</span><span class="s2">&quot;locus&quot;</span><span class="p">,</span> <span class="s2">&quot;alleles&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">aggregate</span><span class="p">(</span><span class="n">REVEL_max</span><span class="o">=</span><span class="n">hl</span><span class="o">.</span><span class="n">agg</span><span class="o">.</span><span class="n">max</span><span class="p">(</span><span class="n">ht</span><span class="o">.</span><span class="n">REVEL</span><span class="p">))</span>
+        <span class="k">return</span> <span class="n">ht</span>
+
+    <span class="k">def</span> <span class="nf">_filter_release_ht</span><span class="p">(</span><span class="n">data_type</span><span class="p">,</span> <span class="n">genes_list</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Filter release sites to only include genes with missing revel scores.&quot;&quot;&quot;</span>
+        <span class="n">ht</span> <span class="o">=</span> <span class="n">release_sites</span><span class="p">(</span><span class="n">data_type</span><span class="o">=</span><span class="n">data_type</span><span class="p">)</span><span class="o">.</span><span class="n">ht</span><span class="p">()</span>
+        <span class="n">ht</span> <span class="o">=</span> <span class="n">process_consequences</span><span class="p">(</span><span class="n">ht</span><span class="p">,</span> <span class="n">has_polyphen</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+        <span class="n">ht</span> <span class="o">=</span> <span class="n">filter_vep_transcript_csqs</span><span class="p">(</span>
+            <span class="n">ht</span><span class="p">,</span>
+            <span class="n">synonymous</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+            <span class="n">mane_select</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+            <span class="n">genes</span><span class="o">=</span><span class="n">genes_list</span><span class="p">,</span>
+            <span class="n">csqs</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;missense_variant&quot;</span><span class="p">],</span>
+        <span class="p">)</span>
+        <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">select</span><span class="p">(</span>
+            <span class="n">gene_id</span><span class="o">=</span><span class="n">ht</span><span class="o">.</span><span class="n">vep</span><span class="o">.</span><span class="n">transcript_consequences</span><span class="o">.</span><span class="n">gene_id</span><span class="p">,</span>
+            <span class="n">most_severe_consequence</span><span class="o">=</span><span class="n">ht</span><span class="o">.</span><span class="n">vep</span><span class="o">.</span><span class="n">transcript_consequences</span><span class="o">.</span><span class="n">most_severe_consequence</span><span class="p">,</span>
+        <span class="p">)</span>
+        <span class="k">return</span> <span class="n">ht</span>
+
+    <span class="c1"># Get the max REVEL score for each variant</span>
+    <span class="n">revel</span> <span class="o">=</span> <span class="n">_process_revel</span><span class="p">()</span>
+    <span class="n">revel</span> <span class="o">=</span> <span class="n">revel</span><span class="o">.</span><span class="n">checkpoint</span><span class="p">(</span><span class="n">hl</span><span class="o">.</span><span class="n">utils</span><span class="o">.</span><span class="n">new_temp_file</span><span class="p">(</span><span class="s2">&quot;revel_tmp&quot;</span><span class="p">,</span> <span class="s2">&quot;ht&quot;</span><span class="p">))</span>
+
+    <span class="c1"># Get genes missing revel scores</span>
+    <span class="n">genes</span> <span class="o">=</span> <span class="n">hl</span><span class="o">.</span><span class="n">import_table</span><span class="p">(</span>
+        <span class="s2">&quot;gs://gnomad-insilico/revel/Ensembl105MANE_without_REVEL.txt&quot;</span><span class="p">,</span>
+        <span class="n">impute</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+        <span class="n">comment</span><span class="o">=</span><span class="s2">&quot;#&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">genes_list</span> <span class="o">=</span> <span class="n">genes</span><span class="o">.</span><span class="n">Gene_stable_ID</span><span class="o">.</span><span class="n">collect</span><span class="p">()</span>
+
+    <span class="k">for</span> <span class="n">data_type</span> <span class="ow">in</span> <span class="p">[</span><span class="s2">&quot;exomes&quot;</span><span class="p">,</span> <span class="s2">&quot;genomes&quot;</span><span class="p">]:</span>
+        <span class="c1"># Filter release sites to only include genes with missing revel</span>
+        <span class="n">ht</span> <span class="o">=</span> <span class="n">_filter_release_ht</span><span class="p">(</span><span class="n">data_type</span><span class="p">,</span> <span class="n">genes_list</span><span class="p">)</span>
+        <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">checkpoint</span><span class="p">(</span><span class="n">hl</span><span class="o">.</span><span class="n">utils</span><span class="o">.</span><span class="n">new_temp_file</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">data_type</span><span class="si">}</span><span class="s2">_tmp_filtered&quot;</span><span class="p">,</span> <span class="s2">&quot;ht&quot;</span><span class="p">))</span>
+        <span class="c1"># Join REVEL scores with release sites</span>
+        <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">annotate</span><span class="p">(</span><span class="n">REVEL_max</span><span class="o">=</span><span class="n">revel</span><span class="p">[</span><span class="n">ht</span><span class="o">.</span><span class="n">key</span><span class="p">]</span><span class="o">.</span><span class="n">REVEL_max</span><span class="p">)</span>
+        <span class="c1"># Filter out variants without a REVEL score</span>
+        <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">hl</span><span class="o">.</span><span class="n">is_defined</span><span class="p">(</span><span class="n">ht</span><span class="o">.</span><span class="n">REVEL_max</span><span class="p">))</span>
+        <span class="n">ht</span><span class="o">.</span><span class="n">export</span><span class="p">(</span>
+            <span class="s2">&quot;gs://gnomad-insilico/revel/gnomad.v4.1.&quot;</span>
+            <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">data_type</span><span class="si">}</span><span class="s2">.revel_unmatched_transcripts.tsv.bgz&quot;</span>
+        <span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="main"><a class="viewcode-back" href="../../../../api_reference/v4/annotations/insilico_predictors.html#gnomad_qc.v4.annotations.insilico_predictors.main">[docs]</a><span class="k">def</span> <span class="nf">main</span><span class="p">(</span><span class="n">args</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Generate Hail Tables with in silico predictors.&quot;&quot;&quot;</span>
+    <span class="n">hl</span><span class="o">.</span><span class="n">init</span><span class="p">(</span>
+        <span class="n">default_reference</span><span class="o">=</span><span class="s2">&quot;GRCh38&quot;</span><span class="p">,</span>
+        <span class="n">log</span><span class="o">=</span><span class="s2">&quot;/insilico_predictors.log&quot;</span><span class="p">,</span>
+        <span class="n">tmp_dir</span><span class="o">=</span><span class="s2">&quot;gs://gnomad-tmp-4day&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">cadd</span><span class="p">:</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Creating CADD Hail Table for GRCh38...&quot;</span><span class="p">)</span>
+
+        <span class="n">ht</span> <span class="o">=</span> <span class="n">create_cadd_grch38_ht</span><span class="p">()</span>
+        <span class="n">ht</span><span class="o">.</span><span class="n">write</span><span class="p">(</span>
+            <span class="n">get_insilico_predictors</span><span class="p">(</span><span class="n">predictor</span><span class="o">=</span><span class="s2">&quot;cadd&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">path</span><span class="p">,</span>
+            <span class="n">overwrite</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">overwrite</span><span class="p">,</span>
+        <span class="p">)</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;CADD Hail Table for GRCh38 created.&quot;</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">spliceai</span><span class="p">:</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Creating SpliceAI Hail Table for GRCh38...&quot;</span><span class="p">)</span>
+        <span class="n">ht</span> <span class="o">=</span> <span class="n">create_spliceai_grch38_ht</span><span class="p">()</span>
+        <span class="n">ht</span><span class="o">.</span><span class="n">write</span><span class="p">(</span>
+            <span class="n">get_insilico_predictors</span><span class="p">(</span><span class="n">predictor</span><span class="o">=</span><span class="s2">&quot;spliceai&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">path</span><span class="p">,</span>
+            <span class="n">overwrite</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">overwrite</span><span class="p">,</span>
+        <span class="p">)</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;SpliceAI Hail Table for GRCh38 created.&quot;</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">pangolin</span><span class="p">:</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Creating Pangolin Hail Table for GRCh38...&quot;</span><span class="p">)</span>
+
+        <span class="n">ht</span> <span class="o">=</span> <span class="n">create_pangolin_grch38_ht</span><span class="p">()</span>
+        <span class="n">ht</span><span class="o">.</span><span class="n">write</span><span class="p">(</span>
+            <span class="n">get_insilico_predictors</span><span class="p">(</span><span class="n">predictor</span><span class="o">=</span><span class="s2">&quot;pangolin&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">path</span><span class="p">,</span>
+            <span class="n">overwrite</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">overwrite</span><span class="p">,</span>
+        <span class="p">)</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Pangolin Hail Table for GRCh38 created.&quot;</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">revel</span><span class="p">:</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Creating REVEL Hail Table for GRCh38...&quot;</span><span class="p">)</span>
+
+        <span class="n">ht</span> <span class="o">=</span> <span class="n">create_revel_grch38_ht</span><span class="p">()</span>
+        <span class="n">ht</span><span class="o">.</span><span class="n">write</span><span class="p">(</span>
+            <span class="n">get_insilico_predictors</span><span class="p">(</span><span class="n">predictor</span><span class="o">=</span><span class="s2">&quot;revel&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">path</span><span class="p">,</span>
+            <span class="n">overwrite</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">overwrite</span><span class="p">,</span>
+        <span class="p">)</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;REVEL Hail Table for GRCh38 created.&quot;</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">revel_unmatched_transcripts</span><span class="p">:</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span>
+            <span class="s2">&quot;Get REVEL score for variants in missing MANE transcripts in v4.1&quot;</span>
+            <span class="s2">&quot; release...&quot;</span>
+        <span class="p">)</span>
+        <span class="n">get_revel_for_unmatched_transcripts</span><span class="p">()</span>
+    <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">phylop</span><span class="p">:</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Creating PhyloP Hail Table for GRCh38...&quot;</span><span class="p">)</span>
+        <span class="n">ht</span> <span class="o">=</span> <span class="n">create_phylop_grch38_ht</span><span class="p">()</span>
+        <span class="n">ht</span><span class="o">.</span><span class="n">write</span><span class="p">(</span>
+            <span class="n">get_insilico_predictors</span><span class="p">(</span><span class="n">predictor</span><span class="o">=</span><span class="s2">&quot;phylop&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">path</span><span class="p">,</span>
+            <span class="n">overwrite</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">overwrite</span><span class="p">,</span>
+        <span class="p">)</span></div>
+
+
+<span class="k">def</span> <span class="nf">get_script_argument_parser</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="n">argparse</span><span class="o">.</span><span class="n">ArgumentParser</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Get script argument parser.&quot;&quot;&quot;</span>
+    <span class="n">parser</span> <span class="o">=</span> <span class="n">argparse</span><span class="o">.</span><span class="n">ArgumentParser</span><span class="p">()</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--slack-channel&quot;</span><span class="p">,</span> <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Slack channel to post results and notifications to.&quot;</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span><span class="s2">&quot;--overwrite&quot;</span><span class="p">,</span> <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Overwrite data&quot;</span><span class="p">,</span> <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span><span class="s2">&quot;--cadd&quot;</span><span class="p">,</span> <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Create CADD HT&quot;</span><span class="p">,</span> <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span><span class="s2">&quot;--spliceai&quot;</span><span class="p">,</span> <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Create SpliceAI HT&quot;</span><span class="p">,</span> <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span><span class="s2">&quot;--pangolin&quot;</span><span class="p">,</span> <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Create Pangolin HT&quot;</span><span class="p">,</span> <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span><span class="s2">&quot;--revel&quot;</span><span class="p">,</span> <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Create REVEL HT.&quot;</span><span class="p">,</span> <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span><span class="s2">&quot;--phylop&quot;</span><span class="p">,</span> <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Create PhyloP HT.&quot;</span><span class="p">,</span> <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--revel-unmatched-transcripts&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="p">(</span>
+            <span class="s2">&quot;Get alternative REVEL score for variants &quot;</span>
+            <span class="s2">&quot;in MANE transcripts in v4.1 release.&quot;</span>
+        <span class="p">),</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">parser</span>
+
+
+<span class="k">if</span> <span class="vm">__name__</span> <span class="o">==</span> <span class="s2">&quot;__main__&quot;</span><span class="p">:</span>
+    <span class="n">parser</span> <span class="o">=</span> <span class="n">get_script_argument_parser</span><span class="p">()</span>
+    <span class="n">args</span> <span class="o">=</span> <span class="n">parser</span><span class="o">.</span><span class="n">parse_args</span><span class="p">()</span>
+
+    <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">slack_channel</span><span class="p">:</span>
+        <span class="k">with</span> <span class="n">slack_notifications</span><span class="p">(</span><span class="n">slack_token</span><span class="p">,</span> <span class="n">args</span><span class="o">.</span><span class="n">slack_channel</span><span class="p">):</span>
+            <span class="n">main</span><span class="p">(</span><span class="n">args</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">main</span><span class="p">(</span><span class="n">args</span><span class="p">)</span>
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p></p>
+  </div>
+
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

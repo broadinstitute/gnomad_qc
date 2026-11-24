@@ -1,0 +1,21 @@
+gnomad_qc.v4.annotations.insilico_predictors
+============================================
+
+Script to generate Hail Tables with in silico predictors.
+
+
+
+
+.. argparse::
+   :ref: gnomad_qc.v4.annotations.insilico_predictors.get_script_argument_parser
+   :prog: gnomad_qc.v4.annotations.insilico_predictors.py
+
+
+
+Module Functions
+****************
+
+.. gnomad_automodulesummary:: gnomad_qc.v4.annotations.insilico_predictors
+
+.. automodule:: gnomad_qc.v4.annotations.insilico_predictors
+    :exclude-members: get_script_argument_parser

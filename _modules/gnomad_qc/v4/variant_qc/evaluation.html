@@ -1,0 +1,622 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>gnomad_qc.v4.variant_qc.evaluation &mdash; gnomad_qc master documentation</title>
+      <link rel="stylesheet" href="../../../../_static/pygments.css" type="text/css" />
+      <link rel="stylesheet" href="../../../../_static/css/theme.css" type="text/css" />
+      <link rel="stylesheet" href="../../../../_static/theme_overrides.css" type="text/css" />
+  <!--[if lt IE 9]>
+    <script src="../../../../_static/js/html5shiv.min.js"></script>
+  <![endif]-->
+  
+        <script src="../../../../_static/jquery.js"></script>
+        <script src="../../../../_static/_sphinx_javascript_frameworks_compat.js"></script>
+        <script data-url_root="../../../../" id="documentation_options" src="../../../../_static/documentation_options.js"></script>
+        <script src="../../../../_static/doctools.js"></script>
+        <script src="../../../../_static/sphinx_highlight.js"></script>
+        <script src="https://unpkg.com/mermaid@10.2.0/dist/mermaid.min.js"></script>
+        <script>mermaid.initialize({startOnLoad:true});</script>
+    <script src="../../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../../index.html" class="icon icon-home">
+            gnomad_qc
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../../api_reference/index.html">API Reference</a></li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/broadinstitute/gnomad_qc/tags">Change Log</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../../index.html">gnomad_qc</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../../index.html">Module code</a></li>
+      <li class="breadcrumb-item active">gnomad_qc.v4.variant_qc.evaluation</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for gnomad_qc.v4.variant_qc.evaluation</h1><div class="highlight"><pre>
+<span></span><span class="sd">&quot;&quot;&quot;Script to create Tables with aggregate variant statistics by variant QC score bins needed for evaluation plots.&quot;&quot;&quot;</span>
+
+<span class="kn">import</span> <span class="nn">argparse</span>
+<span class="kn">import</span> <span class="nn">logging</span>
+<span class="kn">from</span> <span class="nn">pprint</span> <span class="kn">import</span> <span class="n">pformat</span>
+
+<span class="kn">import</span> <span class="nn">hail</span> <span class="k">as</span> <span class="nn">hl</span>
+<span class="kn">from</span> <span class="nn">gnomad.utils.filtering</span> <span class="kn">import</span> <span class="n">filter_low_conf_regions</span>
+<span class="kn">from</span> <span class="nn">gnomad.utils.slack</span> <span class="kn">import</span> <span class="n">slack_notifications</span>
+<span class="kn">from</span> <span class="nn">gnomad.variant_qc.evaluation</span> <span class="kn">import</span> <span class="p">(</span>
+    <span class="n">compute_binned_truth_sample_concordance</span><span class="p">,</span>
+    <span class="n">compute_grouped_binned_ht</span><span class="p">,</span>
+    <span class="n">create_truth_sample_ht</span><span class="p">,</span>
+<span class="p">)</span>
+<span class="kn">from</span> <span class="nn">gnomad.variant_qc.pipeline</span> <span class="kn">import</span> <span class="n">create_binned_ht</span><span class="p">,</span> <span class="n">score_bin_agg</span>
+<span class="kn">from</span> <span class="nn">hail.utils</span> <span class="kn">import</span> <span class="n">new_temp_file</span>
+
+<span class="kn">from</span> <span class="nn">gnomad_qc.resource_utils</span> <span class="kn">import</span> <span class="p">(</span>
+    <span class="n">PipelineResourceCollection</span><span class="p">,</span>
+    <span class="n">PipelineStepResourceCollection</span><span class="p">,</span>
+<span class="p">)</span>
+<span class="kn">from</span> <span class="nn">gnomad_qc.slack_creds</span> <span class="kn">import</span> <span class="n">slack_token</span>
+<span class="kn">from</span> <span class="nn">gnomad_qc.v4.resources.annotations</span> <span class="kn">import</span> <span class="p">(</span>
+    <span class="n">get_info</span><span class="p">,</span>
+    <span class="n">get_trio_stats</span><span class="p">,</span>
+    <span class="n">get_variant_qc_annotations</span><span class="p">,</span>
+<span class="p">)</span>
+<span class="kn">from</span> <span class="nn">gnomad_qc.v4.resources.basics</span> <span class="kn">import</span> <span class="n">calling_intervals</span><span class="p">,</span> <span class="n">get_gnomad_v4_vds</span>
+<span class="kn">from</span> <span class="nn">gnomad_qc.v4.resources.sample_qc</span> <span class="kn">import</span> <span class="n">interval_qc_pass</span>
+<span class="kn">from</span> <span class="nn">gnomad_qc.v4.resources.variant_qc</span> <span class="kn">import</span> <span class="p">(</span>
+    <span class="n">TRUTH_SAMPLES</span><span class="p">,</span>
+    <span class="n">get_binned_concordance</span><span class="p">,</span>
+    <span class="n">get_callset_truth_data</span><span class="p">,</span>
+    <span class="n">get_score_bins</span><span class="p">,</span>
+    <span class="n">get_variant_qc_result</span><span class="p">,</span>
+<span class="p">)</span>
+
+<span class="n">logging</span><span class="o">.</span><span class="n">basicConfig</span><span class="p">(</span><span class="nb">format</span><span class="o">=</span><span class="s2">&quot;</span><span class="si">%(levelname)s</span><span class="s2"> (</span><span class="si">%(name)s</span><span class="s2"> </span><span class="si">%(lineno)s</span><span class="s2">): </span><span class="si">%(message)s</span><span class="s2">&quot;</span><span class="p">)</span>
+<span class="n">logger</span> <span class="o">=</span> <span class="n">logging</span><span class="o">.</span><span class="n">getLogger</span><span class="p">(</span><span class="s2">&quot;variant_qc_evaluation&quot;</span><span class="p">)</span>
+<span class="n">logger</span><span class="o">.</span><span class="n">setLevel</span><span class="p">(</span><span class="n">logging</span><span class="o">.</span><span class="n">INFO</span><span class="p">)</span>
+
+
+<div class="viewcode-block" id="create_bin_ht"><a class="viewcode-back" href="../../../../api_reference/v4/variant_qc/evaluation.html#gnomad_qc.v4.variant_qc.evaluation.create_bin_ht">[docs]</a><span class="k">def</span> <span class="nf">create_bin_ht</span><span class="p">(</span>
+    <span class="n">ht</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">,</span>
+    <span class="n">info_ht</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">,</span>
+    <span class="n">rf_annotations_ht</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">,</span>
+    <span class="n">n_bins</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
+    <span class="n">model_type</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Create a table with bin annotations added for a variant QC run.</span>
+
+<span class="sd">    :param ht: Table with variant QC result annotations.</span>
+<span class="sd">    :param info_ht: Table with info annotations.</span>
+<span class="sd">    :param rf_annotations_ht: Table with RF annotations.</span>
+<span class="sd">    :param n_bins: Number of bins to bin the data into.</span>
+<span class="sd">    :param model_type: Type of variant QC model used to annotate the data. Must be one</span>
+<span class="sd">        of &#39;vqsr&#39;, &#39;rf&#39;, or &#39;if&#39;.</span>
+<span class="sd">    :return: Table with bin annotations.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="o">~</span><span class="n">info_ht</span><span class="p">[</span><span class="n">ht</span><span class="o">.</span><span class="n">key</span><span class="p">]</span><span class="o">.</span><span class="n">AS_lowqual</span><span class="p">)</span>
+    <span class="n">non_lcr_ht</span> <span class="o">=</span> <span class="n">filter_low_conf_regions</span><span class="p">(</span>
+        <span class="n">ht</span><span class="p">,</span>
+        <span class="n">filter_decoy</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+        <span class="n">filter_telomeres_and_centromeres</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">struct_expr</span> <span class="o">=</span> <span class="n">hl</span><span class="o">.</span><span class="n">struct</span><span class="p">(</span><span class="o">**</span><span class="n">rf_annotations_ht</span><span class="p">[</span><span class="n">ht</span><span class="o">.</span><span class="n">key</span><span class="p">])</span>
+    <span class="k">if</span> <span class="n">model_type</span> <span class="o">==</span> <span class="s2">&quot;vqsr&quot;</span><span class="p">:</span>
+        <span class="n">struct_expr</span> <span class="o">=</span> <span class="n">struct_expr</span><span class="o">.</span><span class="n">annotate</span><span class="p">(</span>
+            <span class="n">score</span><span class="o">=</span><span class="n">ht</span><span class="o">.</span><span class="n">info</span><span class="o">.</span><span class="n">AS_VQSLOD</span><span class="p">,</span>
+            <span class="n">positive_train_site</span><span class="o">=</span><span class="n">ht</span><span class="o">.</span><span class="n">info</span><span class="o">.</span><span class="n">POSITIVE_TRAIN_SITE</span><span class="p">,</span>
+            <span class="n">negative_train_site</span><span class="o">=</span><span class="n">ht</span><span class="o">.</span><span class="n">info</span><span class="o">.</span><span class="n">NEGATIVE_TRAIN_SITE</span><span class="p">,</span>
+            <span class="n">AS_culprit</span><span class="o">=</span><span class="n">ht</span><span class="o">.</span><span class="n">info</span><span class="o">.</span><span class="n">AS_culprit</span><span class="p">,</span>
+        <span class="p">)</span>
+    <span class="k">elif</span> <span class="n">model_type</span> <span class="o">==</span> <span class="s2">&quot;rf&quot;</span><span class="p">:</span>
+        <span class="n">struct_expr</span> <span class="o">=</span> <span class="n">struct_expr</span><span class="o">.</span><span class="n">annotate</span><span class="p">(</span>
+            <span class="n">score</span><span class="o">=</span><span class="n">ht</span><span class="o">.</span><span class="n">rf_probability</span><span class="p">[</span><span class="s2">&quot;TP&quot;</span><span class="p">],</span>
+            <span class="n">positive_train_site</span><span class="o">=</span><span class="n">ht</span><span class="o">.</span><span class="n">tp</span><span class="p">,</span>
+            <span class="n">negative_train_site</span><span class="o">=</span><span class="n">ht</span><span class="o">.</span><span class="n">fp</span><span class="p">,</span>
+        <span class="p">)</span>
+    <span class="k">elif</span> <span class="n">model_type</span> <span class="o">==</span> <span class="s2">&quot;if&quot;</span><span class="p">:</span>
+        <span class="n">struct_expr</span> <span class="o">=</span> <span class="n">struct_expr</span><span class="o">.</span><span class="n">annotate</span><span class="p">(</span>
+            <span class="n">score</span><span class="o">=</span><span class="n">ht</span><span class="o">.</span><span class="n">info</span><span class="o">.</span><span class="n">SCORE</span><span class="p">,</span>
+            <span class="n">calibration_sensitivity</span><span class="o">=</span><span class="n">ht</span><span class="o">.</span><span class="n">info</span><span class="o">.</span><span class="n">CALIBRATION_SENSITIVITY</span><span class="p">,</span>
+            <span class="n">calibration</span><span class="o">=</span><span class="n">ht</span><span class="o">.</span><span class="n">info</span><span class="o">.</span><span class="n">calibration</span><span class="p">,</span>
+            <span class="n">extracted</span><span class="o">=</span><span class="n">ht</span><span class="o">.</span><span class="n">info</span><span class="o">.</span><span class="n">extracted</span><span class="p">,</span>
+            <span class="n">snp</span><span class="o">=</span><span class="n">ht</span><span class="o">.</span><span class="n">info</span><span class="o">.</span><span class="n">snp</span><span class="p">,</span>
+            <span class="n">positive_train_site</span><span class="o">=</span><span class="n">ht</span><span class="o">.</span><span class="n">info</span><span class="o">.</span><span class="n">training</span><span class="p">,</span>
+            <span class="c1"># We only use positive training sites for IF.</span>
+            <span class="n">negative_train_site</span><span class="o">=</span><span class="n">hl</span><span class="o">.</span><span class="n">missing</span><span class="p">(</span><span class="n">hl</span><span class="o">.</span><span class="n">tbool</span><span class="p">),</span>
+        <span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+            <span class="sa">f</span><span class="s2">&quot;Model type </span><span class="si">{</span><span class="n">model_type</span><span class="si">}</span><span class="s2"> not recognized. Must be one of &#39;vqsr&#39;, &#39;rf&#39;, or&quot;</span>
+            <span class="s2">&quot; &#39;if&#39;.&quot;</span>
+        <span class="p">)</span>
+
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">annotate</span><span class="p">(</span><span class="o">**</span><span class="n">struct_expr</span><span class="p">,</span> <span class="n">non_lcr</span><span class="o">=</span><span class="n">hl</span><span class="o">.</span><span class="n">is_defined</span><span class="p">(</span><span class="n">non_lcr_ht</span><span class="p">[</span><span class="n">ht</span><span class="o">.</span><span class="n">key</span><span class="p">]))</span>
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">checkpoint</span><span class="p">(</span><span class="n">new_temp_file</span><span class="p">(</span><span class="s2">&quot;pre_bin&quot;</span><span class="p">,</span> <span class="s2">&quot;ht&quot;</span><span class="p">),</span> <span class="n">overwrite</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="n">bin_ht</span> <span class="o">=</span> <span class="n">create_binned_ht</span><span class="p">(</span>
+        <span class="n">ht</span><span class="p">,</span>
+        <span class="n">n_bins</span><span class="p">,</span>
+        <span class="n">add_substrat</span><span class="o">=</span><span class="p">{</span>
+            <span class="s2">&quot;non_lcr&quot;</span><span class="p">:</span> <span class="n">ht</span><span class="o">.</span><span class="n">non_lcr</span><span class="p">,</span>
+            <span class="s2">&quot;in_calling_intervals&quot;</span><span class="p">:</span> <span class="n">ht</span><span class="o">.</span><span class="n">in_calling_intervals</span><span class="p">,</span>
+            <span class="s2">&quot;pass_interval&quot;</span><span class="p">:</span> <span class="n">ht</span><span class="o">.</span><span class="n">pass_interval_qc</span><span class="p">,</span>
+        <span class="p">},</span>
+    <span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">bin_ht</span></div>
+
+
+<div class="viewcode-block" id="score_bin_validity_check"><a class="viewcode-back" href="../../../../api_reference/v4/variant_qc/evaluation.html#gnomad_qc.v4.variant_qc.evaluation.score_bin_validity_check">[docs]</a><span class="k">def</span> <span class="nf">score_bin_validity_check</span><span class="p">(</span><span class="n">ht</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Check that the bin scoring looks correct by printing so aggregate numbers.</span>
+
+<span class="sd">    :param ht: Table with bin annotations.</span>
+<span class="sd">    :return: None</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="nb">print</span><span class="p">(</span>
+        <span class="n">ht</span><span class="o">.</span><span class="n">aggregate</span><span class="p">(</span>
+            <span class="n">hl</span><span class="o">.</span><span class="n">struct</span><span class="p">(</span>
+                <span class="n">was_biallelic</span><span class="o">=</span><span class="n">hl</span><span class="o">.</span><span class="n">agg</span><span class="o">.</span><span class="n">counter</span><span class="p">(</span><span class="o">~</span><span class="n">ht</span><span class="o">.</span><span class="n">was_split</span><span class="p">),</span>
+                <span class="n">has_biallelic_rank</span><span class="o">=</span><span class="n">hl</span><span class="o">.</span><span class="n">agg</span><span class="o">.</span><span class="n">counter</span><span class="p">(</span><span class="n">hl</span><span class="o">.</span><span class="n">is_defined</span><span class="p">(</span><span class="n">ht</span><span class="o">.</span><span class="n">biallelic_bin</span><span class="p">)),</span>
+                <span class="n">was_singleton</span><span class="o">=</span><span class="n">hl</span><span class="o">.</span><span class="n">agg</span><span class="o">.</span><span class="n">counter</span><span class="p">(</span><span class="n">ht</span><span class="o">.</span><span class="n">singleton</span><span class="p">),</span>
+                <span class="n">has_singleton_rank</span><span class="o">=</span><span class="n">hl</span><span class="o">.</span><span class="n">agg</span><span class="o">.</span><span class="n">counter</span><span class="p">(</span><span class="n">hl</span><span class="o">.</span><span class="n">is_defined</span><span class="p">(</span><span class="n">ht</span><span class="o">.</span><span class="n">singleton_bin</span><span class="p">)),</span>
+                <span class="n">was_biallelic_singleton</span><span class="o">=</span><span class="n">hl</span><span class="o">.</span><span class="n">agg</span><span class="o">.</span><span class="n">counter</span><span class="p">(</span><span class="n">ht</span><span class="o">.</span><span class="n">singleton</span> <span class="o">&amp;</span> <span class="o">~</span><span class="n">ht</span><span class="o">.</span><span class="n">was_split</span><span class="p">),</span>
+                <span class="n">has_biallelic_singleton_rank</span><span class="o">=</span><span class="n">hl</span><span class="o">.</span><span class="n">agg</span><span class="o">.</span><span class="n">counter</span><span class="p">(</span>
+                    <span class="n">hl</span><span class="o">.</span><span class="n">is_defined</span><span class="p">(</span><span class="n">ht</span><span class="o">.</span><span class="n">biallelic_singleton_bin</span><span class="p">)</span>
+                <span class="p">),</span>
+            <span class="p">)</span>
+        <span class="p">)</span>
+    <span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="create_aggregated_bin_ht"><a class="viewcode-back" href="../../../../api_reference/v4/variant_qc/evaluation.html#gnomad_qc.v4.variant_qc.evaluation.create_aggregated_bin_ht">[docs]</a><span class="k">def</span> <span class="nf">create_aggregated_bin_ht</span><span class="p">(</span><span class="n">ht</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">,</span> <span class="n">trio_stats_ht</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Aggregate variants into bins using previously annotated bin information.</span>
+
+<span class="sd">    Variants are grouped by:</span>
+<span class="sd">        -&#39;bin_id&#39; (rank, bi-allelic, etc.)</span>
+<span class="sd">        -&#39;contig&#39;</span>
+<span class="sd">        -&#39;snv&#39;</span>
+<span class="sd">        -&#39;bi_allelic&#39;</span>
+<span class="sd">        -&#39;singleton&#39;</span>
+
+<span class="sd">    For each bin, aggregates statistics needed for evaluation plots.</span>
+
+<span class="sd">    :param ht: Table with bin annotations.</span>
+<span class="sd">    :param trio_stats_ht: Table with trio statistics.</span>
+<span class="sd">    :return: Table of aggregate statistics by bin.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="c1"># Count variants for ranking.</span>
+    <span class="n">count_expr</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="n">x</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">agg</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span>
+            <span class="n">hl</span><span class="o">.</span><span class="n">is_defined</span><span class="p">(</span><span class="n">ht</span><span class="p">[</span><span class="n">x</span><span class="p">]),</span>
+            <span class="n">hl</span><span class="o">.</span><span class="n">agg</span><span class="o">.</span><span class="n">counter</span><span class="p">(</span>
+                <span class="n">hl</span><span class="o">.</span><span class="n">if_else</span><span class="p">(</span><span class="n">hl</span><span class="o">.</span><span class="n">is_snp</span><span class="p">(</span><span class="n">ht</span><span class="o">.</span><span class="n">alleles</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">ht</span><span class="o">.</span><span class="n">alleles</span><span class="p">[</span><span class="mi">1</span><span class="p">]),</span> <span class="s2">&quot;snv&quot;</span><span class="p">,</span> <span class="s2">&quot;indel&quot;</span><span class="p">)</span>
+            <span class="p">),</span>
+        <span class="p">)</span>
+        <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">ht</span><span class="o">.</span><span class="n">row</span>
+        <span class="k">if</span> <span class="n">x</span><span class="o">.</span><span class="n">endswith</span><span class="p">(</span><span class="s2">&quot;bin&quot;</span><span class="p">)</span>
+    <span class="p">}</span>
+    <span class="n">bin_variant_counts</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">aggregate</span><span class="p">(</span><span class="n">hl</span><span class="o">.</span><span class="n">struct</span><span class="p">(</span><span class="o">**</span><span class="n">count_expr</span><span class="p">))</span>
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">annotate_globals</span><span class="p">(</span><span class="n">bin_variant_counts</span><span class="o">=</span><span class="n">bin_variant_counts</span><span class="p">)</span>
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Found the following variant counts:</span><span class="se">\n</span><span class="s2"> </span><span class="si">{</span><span class="n">pformat</span><span class="p">(</span><span class="n">bin_variant_counts</span><span class="p">)</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Creating grouped bin table...&quot;</span><span class="p">)</span>
+    <span class="c1"># score_bin_agg expects the unrelated AC to be named ac_qc_samples_unrelated_raw.</span>
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">transmute</span><span class="p">(</span><span class="n">ac_qc_samples_unrelated_raw</span><span class="o">=</span><span class="n">ht</span><span class="o">.</span><span class="n">ac_unrelated_raw</span><span class="p">)</span>
+    <span class="n">grouped_binned_ht</span> <span class="o">=</span> <span class="n">compute_grouped_binned_ht</span><span class="p">(</span>
+        <span class="n">ht</span><span class="p">,</span> <span class="n">checkpoint_path</span><span class="o">=</span><span class="n">new_temp_file</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;grouped_bin&quot;</span><span class="p">,</span> <span class="s2">&quot;ht&quot;</span><span class="p">)</span>
+    <span class="p">)</span>
+
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Aggregating grouped bin table...&quot;</span><span class="p">)</span>
+    <span class="n">agg_ht</span> <span class="o">=</span> <span class="n">grouped_binned_ht</span><span class="o">.</span><span class="n">aggregate</span><span class="p">(</span>
+        <span class="o">**</span><span class="n">score_bin_agg</span><span class="p">(</span><span class="n">grouped_binned_ht</span><span class="p">,</span> <span class="n">fam_stats_ht</span><span class="o">=</span><span class="n">trio_stats_ht</span><span class="p">),</span>
+    <span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">agg_ht</span></div>
+
+
+<div class="viewcode-block" id="get_evaluation_resources"><a class="viewcode-back" href="../../../../api_reference/v4/variant_qc/evaluation.html#gnomad_qc.v4.variant_qc.evaluation.get_evaluation_resources">[docs]</a><span class="k">def</span> <span class="nf">get_evaluation_resources</span><span class="p">(</span>
+    <span class="n">test</span><span class="p">:</span> <span class="nb">bool</span><span class="p">,</span>
+    <span class="n">overwrite</span><span class="p">:</span> <span class="nb">bool</span><span class="p">,</span>
+    <span class="n">model_id</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">PipelineResourceCollection</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Get PipelineResourceCollection for all resources needed in the variant QC evaluation pipeline.</span>
+
+<span class="sd">    :param test: Whether to gather all resources for testing.</span>
+<span class="sd">    :param overwrite: Whether to overwrite resources if they exist.</span>
+<span class="sd">    :param model_id: Model ID of RF model results to use.</span>
+<span class="sd">    :return: PipelineResourceCollection containing resources for all steps of the</span>
+<span class="sd">        variant QC evaluation pipeline.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="c1"># Initialize variant QC evaluation pipeline resource collection.</span>
+    <span class="n">evaluation_pipeline</span> <span class="o">=</span> <span class="n">PipelineResourceCollection</span><span class="p">(</span>
+        <span class="n">pipeline_name</span><span class="o">=</span><span class="s2">&quot;variant_qc_evaluation&quot;</span><span class="p">,</span>
+        <span class="n">overwrite</span><span class="o">=</span><span class="n">overwrite</span><span class="p">,</span>
+        <span class="n">pipeline_resources</span><span class="o">=</span><span class="p">{</span>
+            <span class="s2">&quot;annotations/generate_variant_qc_annotations.py --compute-info --split-info&quot;</span><span class="p">:</span> <span class="p">{</span>
+                <span class="s2">&quot;info_ht&quot;</span><span class="p">:</span> <span class="n">get_info</span><span class="p">(</span><span class="n">split</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+            <span class="p">},</span>
+            <span class="s2">&quot;Interval Tables&quot;</span><span class="p">:</span> <span class="p">{</span>
+                <span class="s2">&quot;interval_ht&quot;</span><span class="p">:</span> <span class="n">calling_intervals</span><span class="p">(</span>
+                    <span class="n">interval_name</span><span class="o">=</span><span class="s2">&quot;intersection&quot;</span><span class="p">,</span>
+                    <span class="n">calling_interval_padding</span><span class="o">=</span><span class="mi">50</span><span class="p">,</span>
+                <span class="p">),</span>
+                <span class="s2">&quot;interval_qc_pass_ht&quot;</span><span class="p">:</span> <span class="n">interval_qc_pass</span><span class="p">(</span><span class="n">all_platforms</span><span class="o">=</span><span class="kc">True</span><span class="p">),</span>
+            <span class="p">},</span>
+        <span class="p">},</span>
+    <span class="p">)</span>
+
+    <span class="c1"># Create resource collection for each step of the variant QC evaluation pipeline.</span>
+    <span class="n">model_type</span> <span class="o">=</span> <span class="n">model_id</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s2">&quot;_&quot;</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span>
+    <span class="k">if</span> <span class="n">model_type</span> <span class="o">==</span> <span class="s2">&quot;rf&quot;</span><span class="p">:</span>
+        <span class="n">model_res_key</span> <span class="o">=</span> <span class="s2">&quot;random_forest.py --apply-rf&quot;</span>
+    <span class="k">elif</span> <span class="n">model_type</span> <span class="ow">in</span> <span class="p">[</span><span class="s2">&quot;vqsr&quot;</span><span class="p">,</span> <span class="s2">&quot;if&quot;</span><span class="p">]:</span>
+        <span class="n">model_res_key</span> <span class="o">=</span> <span class="s2">&quot;GATK batch output&quot;</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+            <span class="sa">f</span><span class="s2">&quot;Model ID </span><span class="si">{</span><span class="n">model_id</span><span class="si">}</span><span class="s2"> not recognized. Must start with &#39;rf&#39;, &#39;vqsr&#39;, or &quot;</span>
+            <span class="s2">&quot;&#39;if&#39;.&quot;</span>
+        <span class="p">)</span>
+
+    <span class="n">create_bin_table</span> <span class="o">=</span> <span class="n">PipelineStepResourceCollection</span><span class="p">(</span>
+        <span class="s2">&quot;--create-bin-ht&quot;</span><span class="p">,</span>
+        <span class="n">input_resources</span><span class="o">=</span><span class="p">{</span>
+            <span class="s2">&quot;annotations/generate_variant_qc_annotations.py --create-variant-qc-annotation-ht&quot;</span><span class="p">:</span> <span class="p">{</span>
+                <span class="s2">&quot;vqc_annotations_ht&quot;</span><span class="p">:</span> <span class="n">get_variant_qc_annotations</span><span class="p">()</span>
+            <span class="p">},</span>
+            <span class="n">model_res_key</span><span class="p">:</span> <span class="p">{</span>
+                <span class="s2">&quot;vqc_result_ht&quot;</span><span class="p">:</span> <span class="n">get_variant_qc_result</span><span class="p">(</span><span class="n">model_id</span><span class="o">=</span><span class="n">model_id</span><span class="p">,</span> <span class="n">test</span><span class="o">=</span><span class="n">test</span><span class="p">)</span>
+            <span class="p">},</span>
+        <span class="p">},</span>
+        <span class="n">output_resources</span><span class="o">=</span><span class="p">{</span>
+            <span class="s2">&quot;bin_ht&quot;</span><span class="p">:</span> <span class="n">get_score_bins</span><span class="p">(</span><span class="n">model_id</span><span class="p">,</span> <span class="n">aggregated</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">test</span><span class="o">=</span><span class="n">test</span><span class="p">),</span>
+        <span class="p">},</span>
+    <span class="p">)</span>
+    <span class="n">validity_check</span> <span class="o">=</span> <span class="n">PipelineStepResourceCollection</span><span class="p">(</span>
+        <span class="s2">&quot;--score-bin-validity-check&quot;</span><span class="p">,</span>
+        <span class="n">pipeline_input_steps</span><span class="o">=</span><span class="p">[</span><span class="n">create_bin_table</span><span class="p">],</span>
+        <span class="n">output_resources</span><span class="o">=</span><span class="p">{},</span>  <span class="c1"># No output resources.</span>
+    <span class="p">)</span>
+    <span class="n">create_aggregated_bin_table</span> <span class="o">=</span> <span class="n">PipelineStepResourceCollection</span><span class="p">(</span>
+        <span class="s2">&quot;--create-aggregated-bin-ht&quot;</span><span class="p">,</span>
+        <span class="n">output_resources</span><span class="o">=</span><span class="p">{</span>
+            <span class="s2">&quot;agg_bin_ht&quot;</span><span class="p">:</span> <span class="n">get_score_bins</span><span class="p">(</span><span class="n">model_id</span><span class="p">,</span> <span class="n">aggregated</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">test</span><span class="o">=</span><span class="n">test</span><span class="p">)</span>
+        <span class="p">},</span>
+        <span class="n">pipeline_input_steps</span><span class="o">=</span><span class="p">[</span><span class="n">create_bin_table</span><span class="p">],</span>
+        <span class="n">add_input_resources</span><span class="o">=</span><span class="p">{</span>
+            <span class="s2">&quot;annotations/generate_variant_qc_annotations.py --generate-trio-stats&quot;</span><span class="p">:</span> <span class="p">{</span>
+                <span class="s2">&quot;trio_stats_ht&quot;</span><span class="p">:</span> <span class="n">get_trio_stats</span><span class="p">()</span>
+            <span class="p">},</span>
+        <span class="p">},</span>
+    <span class="p">)</span>
+    <span class="n">extract_truth_samples</span> <span class="o">=</span> <span class="n">PipelineStepResourceCollection</span><span class="p">(</span>
+        <span class="s2">&quot;--extract-truth-samples&quot;</span><span class="p">,</span>
+        <span class="n">output_resources</span><span class="o">=</span><span class="p">{</span>
+            <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">s</span><span class="si">}</span><span class="s2">_mt&quot;</span><span class="p">:</span> <span class="n">get_callset_truth_data</span><span class="p">(</span><span class="n">s</span><span class="p">,</span> <span class="n">test</span><span class="o">=</span><span class="n">test</span><span class="p">)</span> <span class="k">for</span> <span class="n">s</span> <span class="ow">in</span> <span class="n">TRUTH_SAMPLES</span>
+        <span class="p">},</span>
+    <span class="p">)</span>
+    <span class="n">merge_with_truth_data</span> <span class="o">=</span> <span class="n">PipelineStepResourceCollection</span><span class="p">(</span>
+        <span class="s2">&quot;--merge-with-truth-data&quot;</span><span class="p">,</span>
+        <span class="n">pipeline_input_steps</span><span class="o">=</span><span class="p">[</span><span class="n">extract_truth_samples</span><span class="p">],</span>
+        <span class="n">add_input_resources</span><span class="o">=</span><span class="p">{</span>
+            <span class="s2">&quot;truth data high confidence intervals&quot;</span><span class="p">:</span> <span class="p">{</span>
+                <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">s</span><span class="si">}</span><span class="s2">_hc_intervals&quot;</span><span class="p">:</span> <span class="n">TRUTH_SAMPLES</span><span class="p">[</span><span class="n">s</span><span class="p">][</span><span class="s2">&quot;hc_intervals&quot;</span><span class="p">]</span>
+                <span class="k">for</span> <span class="n">s</span> <span class="ow">in</span> <span class="n">TRUTH_SAMPLES</span>
+            <span class="p">},</span>
+            <span class="s2">&quot;truth data matrix tables&quot;</span><span class="p">:</span> <span class="p">{</span>
+                <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">s</span><span class="si">}</span><span class="s2">_truth_mt&quot;</span><span class="p">:</span> <span class="n">TRUTH_SAMPLES</span><span class="p">[</span><span class="n">s</span><span class="p">][</span><span class="s2">&quot;truth_mt&quot;</span><span class="p">]</span> <span class="k">for</span> <span class="n">s</span> <span class="ow">in</span> <span class="n">TRUTH_SAMPLES</span>
+            <span class="p">},</span>
+        <span class="p">},</span>
+        <span class="n">output_resources</span><span class="o">=</span><span class="p">{</span>
+            <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">s</span><span class="si">}</span><span class="s2">_ht&quot;</span><span class="p">:</span> <span class="n">get_callset_truth_data</span><span class="p">(</span><span class="n">s</span><span class="p">,</span> <span class="n">mt</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">test</span><span class="o">=</span><span class="n">test</span><span class="p">)</span>
+            <span class="k">for</span> <span class="n">s</span> <span class="ow">in</span> <span class="n">TRUTH_SAMPLES</span>
+        <span class="p">},</span>
+    <span class="p">)</span>
+    <span class="n">bin_truth_sample_concordance</span> <span class="o">=</span> <span class="n">PipelineStepResourceCollection</span><span class="p">(</span>
+        <span class="s2">&quot;--bin-truth-sample-concordance&quot;</span><span class="p">,</span>
+        <span class="n">pipeline_input_steps</span><span class="o">=</span><span class="p">[</span><span class="n">create_bin_table</span><span class="p">,</span> <span class="n">merge_with_truth_data</span><span class="p">],</span>
+        <span class="n">output_resources</span><span class="o">=</span><span class="p">{</span>
+            <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">s</span><span class="si">}</span><span class="s2">_bin_ht&quot;</span><span class="p">:</span> <span class="n">get_binned_concordance</span><span class="p">(</span><span class="n">model_id</span><span class="p">,</span> <span class="n">s</span><span class="p">,</span> <span class="n">test</span><span class="o">=</span><span class="n">test</span><span class="p">)</span>
+            <span class="k">for</span> <span class="n">s</span> <span class="ow">in</span> <span class="n">TRUTH_SAMPLES</span>
+        <span class="p">},</span>
+    <span class="p">)</span>
+
+    <span class="c1"># Add all steps to the variant QC evaluation pipeline resource collection.</span>
+    <span class="n">evaluation_pipeline</span><span class="o">.</span><span class="n">add_steps</span><span class="p">(</span>
+        <span class="p">{</span>
+            <span class="s2">&quot;create_bin_table&quot;</span><span class="p">:</span> <span class="n">create_bin_table</span><span class="p">,</span>
+            <span class="s2">&quot;validity_check&quot;</span><span class="p">:</span> <span class="n">validity_check</span><span class="p">,</span>
+            <span class="s2">&quot;create_aggregated_bin_table&quot;</span><span class="p">:</span> <span class="n">create_aggregated_bin_table</span><span class="p">,</span>
+            <span class="s2">&quot;extract_truth_samples&quot;</span><span class="p">:</span> <span class="n">extract_truth_samples</span><span class="p">,</span>
+            <span class="s2">&quot;merge_with_truth_data&quot;</span><span class="p">:</span> <span class="n">merge_with_truth_data</span><span class="p">,</span>
+            <span class="s2">&quot;bin_truth_sample_concordance&quot;</span><span class="p">:</span> <span class="n">bin_truth_sample_concordance</span><span class="p">,</span>
+        <span class="p">}</span>
+    <span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">evaluation_pipeline</span></div>
+
+
+<div class="viewcode-block" id="main"><a class="viewcode-back" href="../../../../api_reference/v4/variant_qc/evaluation.html#gnomad_qc.v4.variant_qc.evaluation.main">[docs]</a><span class="k">def</span> <span class="nf">main</span><span class="p">(</span><span class="n">args</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Script to create Tables with aggregate variant statistics by variant QC score bins needed for evaluation plots.&quot;&quot;&quot;</span>
+    <span class="n">hl</span><span class="o">.</span><span class="n">init</span><span class="p">(</span>
+        <span class="n">default_reference</span><span class="o">=</span><span class="s2">&quot;GRCh38&quot;</span><span class="p">,</span>
+        <span class="n">log</span><span class="o">=</span><span class="s2">&quot;/variant_qc_evaluation.log&quot;</span><span class="p">,</span>
+        <span class="n">tmp_dir</span><span class="o">=</span><span class="s2">&quot;gs://gnomad-tmp-4day&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+
+    <span class="n">overwrite</span> <span class="o">=</span> <span class="n">args</span><span class="o">.</span><span class="n">overwrite</span>
+    <span class="n">test</span> <span class="o">=</span> <span class="n">args</span><span class="o">.</span><span class="n">test</span>
+    <span class="n">model_id</span> <span class="o">=</span> <span class="n">args</span><span class="o">.</span><span class="n">model_id</span>
+    <span class="n">n_bins</span> <span class="o">=</span> <span class="n">args</span><span class="o">.</span><span class="n">n_bins</span>
+
+    <span class="n">evaluation_resources</span> <span class="o">=</span> <span class="n">get_evaluation_resources</span><span class="p">(</span>
+        <span class="n">test</span><span class="o">=</span><span class="n">test</span><span class="p">,</span>
+        <span class="n">overwrite</span><span class="o">=</span><span class="n">overwrite</span><span class="p">,</span>
+        <span class="n">model_id</span><span class="o">=</span><span class="n">model_id</span><span class="p">,</span>
+    <span class="p">)</span>
+
+    <span class="n">info_ht</span> <span class="o">=</span> <span class="n">evaluation_resources</span><span class="o">.</span><span class="n">info_ht</span><span class="o">.</span><span class="n">ht</span><span class="p">()</span>
+    <span class="n">interval_ht</span> <span class="o">=</span> <span class="n">evaluation_resources</span><span class="o">.</span><span class="n">interval_ht</span><span class="o">.</span><span class="n">ht</span><span class="p">()</span>
+    <span class="n">interval_qc_pass_ht</span> <span class="o">=</span> <span class="n">evaluation_resources</span><span class="o">.</span><span class="n">interval_qc_pass_ht</span><span class="o">.</span><span class="n">ht</span><span class="p">()</span>
+
+    <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">create_bin_ht</span><span class="p">:</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Annotating </span><span class="si">{</span><span class="n">model_id</span><span class="si">}</span><span class="s2"> HT with bins using </span><span class="si">{</span><span class="n">n_bins</span><span class="si">}</span><span class="s2"> bins...&quot;</span><span class="p">)</span>
+        <span class="n">res</span> <span class="o">=</span> <span class="n">evaluation_resources</span><span class="o">.</span><span class="n">create_bin_table</span>
+        <span class="n">res</span><span class="o">.</span><span class="n">check_resource_existence</span><span class="p">()</span>
+        <span class="n">ht</span> <span class="o">=</span> <span class="n">res</span><span class="o">.</span><span class="n">vqc_result_ht</span><span class="o">.</span><span class="n">ht</span><span class="p">()</span>
+        <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">annotate</span><span class="p">(</span>
+            <span class="n">in_calling_intervals</span><span class="o">=</span><span class="n">hl</span><span class="o">.</span><span class="n">is_defined</span><span class="p">(</span><span class="n">interval_ht</span><span class="p">[</span><span class="n">ht</span><span class="o">.</span><span class="n">locus</span><span class="p">]),</span>
+            <span class="n">pass_interval_qc</span><span class="o">=</span><span class="n">interval_qc_pass_ht</span><span class="p">[</span><span class="n">ht</span><span class="o">.</span><span class="n">locus</span><span class="p">]</span><span class="o">.</span><span class="n">pass_interval_qc</span><span class="p">,</span>
+        <span class="p">)</span>
+        <span class="n">ht</span> <span class="o">=</span> <span class="n">create_bin_ht</span><span class="p">(</span>
+            <span class="n">ht</span><span class="p">,</span>
+            <span class="n">info_ht</span><span class="p">,</span>
+            <span class="n">res</span><span class="o">.</span><span class="n">vqc_annotations_ht</span><span class="o">.</span><span class="n">ht</span><span class="p">(),</span>
+            <span class="n">n_bins</span><span class="p">,</span>
+            <span class="n">model_id</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s2">&quot;_&quot;</span><span class="p">)[</span><span class="mi">0</span><span class="p">],</span>
+        <span class="p">)</span>
+        <span class="n">ht</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">res</span><span class="o">.</span><span class="n">bin_ht</span><span class="o">.</span><span class="n">path</span><span class="p">,</span> <span class="n">overwrite</span><span class="o">=</span><span class="n">overwrite</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">score_bin_validity_check</span><span class="p">:</span>
+        <span class="n">res</span> <span class="o">=</span> <span class="n">evaluation_resources</span><span class="o">.</span><span class="n">validity_check</span>
+        <span class="n">res</span><span class="o">.</span><span class="n">check_resource_existence</span><span class="p">()</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Running validity checks on score bins Table...&quot;</span><span class="p">)</span>
+        <span class="n">score_bin_validity_check</span><span class="p">(</span><span class="n">res</span><span class="o">.</span><span class="n">bin_ht</span><span class="o">.</span><span class="n">ht</span><span class="p">())</span>
+
+    <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">create_aggregated_bin_ht</span><span class="p">:</span>
+        <span class="n">res</span> <span class="o">=</span> <span class="n">evaluation_resources</span><span class="o">.</span><span class="n">create_aggregated_bin_table</span>
+        <span class="n">res</span><span class="o">.</span><span class="n">check_resource_existence</span><span class="p">()</span>
+        <span class="n">ht</span> <span class="o">=</span> <span class="n">create_aggregated_bin_ht</span><span class="p">(</span><span class="n">res</span><span class="o">.</span><span class="n">bin_ht</span><span class="o">.</span><span class="n">ht</span><span class="p">(),</span> <span class="n">res</span><span class="o">.</span><span class="n">trio_stats_ht</span><span class="o">.</span><span class="n">ht</span><span class="p">())</span>
+        <span class="n">ht</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">res</span><span class="o">.</span><span class="n">agg_bin_ht</span><span class="o">.</span><span class="n">path</span><span class="p">,</span> <span class="n">overwrite</span><span class="o">=</span><span class="n">overwrite</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">extract_truth_samples</span><span class="p">:</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Extracting truth samples from VDS...&quot;</span><span class="p">)</span>
+        <span class="n">res</span> <span class="o">=</span> <span class="n">evaluation_resources</span><span class="o">.</span><span class="n">extract_truth_samples</span>
+        <span class="n">res</span><span class="o">.</span><span class="n">check_resource_existence</span><span class="p">()</span>
+        <span class="n">vds</span> <span class="o">=</span> <span class="n">get_gnomad_v4_vds</span><span class="p">(</span>
+            <span class="n">controls_only</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">split</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">filter_partitions</span><span class="o">=</span><span class="nb">range</span><span class="p">(</span><span class="mi">2</span><span class="p">)</span> <span class="k">if</span> <span class="n">test</span> <span class="k">else</span> <span class="kc">None</span>
+        <span class="p">)</span>
+        <span class="c1"># Checkpoint to prevent needing to go through the large VDS multiple times.</span>
+        <span class="n">vds</span> <span class="o">=</span> <span class="n">vds</span><span class="o">.</span><span class="n">checkpoint</span><span class="p">(</span><span class="n">new_temp_file</span><span class="p">(</span><span class="s2">&quot;truth_samples&quot;</span><span class="p">,</span> <span class="s2">&quot;vds&quot;</span><span class="p">))</span>
+
+        <span class="k">for</span> <span class="n">ts</span> <span class="ow">in</span> <span class="n">TRUTH_SAMPLES</span><span class="p">:</span>
+            <span class="n">s</span> <span class="o">=</span> <span class="n">TRUTH_SAMPLES</span><span class="p">[</span><span class="n">ts</span><span class="p">][</span><span class="s2">&quot;s&quot;</span><span class="p">]</span>
+            <span class="n">ts_mt</span> <span class="o">=</span> <span class="n">vds</span><span class="o">.</span><span class="n">variant_data</span>
+            <span class="n">ts_mt</span> <span class="o">=</span> <span class="n">ts_mt</span><span class="o">.</span><span class="n">filter_cols</span><span class="p">(</span><span class="n">ts_mt</span><span class="o">.</span><span class="n">s</span> <span class="o">==</span> <span class="n">s</span><span class="p">)</span>
+            <span class="c1"># Filter to variants in truth data.</span>
+            <span class="n">ts_mt</span> <span class="o">=</span> <span class="n">ts_mt</span><span class="o">.</span><span class="n">filter_rows</span><span class="p">(</span><span class="n">hl</span><span class="o">.</span><span class="n">agg</span><span class="o">.</span><span class="n">any</span><span class="p">(</span><span class="n">ts_mt</span><span class="o">.</span><span class="n">GT</span><span class="o">.</span><span class="n">is_non_ref</span><span class="p">()))</span>
+            <span class="n">ts_mt</span><span class="o">.</span><span class="n">naive_coalesce</span><span class="p">(</span><span class="n">args</span><span class="o">.</span><span class="n">truth_sample_mt_n_partitions</span><span class="p">)</span>
+            <span class="n">ts_mt</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="nb">getattr</span><span class="p">(</span><span class="n">res</span><span class="p">,</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">ts</span><span class="si">}</span><span class="s2">_mt&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">path</span><span class="p">,</span> <span class="n">overwrite</span><span class="o">=</span><span class="n">overwrite</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">merge_with_truth_data</span><span class="p">:</span>
+        <span class="n">res</span> <span class="o">=</span> <span class="n">evaluation_resources</span><span class="o">.</span><span class="n">merge_with_truth_data</span>
+        <span class="n">res</span><span class="o">.</span><span class="n">check_resource_existence</span><span class="p">()</span>
+        <span class="k">for</span> <span class="n">ts</span> <span class="ow">in</span> <span class="n">TRUTH_SAMPLES</span><span class="p">:</span>
+            <span class="n">s</span> <span class="o">=</span> <span class="n">TRUTH_SAMPLES</span><span class="p">[</span><span class="n">ts</span><span class="p">][</span><span class="s2">&quot;s&quot;</span><span class="p">]</span>
+            <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span>
+                <span class="s2">&quot;Creating a merged table with callset truth sample and truth data for&quot;</span>
+                <span class="sa">f</span><span class="s2">&quot; </span><span class="si">{</span><span class="n">ts</span><span class="si">}</span><span class="s2">...&quot;</span>
+            <span class="p">)</span>
+            <span class="c1"># Remove low quality sites.</span>
+            <span class="n">mt</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">res</span><span class="p">,</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">ts</span><span class="si">}</span><span class="s2">_mt&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">mt</span><span class="p">()</span>
+            <span class="n">mt</span> <span class="o">=</span> <span class="n">mt</span><span class="o">.</span><span class="n">filter_rows</span><span class="p">(</span><span class="o">~</span><span class="n">info_ht</span><span class="p">[</span><span class="n">mt</span><span class="o">.</span><span class="n">row_key</span><span class="p">]</span><span class="o">.</span><span class="n">AS_lowqual</span><span class="p">)</span>
+
+            <span class="c1"># Load truth data.</span>
+            <span class="n">truth_mt</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">res</span><span class="p">,</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">ts</span><span class="si">}</span><span class="s2">_truth_mt&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">mt</span><span class="p">()</span>
+            <span class="n">truth_hc_intervals</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">res</span><span class="p">,</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">ts</span><span class="si">}</span><span class="s2">_hc_intervals&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">ht</span><span class="p">()</span>
+            <span class="n">truth_mt</span> <span class="o">=</span> <span class="n">truth_mt</span><span class="o">.</span><span class="n">key_cols_by</span><span class="p">(</span><span class="n">s</span><span class="o">=</span><span class="n">s</span><span class="p">)</span>
+
+            <span class="n">ht</span> <span class="o">=</span> <span class="n">create_truth_sample_ht</span><span class="p">(</span><span class="n">mt</span><span class="p">,</span> <span class="n">truth_mt</span><span class="p">,</span> <span class="n">truth_hc_intervals</span><span class="p">)</span>
+            <span class="n">ht</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="nb">getattr</span><span class="p">(</span><span class="n">res</span><span class="p">,</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">ts</span><span class="si">}</span><span class="s2">_ht&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">path</span><span class="p">,</span> <span class="n">overwrite</span><span class="o">=</span><span class="n">overwrite</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">bin_truth_sample_concordance</span><span class="p">:</span>
+        <span class="n">res</span> <span class="o">=</span> <span class="n">evaluation_resources</span><span class="o">.</span><span class="n">bin_truth_sample_concordance</span>
+        <span class="n">res</span><span class="o">.</span><span class="n">check_resource_existence</span><span class="p">()</span>
+        <span class="k">for</span> <span class="n">ts</span> <span class="ow">in</span> <span class="n">TRUTH_SAMPLES</span><span class="p">:</span>
+            <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s2">&quot;Creating binned concordance table for </span><span class="si">{</span><span class="n">ts</span><span class="si">}</span><span class="s2"> for model </span><span class="si">{</span><span class="n">model_id</span><span class="si">}</span><span class="s2">...&quot;</span>
+            <span class="p">)</span>
+            <span class="n">metric_ht</span> <span class="o">=</span> <span class="n">res</span><span class="o">.</span><span class="n">bin_ht</span><span class="o">.</span><span class="n">ht</span><span class="p">()</span>
+            <span class="n">ht</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">res</span><span class="p">,</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">ts</span><span class="si">}</span><span class="s2">_ht&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">ht</span><span class="p">()</span>
+            <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">annotate</span><span class="p">(</span><span class="n">score</span><span class="o">=</span><span class="n">metric_ht</span><span class="p">[</span><span class="n">ht</span><span class="o">.</span><span class="n">key</span><span class="p">]</span><span class="o">.</span><span class="n">score</span><span class="p">)</span>
+
+            <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Filtering out low confidence regions and segdups...&quot;</span><span class="p">)</span>
+            <span class="n">ht</span> <span class="o">=</span> <span class="n">filter_low_conf_regions</span><span class="p">(</span>
+                <span class="n">ht</span><span class="p">,</span>
+                <span class="n">filter_decoy</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+                <span class="n">filter_telomeres_and_centromeres</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+            <span class="p">)</span>
+
+            <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span>
+                <span class="n">hl</span><span class="o">.</span><span class="n">is_defined</span><span class="p">(</span><span class="n">interval_ht</span><span class="p">[</span><span class="n">ht</span><span class="o">.</span><span class="n">locus</span><span class="p">])</span>
+                <span class="o">&amp;</span> <span class="n">hl</span><span class="o">.</span><span class="n">is_defined</span><span class="p">(</span><span class="n">ht</span><span class="o">.</span><span class="n">score</span><span class="p">)</span>
+                <span class="o">&amp;</span> <span class="o">~</span><span class="n">info_ht</span><span class="p">[</span><span class="n">ht</span><span class="o">.</span><span class="n">key</span><span class="p">]</span><span class="o">.</span><span class="n">AS_lowqual</span>
+            <span class="p">)</span>
+            <span class="n">ht</span> <span class="o">=</span> <span class="n">compute_binned_truth_sample_concordance</span><span class="p">(</span>
+                <span class="n">ht</span><span class="p">,</span>
+                <span class="n">metric_ht</span><span class="p">,</span>
+                <span class="n">n_bins</span><span class="p">,</span>
+                <span class="n">add_bins</span><span class="o">=</span><span class="p">{</span>
+                    <span class="s2">&quot;pass_interval_bin&quot;</span><span class="p">:</span> <span class="n">interval_qc_pass_ht</span><span class="p">[</span><span class="n">ht</span><span class="o">.</span><span class="n">locus</span><span class="p">]</span><span class="o">.</span><span class="n">pass_interval_qc</span><span class="p">,</span>
+                    <span class="s2">&quot;in_calling_intervals_bin&quot;</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">is_defined</span><span class="p">(</span><span class="n">interval_ht</span><span class="p">[</span><span class="n">ht</span><span class="o">.</span><span class="n">locus</span><span class="p">]),</span>
+                <span class="p">},</span>
+            <span class="p">)</span>
+            <span class="n">ht</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="nb">getattr</span><span class="p">(</span><span class="n">res</span><span class="p">,</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">ts</span><span class="si">}</span><span class="s2">_bin_ht&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">path</span><span class="p">,</span> <span class="n">overwrite</span><span class="o">=</span><span class="n">overwrite</span><span class="p">)</span></div>
+
+
+<span class="k">def</span> <span class="nf">get_script_argument_parser</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="n">argparse</span><span class="o">.</span><span class="n">ArgumentParser</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Get script argument parser.&quot;&quot;&quot;</span>
+    <span class="n">parser</span> <span class="o">=</span> <span class="n">argparse</span><span class="o">.</span><span class="n">ArgumentParser</span><span class="p">()</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--slack-channel&quot;</span><span class="p">,</span> <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Slack channel to post results and notifications to.&quot;</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--overwrite&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Overwrite all data from this subset. (default: False)&quot;</span><span class="p">,</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--test&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;If the model being evaluated is a test model.&quot;</span><span class="p">,</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--model-id&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Model ID.&quot;</span><span class="p">,</span>
+        <span class="n">required</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--n-bins&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Number of bins for the binned file. Default is 100.&quot;</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="mi">100</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">int</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--create-bin-ht&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="p">(</span>
+            <span class="s2">&quot;When set, creates file annotated with bin based on rank of VQSR/RF score.&quot;</span>
+        <span class="p">),</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--score-bin-validity-check&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;When set, runs ranking validity checks.&quot;</span><span class="p">,</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--create-aggregated-bin-ht&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="p">(</span>
+            <span class="s2">&quot;When set, creates a file with aggregate counts of variants based on bins.&quot;</span>
+        <span class="p">),</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--extract-truth-samples&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Extract truth samples from callset MatrixTable.&quot;</span><span class="p">,</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--truth-sample-mt-n-partitions&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="p">(</span>
+            <span class="s2">&quot;Desired number of partitions for th truth sample MatrixTable. Default is &quot;</span>
+            <span class="s2">&quot;5000.&quot;</span>
+        <span class="p">),</span>
+        <span class="n">default</span><span class="o">=</span><span class="mi">5000</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">int</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--merge-with-truth-data&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="p">(</span>
+            <span class="s2">&quot;Computes a table for each truth sample comparing the truth sample in the&quot;</span>
+            <span class="s2">&quot; callset vs the truth.&quot;</span>
+        <span class="p">),</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--bin-truth-sample-concordance&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="p">(</span>
+            <span class="s2">&quot;Merges concordance results (callset vs. truth) for a given truth sample&quot;</span>
+            <span class="s2">&quot; with bins from specified model.&quot;</span>
+        <span class="p">),</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">parser</span>
+
+
+<span class="k">if</span> <span class="vm">__name__</span> <span class="o">==</span> <span class="s2">&quot;__main__&quot;</span><span class="p">:</span>
+    <span class="n">parser</span> <span class="o">=</span> <span class="n">get_script_argument_parser</span><span class="p">()</span>
+    <span class="n">args</span> <span class="o">=</span> <span class="n">parser</span><span class="o">.</span><span class="n">parse_args</span><span class="p">()</span>
+
+    <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">slack_channel</span><span class="p">:</span>
+        <span class="k">with</span> <span class="n">slack_notifications</span><span class="p">(</span><span class="n">slack_token</span><span class="p">,</span> <span class="n">args</span><span class="o">.</span><span class="n">slack_channel</span><span class="p">):</span>
+            <span class="n">main</span><span class="p">(</span><span class="n">args</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">main</span><span class="p">(</span><span class="n">args</span><span class="p">)</span>
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p></p>
+  </div>
+
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

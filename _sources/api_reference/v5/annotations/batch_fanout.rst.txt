@@ -1,0 +1,29 @@
+gnomad_qc.v5.annotations.batch_fanout
+=====================================
+
+
+Hail Batch relay fan-out for the v5 annotation scripts.
+
+A Query-on-Batch run has one driver, and a driver crash loses everything it was
+computing. The scripts therefore cut the genome into chunks and run each chunk from
+its own small, non-spot Batch job (a "relay") that starts a QoB driver inside its
+container. A crash then costs one chunk, and a rerun skips the chunks that already
+have a ``_SUCCESS`` marker. The orchestrator that submits the relays never starts
+Hail.
+
+Chunk outputs are stored under a hash of the chunk layout. The layout is sampled
+without a fixed seed, so each regeneration moves the cut points, and a chunk left
+behind by an older layout must not be taken for a finished chunk of the new one.
+
+
+
+
+
+
+Module Functions
+****************
+
+.. gnomad_automodulesummary:: gnomad_qc.v5.annotations.batch_fanout
+
+.. automodule:: gnomad_qc.v5.annotations.batch_fanout
+    :exclude-members: get_script_argument_parser

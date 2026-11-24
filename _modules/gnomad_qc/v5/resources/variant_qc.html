@@ -1,0 +1,359 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>gnomad_qc.v5.resources.variant_qc &mdash; gnomad_qc master documentation</title>
+      <link rel="stylesheet" href="../../../../_static/pygments.css" type="text/css" />
+      <link rel="stylesheet" href="../../../../_static/css/theme.css" type="text/css" />
+      <link rel="stylesheet" href="../../../../_static/theme_overrides.css" type="text/css" />
+  <!--[if lt IE 9]>
+    <script src="../../../../_static/js/html5shiv.min.js"></script>
+  <![endif]-->
+  
+        <script src="../../../../_static/jquery.js"></script>
+        <script src="../../../../_static/_sphinx_javascript_frameworks_compat.js"></script>
+        <script data-url_root="../../../../" id="documentation_options" src="../../../../_static/documentation_options.js"></script>
+        <script src="../../../../_static/doctools.js"></script>
+        <script src="../../../../_static/sphinx_highlight.js"></script>
+        <script src="https://unpkg.com/mermaid@10.2.0/dist/mermaid.min.js"></script>
+        <script>mermaid.initialize({startOnLoad:true});</script>
+    <script src="../../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../../index.html" class="icon icon-home">
+            gnomad_qc
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../../api_reference/index.html">API Reference</a></li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/broadinstitute/gnomad_qc/tags">Change Log</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../../index.html">gnomad_qc</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../../index.html">Module code</a></li>
+      <li class="breadcrumb-item active">gnomad_qc.v5.resources.variant_qc</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for gnomad_qc.v5.resources.variant_qc</h1><div class="highlight"><pre>
+<span></span><span class="sd">&quot;&quot;&quot;Script containing variant QC related resources for v5.&quot;&quot;&quot;</span>
+
+<span class="kn">import</span> <span class="nn">hailtop.batch</span> <span class="k">as</span> <span class="nn">hb</span>
+<span class="kn">from</span> <span class="nn">gnomad.resources.resource_utils</span> <span class="kn">import</span> <span class="p">(</span>
+    <span class="n">TableResource</span><span class="p">,</span>
+    <span class="n">VariantDatasetResource</span><span class="p">,</span>
+    <span class="n">VersionedTableResource</span><span class="p">,</span>
+<span class="p">)</span>
+
+<span class="kn">from</span> <span class="nn">gnomad_qc.v5.resources.basics</span> <span class="kn">import</span> <span class="p">(</span>
+    <span class="n">_ALL_ENVIRONMENTS</span><span class="p">,</span>
+    <span class="n">_get_base_bucket</span><span class="p">,</span>
+    <span class="n">_validate_environment</span><span class="p">,</span>
+    <span class="n">qc_temp_prefix</span><span class="p">,</span>
+<span class="p">)</span>
+<span class="kn">from</span> <span class="nn">gnomad_qc.v5.resources.constants</span> <span class="kn">import</span> <span class="p">(</span>
+    <span class="n">CURRENT_VARIANT_QC_RESULT_VERSION</span><span class="p">,</span>
+    <span class="n">CURRENT_VARIANT_QC_VERSION</span><span class="p">,</span>
+    <span class="n">VARIANT_QC_RESULT_VERSIONS</span><span class="p">,</span>
+<span class="p">)</span>
+
+<span class="c1"># Variant QC model features, keyed by variant type. GATK trains a separate model per</span>
+<span class="c1"># --mode, so SNPs/INDELs need their own lists. AS_MQ is dropped for indels (v4 genomes</span>
+<span class="c1"># VQSR convention); AS_pab_max is kept for both (tree-based, unlike Gaussian VQSR).</span>
+<span class="n">VARIANT_QC_FEATURES</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="s2">&quot;snv&quot;</span><span class="p">:</span> <span class="p">[</span>
+        <span class="s2">&quot;AS_QD&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;AS_pab_max&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;AS_MQRankSum&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;AS_ReadPosRankSum&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;AS_FS&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;AS_SOR&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;AS_MQ&quot;</span><span class="p">,</span>
+    <span class="p">],</span>
+    <span class="s2">&quot;indel&quot;</span><span class="p">:</span> <span class="p">[</span>
+        <span class="s2">&quot;AS_QD&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;AS_pab_max&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;AS_MQRankSum&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;AS_ReadPosRankSum&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;AS_FS&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;AS_SOR&quot;</span><span class="p">,</span>
+    <span class="p">],</span>
+<span class="p">}</span>
+<span class="sd">&quot;&quot;&quot;Features used by the v5 variant QC models, keyed by variant type.&quot;&quot;&quot;</span>
+
+<span class="c1"># VQSR fits a Gaussian mixture, which AS_pab_max was never used in (v4 convention);</span>
+<span class="c1"># the isolation forest keeps it. Everything else is shared.</span>
+<span class="n">VQSR_FEATURES</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="n">variant_type</span><span class="p">:</span> <span class="p">[</span><span class="n">f</span> <span class="k">for</span> <span class="n">f</span> <span class="ow">in</span> <span class="n">features</span> <span class="k">if</span> <span class="n">f</span> <span class="o">!=</span> <span class="s2">&quot;AS_pab_max&quot;</span><span class="p">]</span>
+    <span class="k">for</span> <span class="n">variant_type</span><span class="p">,</span> <span class="n">features</span> <span class="ow">in</span> <span class="n">VARIANT_QC_FEATURES</span><span class="o">.</span><span class="n">items</span><span class="p">()</span>
+<span class="p">}</span>
+<span class="sd">&quot;&quot;&quot;Features used by the v5 VQSR models, keyed by variant type.&quot;&quot;&quot;</span>
+
+<span class="n">GATK_IMAGE</span> <span class="o">=</span> <span class="s2">&quot;us.gcr.io/broad-gatk/gatk:4.6.1.0&quot;</span>
+<span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">GATK image for v5 Batch jobs.</span>
+
+<span class="sd">4.6.1.0 ships the conda env (scikit-learn, dill) needed for PYTHON_IFOREST and the</span>
+<span class="sd">bcftools/tabix that VQSR ApplyRecalibration uses to trim scattered VCFs.</span>
+
+<span class="sd">Pulls from us.gcr.io have timed out on fresh Batch workers (Batch 8450856; the retry</span>
+<span class="sd">succeeded). If that recurs, copy the image to us-central1-docker.pkg.dev/broad-mpg-gnomad/images</span>
+<span class="sd">(e.g. ``crane copy``) and point this at the mirror.</span>
+<span class="sd">&quot;&quot;&quot;</span>
+
+
+<span class="c1"># GATK isolation forest resource VCFs, used as labeled training/calibration sets. SNP</span>
+<span class="c1"># and INDEL modes use different truth resources. These stay on the Broad references</span>
+<span class="c1"># bucket rather than gnomad_methods: GATK needs indexed VCFs (and a FASTA with .fai/</span>
+<span class="c1"># .dict), but the gnomAD public bucket only serves Hail Table versions of hapmap/omni/</span>
+<span class="c1"># kgp/mills and has no Axiom Poly, dbSNP 138, or GATK-ready FASTA.</span>
+<span class="n">REFERENCE_RESOURCES</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="s2">&quot;ref_fasta&quot;</span><span class="p">:</span> <span class="p">(</span>
+        <span class="s2">&quot;gs://gcp-public-data--broad-references/hg38/v0/Homo_sapiens_assembly38.fasta&quot;</span>
+    <span class="p">),</span>
+    <span class="s2">&quot;dbsnp&quot;</span><span class="p">:</span> <span class="p">(</span>
+        <span class="s2">&quot;gs://gcp-public-data--broad-references/hg38/v0/Homo_sapiens_assembly38.dbsnp138.vcf.gz&quot;</span>
+    <span class="p">),</span>
+    <span class="s2">&quot;hapmap&quot;</span><span class="p">:</span> <span class="s2">&quot;gs://gcp-public-data--broad-references/hg38/v0/hapmap_3.3.hg38.vcf.gz&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;omni&quot;</span><span class="p">:</span> <span class="s2">&quot;gs://gcp-public-data--broad-references/hg38/v0/1000G_omni2.5.hg38.vcf.gz&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;one_thousand_genomes&quot;</span><span class="p">:</span> <span class="p">(</span>
+        <span class="s2">&quot;gs://gcp-public-data--broad-references/hg38/v0/1000G_phase1.snps.high_confidence.hg38.vcf.gz&quot;</span>
+    <span class="p">),</span>
+    <span class="s2">&quot;mills&quot;</span><span class="p">:</span> <span class="p">(</span>
+        <span class="s2">&quot;gs://gcp-public-data--broad-references/hg38/v0/Mills_and_1000G_gold_standard.indels.hg38.vcf.gz&quot;</span>
+    <span class="p">),</span>
+    <span class="s2">&quot;axiom_poly&quot;</span><span class="p">:</span> <span class="p">(</span>
+        <span class="s2">&quot;gs://gcp-public-data--broad-references/hg38/v0/Axiom_Exome_Plus.genotypes.all_populations.poly.hg38.vcf.gz&quot;</span>
+    <span class="p">),</span>
+<span class="p">}</span>
+
+
+<span class="k">def</span> <span class="nf">_variant_qc_root</span><span class="p">(</span>
+    <span class="n">version</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="n">CURRENT_VARIANT_QC_VERSION</span><span class="p">,</span>
+    <span class="n">test</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+    <span class="n">data_type</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;genomes&quot;</span><span class="p">,</span>
+    <span class="n">environment</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;dataproc&quot;</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Return path to variant QC root folder.</span>
+
+<span class="sd">    :param version: Version of variant QC path to return.</span>
+<span class="sd">    :param test: Whether to use a tmp path for variant QC tests.</span>
+<span class="sd">    :param data_type: Whether to return &#39;exomes&#39; or &#39;genomes&#39; data. Default is genomes.</span>
+<span class="sd">    :param environment: Environment to use. Default is &quot;dataproc&quot;. Must be one of</span>
+<span class="sd">        &quot;rwb&quot;, &quot;batch&quot;, or &quot;dataproc&quot;.</span>
+<span class="sd">    :return: Root to variant QC path.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">_validate_environment</span><span class="p">(</span><span class="n">environment</span><span class="p">,</span> <span class="n">_ALL_ENVIRONMENTS</span><span class="p">)</span>
+    <span class="n">path_suffix</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;variant_qc/</span><span class="si">{</span><span class="n">data_type</span><span class="si">}</span><span class="s2">&quot;</span>
+
+    <span class="k">if</span> <span class="n">test</span><span class="p">:</span>
+        <span class="k">return</span> <span class="p">(</span>
+            <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">qc_temp_prefix</span><span class="p">(</span><span class="n">version</span><span class="o">=</span><span class="n">version</span><span class="p">,</span><span class="w"> </span><span class="n">environment</span><span class="o">=</span><span class="n">environment</span><span class="p">)</span><span class="si">}{</span><span class="n">path_suffix</span><span class="si">}</span><span class="s2">&quot;</span>
+        <span class="p">)</span>
+
+    <span class="k">return</span> <span class="sa">f</span><span class="s2">&quot;gs://</span><span class="si">{</span><span class="n">_get_base_bucket</span><span class="p">(</span><span class="n">environment</span><span class="p">)</span><span class="si">}</span><span class="s2">/v</span><span class="si">{</span><span class="n">version</span><span class="si">}</span><span class="s2">/</span><span class="si">{</span><span class="n">path_suffix</span><span class="si">}</span><span class="s2">&quot;</span>
+
+
+<span class="c1">######################################################################</span>
+<span class="c1"># Truth sample resources</span>
+<span class="c1">######################################################################</span>
+
+<span class="n">truth_samples_gvcf_paths</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">_variant_qc_root</span><span class="p">(</span><span class="n">version</span><span class="o">=</span><span class="s1">&#39;5.0&#39;</span><span class="p">,</span><span class="w"> </span><span class="n">environment</span><span class="o">=</span><span class="s1">&#39;batch&#39;</span><span class="p">)</span><span class="si">}</span><span class="s2">/aou/truth_samples/truth_samples_gvcf_paths.tsv&quot;</span>
+<span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">Path to a single-column TSV listing the GCS path to each truth-sample gVCF (one per line).</span>
+
+<span class="sd">The truth samples are 8 Genomes-in-a-Bottle (GiaB) samples sequenced with the same protocol as the AoU v8 data.</span>
+<span class="sd">Their gVCFs are stored here: gs://fc-aou-datasets-controlled/v8/wgs/short_read/snpindel/aux/qc/control_samples/</span>
+
+<span class="sd">The sample IDs are intentionally not stored in this repo. The combiner therefore reads the gVCF paths from this</span>
+<span class="sd">manifest by known object paths rather than globbing the bucket.</span>
+<span class="sd">&quot;&quot;&quot;</span>
+
+<span class="n">truth_samples_vds</span> <span class="o">=</span> <span class="n">VariantDatasetResource</span><span class="p">(</span>
+    <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">_variant_qc_root</span><span class="p">(</span><span class="n">version</span><span class="o">=</span><span class="s1">&#39;5.0&#39;</span><span class="p">,</span><span class="w"> </span><span class="n">test</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span><span class="w"> </span><span class="n">environment</span><span class="o">=</span><span class="s1">&#39;batch&#39;</span><span class="p">)</span><span class="si">}</span><span class="s2">/aou/truth_samples/truth_samples.vds&quot;</span><span class="p">,</span>
+<span class="p">)</span>
+<span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">VDS containing 8 GiaB samples.</span>
+
+<span class="sd">This resource does not need to be remade for future versions.</span>
+<span class="sd">&quot;&quot;&quot;</span>
+
+
+<div class="viewcode-block" id="get_truth_samples_combiner_plan"><a class="viewcode-back" href="../../../../api_reference/v5/resources/variant_qc.html#gnomad_qc.v5.resources.variant_qc.get_truth_samples_combiner_plan">[docs]</a><span class="k">def</span> <span class="nf">get_truth_samples_combiner_plan</span><span class="p">(</span><span class="n">test</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Return the path to the truth-samples VDS combiner plan (combiner ``save_path``).</span>
+
+<span class="sd">    The plan lets a failed or interrupted combiner run be resumed. It is written to the</span>
+<span class="sd">    writable batch variant QC tree (or a temp path for tests).</span>
+
+<span class="sd">    Like `truth_samples_vds`, this resource does not need to be remade for future versions.</span>
+
+<span class="sd">    :param test: Whether to return a temporary test path. Default is False.</span>
+<span class="sd">    :return: Path to the combiner plan JSON.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="n">test</span><span class="p">:</span>
+        <span class="k">return</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">qc_temp_prefix</span><span class="p">(</span><span class="n">environment</span><span class="o">=</span><span class="s1">&#39;batch&#39;</span><span class="p">,</span><span class="w"> </span><span class="n">days</span><span class="o">=</span><span class="mi">4</span><span class="p">)</span><span class="si">}</span><span class="s2">truth_samples_combiner_plan.json&quot;</span>
+
+    <span class="k">return</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">_variant_qc_root</span><span class="p">(</span><span class="n">version</span><span class="o">=</span><span class="s1">&#39;5.0&#39;</span><span class="p">,</span><span class="w"> </span><span class="n">environment</span><span class="o">=</span><span class="s1">&#39;batch&#39;</span><span class="p">)</span><span class="si">}</span><span class="s2">/aou/truth_samples/truth_samples_combiner_plan.json&quot;</span></div>
+
+
+<span class="c1">######################################################################</span>
+<span class="c1"># Variant QC model / result resources</span>
+<span class="c1">######################################################################</span>
+
+
+<span class="k">def</span> <span class="nf">_validate_model_id</span><span class="p">(</span><span class="n">model_id</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Validate a variant QC model ID and return its model type prefix.</span>
+
+<span class="sd">    :param model_id: Model ID. Must start with ``rf_``, ``vqsr_``, or ``if_``.</span>
+<span class="sd">    :return: Model type (&#39;rf&#39;, &#39;vqsr&#39;, or &#39;if&#39;).</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">model_type</span> <span class="o">=</span> <span class="n">model_id</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s2">&quot;_&quot;</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span>
+    <span class="k">if</span> <span class="n">model_type</span> <span class="ow">not</span> <span class="ow">in</span> <span class="p">[</span><span class="s2">&quot;rf&quot;</span><span class="p">,</span> <span class="s2">&quot;vqsr&quot;</span><span class="p">,</span> <span class="s2">&quot;if&quot;</span><span class="p">]:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+            <span class="sa">f</span><span class="s2">&quot;Model ID must start with &#39;rf_&#39;, &#39;vqsr_&#39;, or &#39;if_&#39;, but got </span><span class="si">{</span><span class="n">model_id</span><span class="si">}</span><span class="s2">&quot;</span>
+        <span class="p">)</span>
+    <span class="k">return</span> <span class="n">model_type</span>
+
+
+<div class="viewcode-block" id="get_variant_qc_result"><a class="viewcode-back" href="../../../../api_reference/v5/resources/variant_qc.html#gnomad_qc.v5.resources.variant_qc.get_variant_qc_result">[docs]</a><span class="k">def</span> <span class="nf">get_variant_qc_result</span><span class="p">(</span>
+    <span class="n">model_id</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="n">test</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+    <span class="n">split</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span>
+    <span class="n">data_type</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;genomes&quot;</span><span class="p">,</span>
+    <span class="n">environment</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;batch&quot;</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">VersionedTableResource</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Get the results of variant QC filtering for a given run.</span>
+
+<span class="sd">    :param model_id: Model ID of variant QC run to load. Must start with ``rf_``,</span>
+<span class="sd">        ``vqsr_``, or ``if_``.</span>
+<span class="sd">    :param test: Whether to use a tmp path for variant QC tests.</span>
+<span class="sd">    :param split: Whether to return the split or unsplit variant QC result.</span>
+<span class="sd">    :param data_type: Whether to return &#39;exomes&#39; or &#39;genomes&#39; data. Default is genomes.</span>
+<span class="sd">    :param environment: Environment to use. Default is &quot;batch&quot;. Must be one of &quot;rwb&quot;,</span>
+<span class="sd">        &quot;batch&quot;, or &quot;dataproc&quot;.</span>
+<span class="sd">    :return: VersionedTableResource for variant QC results.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">model_type</span> <span class="o">=</span> <span class="n">_validate_model_id</span><span class="p">(</span><span class="n">model_id</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">VersionedTableResource</span><span class="p">(</span>
+        <span class="n">CURRENT_VARIANT_QC_RESULT_VERSION</span><span class="p">,</span>
+        <span class="p">{</span>
+            <span class="n">version</span><span class="p">:</span> <span class="n">TableResource</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">_variant_qc_root</span><span class="p">(</span><span class="n">version</span><span class="p">,</span><span class="w"> </span><span class="n">test</span><span class="o">=</span><span class="n">test</span><span class="p">,</span><span class="w"> </span><span class="n">data_type</span><span class="o">=</span><span class="n">data_type</span><span class="p">,</span><span class="w"> </span><span class="n">environment</span><span class="o">=</span><span class="n">environment</span><span class="p">)</span><span class="si">}</span><span class="s2">/</span><span class="si">{</span><span class="n">model_type</span><span class="si">}</span><span class="s2">/models/</span><span class="si">{</span><span class="n">model_id</span><span class="si">}</span><span class="s2">/gnomad.</span><span class="si">{</span><span class="n">data_type</span><span class="si">}</span><span class="s2">.v</span><span class="si">{</span><span class="n">version</span><span class="si">}</span><span class="s2">.</span><span class="si">{</span><span class="n">model_type</span><span class="si">}</span><span class="s2">_result</span><span class="si">{</span><span class="s1">&#39;&#39;</span><span class="w"> </span><span class="k">if</span><span class="w"> </span><span class="n">split</span><span class="w"> </span><span class="k">else</span><span class="w"> </span><span class="s1">&#39;.unsplit&#39;</span><span class="si">}</span><span class="s2">.ht&quot;</span>
+            <span class="p">)</span>
+            <span class="k">for</span> <span class="n">version</span> <span class="ow">in</span> <span class="n">VARIANT_QC_RESULT_VERSIONS</span>
+        <span class="p">},</span>
+    <span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="get_iforest_run_prefix"><a class="viewcode-back" href="../../../../api_reference/v5/resources/variant_qc.html#gnomad_qc.v5.resources.variant_qc.get_iforest_run_prefix">[docs]</a><span class="k">def</span> <span class="nf">get_iforest_run_prefix</span><span class="p">(</span>
+    <span class="n">model_id</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="n">version</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="n">CURRENT_VARIANT_QC_RESULT_VERSION</span><span class="p">,</span>
+    <span class="n">test</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+    <span class="n">data_type</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;genomes&quot;</span><span class="p">,</span>
+    <span class="n">environment</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;batch&quot;</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Get the GCS prefix for an isolation forest run&#39;s GATK working/output files.</span>
+
+<span class="sd">    The isolation forest workflow writes its GATK intermediate outputs (extracted</span>
+<span class="sd">    annotations, trained model, scored VCFs) under this prefix, alongside the model&#39;s</span>
+<span class="sd">    result HT from :func:`get_variant_qc_result`.</span>
+
+<span class="sd">    :param model_id: Model ID of the isolation forest run. Must start with ``if_``.</span>
+<span class="sd">    :param version: Version of the variant QC result path to return.</span>
+<span class="sd">    :param test: Whether to use a tmp path for variant QC tests.</span>
+<span class="sd">    :param data_type: Whether to return &#39;exomes&#39; or &#39;genomes&#39; data. Default is genomes.</span>
+<span class="sd">    :param environment: Environment to use. Default is &quot;batch&quot;. Must be one of &quot;rwb&quot;,</span>
+<span class="sd">        &quot;batch&quot;, or &quot;dataproc&quot;.</span>
+<span class="sd">    :return: GCS prefix (no trailing slash) for the isolation forest run&#39;s files.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="n">_validate_model_id</span><span class="p">(</span><span class="n">model_id</span><span class="p">)</span> <span class="o">!=</span> <span class="s2">&quot;if&quot;</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;model_id must start with &#39;if_&#39;, but got </span><span class="si">{</span><span class="n">model_id</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+    <span class="n">root</span> <span class="o">=</span> <span class="n">_variant_qc_root</span><span class="p">(</span>
+        <span class="n">version</span><span class="p">,</span> <span class="n">test</span><span class="o">=</span><span class="n">test</span><span class="p">,</span> <span class="n">data_type</span><span class="o">=</span><span class="n">data_type</span><span class="p">,</span> <span class="n">environment</span><span class="o">=</span><span class="n">environment</span>
+    <span class="p">)</span>
+    <span class="k">return</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">root</span><span class="si">}</span><span class="s2">/if/models/</span><span class="si">{</span><span class="n">model_id</span><span class="si">}</span><span class="s2">&quot;</span></div>
+
+
+<div class="viewcode-block" id="run_batch"><a class="viewcode-back" href="../../../../api_reference/v5/resources/variant_qc.html#gnomad_qc.v5.resources.variant_qc.run_batch">[docs]</a><span class="k">def</span> <span class="nf">run_batch</span><span class="p">(</span><span class="n">b</span><span class="p">:</span> <span class="n">hb</span><span class="o">.</span><span class="n">Batch</span><span class="p">,</span> <span class="n">description</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Run a Batch to completion and raise if it did not succeed.</span>
+
+<span class="sd">    ``Batch.run`` waits but only prints the final state, so a failed batch would</span>
+<span class="sd">    otherwise fall through to the next step.</span>
+
+<span class="sd">    :param b: Batch to run.</span>
+<span class="sd">    :param description: Batch description used in the error message.</span>
+<span class="sd">    :return: None.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">batch</span> <span class="o">=</span> <span class="n">b</span><span class="o">.</span><span class="n">run</span><span class="p">()</span>
+    <span class="n">state</span> <span class="o">=</span> <span class="kc">None</span> <span class="k">if</span> <span class="n">batch</span> <span class="ow">is</span> <span class="kc">None</span> <span class="k">else</span> <span class="n">batch</span><span class="o">.</span><span class="n">status</span><span class="p">()[</span><span class="s2">&quot;state&quot;</span><span class="p">]</span>
+    <span class="k">if</span> <span class="n">state</span> <span class="o">!=</span> <span class="s2">&quot;success&quot;</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">RuntimeError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">description</span><span class="si">}</span><span class="s2"> batch did not succeed (state: </span><span class="si">{</span><span class="n">state</span><span class="si">}</span><span class="s2">).&quot;</span><span class="p">)</span></div>
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p></p>
+  </div>
+
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

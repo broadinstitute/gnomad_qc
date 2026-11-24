@@ -1,0 +1,1208 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>gnomad_qc.v5.variant_qc.isolation_forest &mdash; gnomad_qc master documentation</title>
+      <link rel="stylesheet" href="../../../../_static/pygments.css" type="text/css" />
+      <link rel="stylesheet" href="../../../../_static/css/theme.css" type="text/css" />
+      <link rel="stylesheet" href="../../../../_static/theme_overrides.css" type="text/css" />
+  <!--[if lt IE 9]>
+    <script src="../../../../_static/js/html5shiv.min.js"></script>
+  <![endif]-->
+  
+        <script src="../../../../_static/jquery.js"></script>
+        <script src="../../../../_static/_sphinx_javascript_frameworks_compat.js"></script>
+        <script data-url_root="../../../../" id="documentation_options" src="../../../../_static/documentation_options.js"></script>
+        <script src="../../../../_static/doctools.js"></script>
+        <script src="../../../../_static/sphinx_highlight.js"></script>
+        <script src="https://unpkg.com/mermaid@10.2.0/dist/mermaid.min.js"></script>
+        <script>mermaid.initialize({startOnLoad:true});</script>
+    <script src="../../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../../index.html" class="icon icon-home">
+            gnomad_qc
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../../api_reference/index.html">API Reference</a></li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/broadinstitute/gnomad_qc/tags">Change Log</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../../index.html">gnomad_qc</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../../index.html">Module code</a></li>
+      <li class="breadcrumb-item active">gnomad_qc.v5.variant_qc.isolation_forest</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for gnomad_qc.v5.variant_qc.isolation_forest</h1><div class="highlight"><pre>
+<span></span><span class="sd">&quot;&quot;&quot;Script to run the GATK isolation forest variant QC model on an AS-annotated sites VCF.</span>
+
+<span class="sd">SNPs and INDELs are modeled separately (GATK ``--mode``): for each variant type the</span>
+<span class="sd">workflow runs ExtractVariantAnnotations -&gt; TrainVariantAnnotationsModel (PYTHON_IFOREST)</span>
+<span class="sd">-&gt; ScoreVariantAnnotations (scattered over intervals). The two per-mode scored VCFs are</span>
+<span class="sd">merged into a single result HT in the ``--load-iforest`` step.</span>
+<span class="sd">&quot;&quot;&quot;</span>
+
+<span class="kn">import</span> <span class="nn">argparse</span>
+<span class="kn">import</span> <span class="nn">json</span>
+<span class="kn">import</span> <span class="nn">logging</span>
+<span class="kn">from</span> <span class="nn">typing</span> <span class="kn">import</span> <span class="n">Any</span><span class="p">,</span> <span class="n">Dict</span><span class="p">,</span> <span class="n">List</span><span class="p">,</span> <span class="n">Optional</span><span class="p">,</span> <span class="n">Union</span>
+
+<span class="kn">import</span> <span class="nn">hail</span> <span class="k">as</span> <span class="nn">hl</span>
+<span class="kn">import</span> <span class="nn">hailtop.batch</span> <span class="k">as</span> <span class="nn">hb</span>
+<span class="kn">import</span> <span class="nn">hailtop.fs</span> <span class="k">as</span> <span class="nn">hfs</span>
+<span class="kn">from</span> <span class="nn">gnomad.resources.grch38.reference_data</span> <span class="kn">import</span> <span class="n">telomeres_and_centromeres</span>
+<span class="kn">from</span> <span class="nn">gnomad.utils.file_utils</span> <span class="kn">import</span> <span class="n">file_exists</span>
+<span class="kn">from</span> <span class="nn">gnomad.utils.reference_genome</span> <span class="kn">import</span> <span class="n">get_primary_contigs</span>
+<span class="kn">from</span> <span class="nn">gnomad.utils.vcf</span> <span class="kn">import</span> <span class="n">adjust_vcf_incompatible_types</span>
+<span class="kn">from</span> <span class="nn">hailtop.batch.job</span> <span class="kn">import</span> <span class="n">Job</span>
+
+<span class="kn">from</span> <span class="nn">gnomad_qc.v5.resources.annotations</span> <span class="kn">import</span> <span class="n">get_true_positive_vcf_path</span><span class="p">,</span> <span class="n">info_vcf_path</span>
+<span class="kn">from</span> <span class="nn">gnomad_qc.v5.resources.basics</span> <span class="kn">import</span> <span class="p">(</span>
+    <span class="n">_check_resource_existence</span><span class="p">,</span>
+    <span class="n">_get_batch_resource_kwargs</span><span class="p">,</span>
+    <span class="n">_init_hail</span><span class="p">,</span>
+<span class="p">)</span>
+<span class="kn">from</span> <span class="nn">gnomad_qc.v5.resources.constants</span> <span class="kn">import</span> <span class="n">BATCH_TMP_BUCKET</span>
+<span class="kn">from</span> <span class="nn">gnomad_qc.v5.resources.variant_qc</span> <span class="kn">import</span> <span class="p">(</span>
+    <span class="n">GATK_IMAGE</span><span class="p">,</span>
+    <span class="n">REFERENCE_RESOURCES</span><span class="p">,</span>
+    <span class="n">VARIANT_QC_FEATURES</span><span class="p">,</span>
+    <span class="n">_validate_model_id</span><span class="p">,</span>
+    <span class="n">get_iforest_run_prefix</span><span class="p">,</span>
+    <span class="n">get_variant_qc_result</span><span class="p">,</span>
+    <span class="n">run_batch</span><span class="p">,</span>
+<span class="p">)</span>
+<span class="kn">from</span> <span class="nn">gnomad_qc.v5.variant_qc.import_variant_qc_vcf</span> <span class="kn">import</span> <span class="n">import_variant_qc_vcf</span>
+
+<span class="n">logging</span><span class="o">.</span><span class="n">basicConfig</span><span class="p">(</span><span class="nb">format</span><span class="o">=</span><span class="s2">&quot;</span><span class="si">%(levelname)s</span><span class="s2"> (</span><span class="si">%(name)s</span><span class="s2"> </span><span class="si">%(lineno)s</span><span class="s2">): </span><span class="si">%(message)s</span><span class="s2">&quot;</span><span class="p">)</span>
+<span class="n">logger</span> <span class="o">=</span> <span class="n">logging</span><span class="o">.</span><span class="n">getLogger</span><span class="p">(</span><span class="s2">&quot;isolation_forest&quot;</span><span class="p">)</span>
+<span class="n">logger</span><span class="o">.</span><span class="n">setLevel</span><span class="p">(</span><span class="n">logging</span><span class="o">.</span><span class="n">INFO</span><span class="p">)</span>
+
+
+<span class="k">def</span> <span class="nf">_resource_args</span><span class="p">(</span><span class="n">mode</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">singletons_vcf</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Build the GATK ``--resource`` args (labeled training/calibration sets) for a mode.</span>
+
+<span class="sd">    :param mode: Variant type mode, &#39;SNP&#39; or &#39;INDEL&#39;.</span>
+<span class="sd">    :param singletons_vcf: Optional true-positive (transmitted/sibling singletons) VCF.</span>
+<span class="sd">    :return: Space-joined GATK resource argument string.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="c1"># Labels mirror v4 VQSR, not the v4 iforest.</span>
+    <span class="k">if</span> <span class="n">mode</span> <span class="o">==</span> <span class="s2">&quot;SNP&quot;</span><span class="p">:</span>
+        <span class="n">training_calibration</span> <span class="o">=</span> <span class="p">[</span><span class="s2">&quot;hapmap&quot;</span><span class="p">,</span> <span class="s2">&quot;omni&quot;</span><span class="p">]</span>
+        <span class="n">training_only</span> <span class="o">=</span> <span class="p">[</span><span class="s2">&quot;one_thousand_genomes&quot;</span><span class="p">]</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">training_calibration</span> <span class="o">=</span> <span class="p">[</span><span class="s2">&quot;mills&quot;</span><span class="p">]</span>
+        <span class="n">training_only</span> <span class="o">=</span> <span class="p">[</span><span class="s2">&quot;axiom_poly&quot;</span><span class="p">]</span>
+
+    <span class="n">args</span> <span class="o">=</span> <span class="p">[</span>
+        <span class="sa">f</span><span class="s2">&quot;--resource:</span><span class="si">{</span><span class="n">r</span><span class="si">}</span><span class="s2">,training=true,calibration=true </span><span class="si">{</span><span class="n">REFERENCE_RESOURCES</span><span class="p">[</span><span class="n">r</span><span class="p">]</span><span class="si">}</span><span class="s2">&quot;</span>
+        <span class="k">for</span> <span class="n">r</span> <span class="ow">in</span> <span class="n">training_calibration</span>
+    <span class="p">]</span>
+    <span class="n">args</span> <span class="o">+=</span> <span class="p">[</span>
+        <span class="sa">f</span><span class="s2">&quot;--resource:</span><span class="si">{</span><span class="n">r</span><span class="si">}</span><span class="s2">,training=true,calibration=false </span><span class="si">{</span><span class="n">REFERENCE_RESOURCES</span><span class="p">[</span><span class="n">r</span><span class="p">]</span><span class="si">}</span><span class="s2">&quot;</span>
+        <span class="k">for</span> <span class="n">r</span> <span class="ow">in</span> <span class="n">training_only</span>
+    <span class="p">]</span>
+    <span class="c1"># VETS ignores `known`; it only flags known vs novel in the scored VCF INFO.</span>
+    <span class="n">args</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
+        <span class="s2">&quot;--resource:dbsnp,known=true,training=false,calibration=false&quot;</span>
+        <span class="sa">f</span><span class="s2">&quot; </span><span class="si">{</span><span class="n">REFERENCE_RESOURCES</span><span class="p">[</span><span class="s1">&#39;dbsnp&#39;</span><span class="p">]</span><span class="si">}</span><span class="s2">&quot;</span>
+    <span class="p">)</span>
+    <span class="k">if</span> <span class="n">singletons_vcf</span><span class="p">:</span>
+        <span class="n">args</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
+            <span class="sa">f</span><span class="s2">&quot;--resource:singletons,training=true,calibration=true </span><span class="si">{</span><span class="n">singletons_vcf</span><span class="si">}</span><span class="s2">&quot;</span>
+        <span class="p">)</span>
+    <span class="k">return</span> <span class="s2">&quot; &quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">args</span><span class="p">)</span>
+
+
+<span class="k">def</span> <span class="nf">_annotation_args</span><span class="p">(</span><span class="n">features</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Build the GATK ``-A`` (``--annotation``) args from a feature list.</span>
+
+<span class="sd">    .. note::</span>
+
+<span class="sd">        GATK infers allele-specific mode from ``Number=A`` on any requested annotation&#39;s</span>
+<span class="sd">        header line (``LabeledVariantAnnotationsWalker.isAlleleSpecificAnnotationRequested``);</span>
+<span class="sd">        the ``--use-allele-specific-annotations`` flag was dropped in GATK 4.5.0.0. AS</span>
+<span class="sd">        mode also forces ``START_POSITION_AND_MINIMAL_REPRESENTATION`` resource matching,</span>
+<span class="sd">        so the header matters even on split input.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">return</span> <span class="s2">&quot; &quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;-A </span><span class="si">{</span><span class="n">f</span><span class="si">}</span><span class="s2">&quot;</span> <span class="k">for</span> <span class="n">f</span> <span class="ow">in</span> <span class="n">features</span><span class="p">)</span>
+
+
+<div class="viewcode-block" id="extract_variant_annotations_job"><a class="viewcode-back" href="../../../../api_reference/v5/variant_qc/isolation_forest.html#gnomad_qc.v5.variant_qc.isolation_forest.extract_variant_annotations_job">[docs]</a><span class="k">def</span> <span class="nf">extract_variant_annotations_job</span><span class="p">(</span>
+    <span class="n">b</span><span class="p">:</span> <span class="n">hb</span><span class="o">.</span><span class="n">Batch</span><span class="p">,</span>
+    <span class="n">mode</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="n">sites_only_vcf</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="n">features</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">],</span>
+    <span class="n">resource_args</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="n">calling_intervals_args</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="n">exclude_intervals</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="n">out_root</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="n">gatk_image</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="n">gcp_billing_project</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Job</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Run GATK ExtractVariantAnnotations for one variant type mode.</span>
+
+<span class="sd">    :param b: Batch to add the job to.</span>
+<span class="sd">    :param mode: Variant type mode, &#39;SNP&#39; or &#39;INDEL&#39;.</span>
+<span class="sd">    :param sites_only_vcf: AS-annotated sites-only input VCF.</span>
+<span class="sd">    :param features: Features to extract for this mode.</span>
+<span class="sd">    :param resource_args: GATK ``--resource`` args for the labeled sets.</span>
+<span class="sd">    :param calling_intervals_args: GATK ``-L`` args restricting the extracted sites.</span>
+<span class="sd">    :param exclude_intervals: Telomere/centromere intervals excluded from the</span>
+<span class="sd">        training/calibration set (``-XL``); these sites are not scored either.</span>
+<span class="sd">    :param out_root: Output prefix (files written as ``{out_root}.*``).</span>
+<span class="sd">    :param gatk_image: GATK docker image.</span>
+<span class="sd">    :param gcp_billing_project: GCP billing project for requester-pays buckets.</span>
+<span class="sd">    :return: Job with output ResourceGroup ``extract``.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">j</span> <span class="o">=</span> <span class="n">b</span><span class="o">.</span><span class="n">new_job</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;GATK: ExtractVariantAnnotations </span><span class="si">{</span><span class="n">mode</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+    <span class="n">j</span><span class="o">.</span><span class="n">image</span><span class="p">(</span><span class="n">gatk_image</span><span class="p">)</span>
+    <span class="n">j</span><span class="o">.</span><span class="n">cpu</span><span class="p">(</span><span class="mi">4</span><span class="p">)</span>
+    <span class="n">j</span><span class="o">.</span><span class="n">memory</span><span class="p">(</span><span class="s2">&quot;standard&quot;</span><span class="p">)</span>
+    <span class="n">j</span><span class="o">.</span><span class="n">storage</span><span class="p">(</span><span class="s2">&quot;100G&quot;</span><span class="p">)</span>
+    <span class="n">j</span><span class="o">.</span><span class="n">declare_resource_group</span><span class="p">(</span>
+        <span class="n">extract</span><span class="o">=</span><span class="p">{</span>
+            <span class="s2">&quot;annot.hdf5&quot;</span><span class="p">:</span> <span class="s2">&quot;</span><span class="si">{root}</span><span class="s2">.annot.hdf5&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;vcf.gz&quot;</span><span class="p">:</span> <span class="s2">&quot;</span><span class="si">{root}</span><span class="s2">.vcf.gz&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;vcf.gz.tbi&quot;</span><span class="p">:</span> <span class="s2">&quot;</span><span class="si">{root}</span><span class="s2">.vcf.gz.tbi&quot;</span><span class="p">,</span>
+        <span class="p">}</span>
+    <span class="p">)</span>
+    <span class="n">j</span><span class="o">.</span><span class="n">command</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;&quot;&quot;set -euo pipefail</span>
+<span class="s2">        gatk --java-options &quot;-Xmx6G&quot; ExtractVariantAnnotations </span><span class="se">\\</span>
+<span class="s2">            -V </span><span class="si">{</span><span class="n">sites_only_vcf</span><span class="si">}</span><span class="s2"> </span><span class="se">\\</span>
+<span class="s2">            -O </span><span class="si">{</span><span class="n">j</span><span class="o">.</span><span class="n">extract</span><span class="si">}</span><span class="s2"> </span><span class="se">\\</span>
+<span class="s2">            --mode </span><span class="si">{</span><span class="n">mode</span><span class="si">}</span><span class="s2"> </span><span class="se">\\</span>
+<span class="s2">            </span><span class="si">{</span><span class="n">_annotation_args</span><span class="p">(</span><span class="n">features</span><span class="p">)</span><span class="si">}</span><span class="s2"> </span><span class="se">\\</span>
+<span class="s2">            </span><span class="si">{</span><span class="n">calling_intervals_args</span><span class="si">}</span><span class="s2"> </span><span class="se">\\</span>
+<span class="s2">            -XL </span><span class="si">{</span><span class="n">exclude_intervals</span><span class="si">}</span><span class="s2"> </span><span class="se">\\</span>
+<span class="s2">            --gcs-project-for-requester-pays </span><span class="si">{</span><span class="n">gcp_billing_project</span><span class="si">}</span><span class="s2"> </span><span class="se">\\</span>
+<span class="s2">            </span><span class="si">{</span><span class="n">resource_args</span><span class="si">}</span>
+<span class="s2">        &quot;&quot;&quot;</span><span class="p">)</span>
+    <span class="n">b</span><span class="o">.</span><span class="n">write_output</span><span class="p">(</span><span class="n">j</span><span class="o">.</span><span class="n">extract</span><span class="p">,</span> <span class="n">out_root</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">j</span></div>
+
+
+<div class="viewcode-block" id="train_variant_annotations_model_job"><a class="viewcode-back" href="../../../../api_reference/v5/variant_qc/isolation_forest.html#gnomad_qc.v5.variant_qc.isolation_forest.train_variant_annotations_model_job">[docs]</a><span class="k">def</span> <span class="nf">train_variant_annotations_model_job</span><span class="p">(</span>
+    <span class="n">b</span><span class="p">:</span> <span class="n">hb</span><span class="o">.</span><span class="n">Batch</span><span class="p">,</span>
+    <span class="n">mode</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="n">annotations_hdf5</span><span class="p">:</span> <span class="n">hb</span><span class="o">.</span><span class="n">ResourceFile</span><span class="p">,</span>
+    <span class="n">out_root</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="n">gatk_image</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="n">gcp_billing_project</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="n">hyperparameters_json</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Job</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Run GATK TrainVariantAnnotationsModel (PYTHON_IFOREST) for one variant type mode.</span>
+
+<span class="sd">    :param b: Batch to add the job to.</span>
+<span class="sd">    :param mode: Variant type mode, &#39;SNP&#39; or &#39;INDEL&#39;.</span>
+<span class="sd">    :param annotations_hdf5: Extracted annotations HDF5 from the extract step.</span>
+<span class="sd">    :param out_root: Output prefix (files written as ``{out_root}.{mode}.*``).</span>
+<span class="sd">    :param gatk_image: GATK docker image.</span>
+<span class="sd">    :param gcp_billing_project: GCP billing project for requester-pays buckets.</span>
+<span class="sd">    :param hyperparameters_json: Optional model hyperparameters JSON path.</span>
+<span class="sd">    :return: Job with output ResourceGroup ``model``.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="c1"># GATK writes model files with a lowercase variant-type infix (e.g.</span>
+    <span class="c1"># .snp.scorer.pkl).</span>
+    <span class="n">m</span> <span class="o">=</span> <span class="n">mode</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span>
+    <span class="n">j</span> <span class="o">=</span> <span class="n">b</span><span class="o">.</span><span class="n">new_job</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;GATK: TrainVariantAnnotationsModel </span><span class="si">{</span><span class="n">mode</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+    <span class="n">j</span><span class="o">.</span><span class="n">image</span><span class="p">(</span><span class="n">gatk_image</span><span class="p">)</span>
+    <span class="n">j</span><span class="o">.</span><span class="n">cpu</span><span class="p">(</span><span class="mi">4</span><span class="p">)</span>
+    <span class="n">j</span><span class="o">.</span><span class="n">memory</span><span class="p">(</span><span class="s2">&quot;standard&quot;</span><span class="p">)</span>
+    <span class="n">j</span><span class="o">.</span><span class="n">storage</span><span class="p">(</span><span class="s2">&quot;100G&quot;</span><span class="p">)</span>
+    <span class="n">j</span><span class="o">.</span><span class="n">declare_resource_group</span><span class="p">(</span>
+        <span class="n">model</span><span class="o">=</span><span class="p">{</span>
+            <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">m</span><span class="si">}</span><span class="s2">.scorer.pkl&quot;</span><span class="p">:</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="se">{{</span><span class="s2">root</span><span class="se">}}</span><span class="s2">.</span><span class="si">{</span><span class="n">m</span><span class="si">}</span><span class="s2">.scorer.pkl&quot;</span><span class="p">,</span>
+            <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">m</span><span class="si">}</span><span class="s2">.trainingScores.hdf5&quot;</span><span class="p">:</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="se">{{</span><span class="s2">root</span><span class="se">}}</span><span class="s2">.</span><span class="si">{</span><span class="n">m</span><span class="si">}</span><span class="s2">.trainingScores.hdf5&quot;</span><span class="p">,</span>
+            <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">m</span><span class="si">}</span><span class="s2">.calibrationScores.hdf5&quot;</span><span class="p">:</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="se">{{</span><span class="s2">root</span><span class="se">}}</span><span class="s2">.</span><span class="si">{</span><span class="n">m</span><span class="si">}</span><span class="s2">.calibrationScores.hdf5&quot;</span><span class="p">,</span>
+        <span class="p">}</span>
+    <span class="p">)</span>
+    <span class="n">hp_arg</span> <span class="o">=</span> <span class="p">(</span>
+        <span class="sa">f</span><span class="s2">&quot; --hyperparameters-json </span><span class="si">{</span><span class="n">hyperparameters_json</span><span class="si">}</span><span class="s2">&quot;</span>
+        <span class="k">if</span> <span class="n">hyperparameters_json</span>
+        <span class="k">else</span> <span class="s2">&quot;&quot;</span>
+    <span class="p">)</span>
+    <span class="n">j</span><span class="o">.</span><span class="n">command</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;&quot;&quot;set -euo pipefail</span>
+<span class="s2">        gatk --java-options &quot;-Xmx6G&quot; TrainVariantAnnotationsModel </span><span class="se">\\</span>
+<span class="s2">            --annotations-hdf5 </span><span class="si">{</span><span class="n">annotations_hdf5</span><span class="si">}</span><span class="s2"> </span><span class="se">\\</span>
+<span class="s2">            -O </span><span class="si">{</span><span class="n">j</span><span class="o">.</span><span class="n">model</span><span class="si">}</span><span class="s2"> </span><span class="se">\\</span>
+<span class="s2">            --mode </span><span class="si">{</span><span class="n">mode</span><span class="si">}</span><span class="s2"> </span><span class="se">\\</span>
+<span class="s2">            --model-backend PYTHON_IFOREST </span><span class="se">\\</span>
+<span class="s2">            --gcs-project-for-requester-pays </span><span class="si">{</span><span class="n">gcp_billing_project</span><span class="si">}{</span><span class="n">hp_arg</span><span class="si">}</span>
+<span class="s2">        &quot;&quot;&quot;</span><span class="p">)</span>
+    <span class="n">b</span><span class="o">.</span><span class="n">write_output</span><span class="p">(</span><span class="n">j</span><span class="o">.</span><span class="n">model</span><span class="p">,</span> <span class="n">out_root</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">j</span></div>
+
+
+<div class="viewcode-block" id="split_intervals_job"><a class="viewcode-back" href="../../../../api_reference/v5/variant_qc/isolation_forest.html#gnomad_qc.v5.variant_qc.isolation_forest.split_intervals_job">[docs]</a><span class="k">def</span> <span class="nf">split_intervals_job</span><span class="p">(</span>
+    <span class="n">b</span><span class="p">:</span> <span class="n">hb</span><span class="o">.</span><span class="n">Batch</span><span class="p">,</span>
+    <span class="n">calling_intervals_args</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="n">exclude_intervals</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="n">scatter_count</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
+    <span class="n">gatk_image</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="n">gcp_billing_project</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Job</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Split the calling contigs into ``scatter_count`` intervals, excluding telomeres/centromeres.</span>
+
+<span class="sd">    :param b: Batch to add the job to.</span>
+<span class="sd">    :param calling_intervals_args: GATK ``-L`` args covering the calling contigs.</span>
+<span class="sd">    :param exclude_intervals: Path to an intervals file to exclude (``-XL``).</span>
+<span class="sd">    :param scatter_count: Number of interval shards to produce.</span>
+<span class="sd">    :param gatk_image: GATK docker image.</span>
+<span class="sd">    :param gcp_billing_project: GCP billing project for requester-pays buckets.</span>
+<span class="sd">    :return: Job with output ResourceGroup ``intervals``.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">j</span> <span class="o">=</span> <span class="n">b</span><span class="o">.</span><span class="n">new_job</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;GATK: SplitIntervals (</span><span class="si">{</span><span class="n">scatter_count</span><span class="si">}</span><span class="s2">)&quot;</span><span class="p">)</span>
+    <span class="n">j</span><span class="o">.</span><span class="n">image</span><span class="p">(</span><span class="n">gatk_image</span><span class="p">)</span>
+    <span class="n">j</span><span class="o">.</span><span class="n">memory</span><span class="p">(</span><span class="s2">&quot;standard&quot;</span><span class="p">)</span>
+    <span class="n">j</span><span class="o">.</span><span class="n">storage</span><span class="p">(</span><span class="s2">&quot;16G&quot;</span><span class="p">)</span>
+    <span class="n">j</span><span class="o">.</span><span class="n">declare_resource_group</span><span class="p">(</span>
+        <span class="n">intervals</span><span class="o">=</span><span class="p">{</span>
+            <span class="sa">f</span><span class="s2">&quot;interval_</span><span class="si">{</span><span class="n">idx</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">:</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="se">{{</span><span class="s2">root</span><span class="se">}}</span><span class="s2">/</span><span class="si">{</span><span class="nb">str</span><span class="p">(</span><span class="n">idx</span><span class="p">)</span><span class="o">.</span><span class="n">zfill</span><span class="p">(</span><span class="mi">4</span><span class="p">)</span><span class="si">}</span><span class="s2">-scattered.interval_list&quot;</span>
+            <span class="k">for</span> <span class="n">idx</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">scatter_count</span><span class="p">)</span>
+        <span class="p">}</span>
+    <span class="p">)</span>
+    <span class="n">j</span><span class="o">.</span><span class="n">command</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;&quot;&quot;set -euo pipefail</span>
+<span class="s2">        gatk --java-options &quot;-Xms3g&quot; SplitIntervals </span><span class="se">\\</span>
+<span class="s2">            -R </span><span class="si">{</span><span class="n">REFERENCE_RESOURCES</span><span class="p">[</span><span class="s1">&#39;ref_fasta&#39;</span><span class="p">]</span><span class="si">}</span><span class="s2"> </span><span class="se">\\</span>
+<span class="s2">            </span><span class="si">{</span><span class="n">calling_intervals_args</span><span class="si">}</span><span class="s2"> </span><span class="se">\\</span>
+<span class="s2">            -XL </span><span class="si">{</span><span class="n">exclude_intervals</span><span class="si">}</span><span class="s2"> </span><span class="se">\\</span>
+<span class="s2">            -O </span><span class="si">{</span><span class="n">j</span><span class="o">.</span><span class="n">intervals</span><span class="si">}</span><span class="s2"> </span><span class="se">\\</span>
+<span class="s2">            -scatter </span><span class="si">{</span><span class="n">scatter_count</span><span class="si">}</span><span class="s2"> </span><span class="se">\\</span>
+<span class="s2">            --interval-merging-rule OVERLAPPING_ONLY </span><span class="se">\\</span>
+<span class="s2">            -mode INTERVAL_SUBDIVISION </span><span class="se">\\</span>
+<span class="s2">            --gcs-project-for-requester-pays </span><span class="si">{</span><span class="n">gcp_billing_project</span><span class="si">}</span>
+<span class="s2">        &quot;&quot;&quot;</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">j</span></div>
+
+
+<div class="viewcode-block" id="score_variant_annotations_job"><a class="viewcode-back" href="../../../../api_reference/v5/variant_qc/isolation_forest.html#gnomad_qc.v5.variant_qc.isolation_forest.score_variant_annotations_job">[docs]</a><span class="k">def</span> <span class="nf">score_variant_annotations_job</span><span class="p">(</span>
+    <span class="n">b</span><span class="p">:</span> <span class="n">hb</span><span class="o">.</span><span class="n">Batch</span><span class="p">,</span>
+    <span class="n">mode</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="n">sites_only_vcf</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="n">features</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">],</span>
+    <span class="n">extracted_vcf</span><span class="p">:</span> <span class="n">hb</span><span class="o">.</span><span class="n">ResourceFile</span><span class="p">,</span>
+    <span class="n">model</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="n">hb</span><span class="o">.</span><span class="n">ResourceGroup</span><span class="p">,</span> <span class="nb">str</span><span class="p">],</span>
+    <span class="n">resource_args</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="n">interval</span><span class="p">:</span> <span class="n">hb</span><span class="o">.</span><span class="n">ResourceFile</span><span class="p">,</span>
+    <span class="n">idx</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
+    <span class="n">out_root</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="n">gatk_image</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="n">gcp_billing_project</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Job</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Run GATK ScoreVariantAnnotations for one variant type mode over one interval.</span>
+
+<span class="sd">    :param b: Batch to add the job to.</span>
+<span class="sd">    :param mode: Variant type mode, &#39;SNP&#39; or &#39;INDEL&#39;.</span>
+<span class="sd">    :param sites_only_vcf: AS-annotated sites-only input VCF.</span>
+<span class="sd">    :param features: Features for this mode (must match the trained model).</span>
+<span class="sd">    :param extracted_vcf: Extracted training/calibration VCF from the extract step.</span>
+<span class="sd">    :param model: ``--model-prefix``: the trained model ResourceGroup from the train</span>
+<span class="sd">        job, or a prefix string built from a read-in group (see</span>
+<span class="sd">        `isolation_forest_workflow`).</span>
+<span class="sd">    :param resource_args: GATK ``--resource`` args for the labeled sets.</span>
+<span class="sd">    :param interval: Interval file to restrict scoring to.</span>
+<span class="sd">    :param idx: Shard index, used to identify the job in the Batch.</span>
+<span class="sd">    :param out_root: Output prefix (files written as ``{out_root}.*``).</span>
+<span class="sd">    :param gatk_image: GATK docker image.</span>
+<span class="sd">    :param gcp_billing_project: GCP billing project for requester-pays buckets.</span>
+<span class="sd">    :return: Job with output ResourceGroup ``output_score``.</span>
+
+<span class="sd">    .. note::</span>
+
+<span class="sd">        GATK traversal returns every record *overlapping* the shard interval, and the</span>
+<span class="sd">        default output mode (ANYWHERE) writes all of them, so a deletion straddling a</span>
+<span class="sd">        shard boundary is emitted by both neighbors. ``--variant-output-filtering</span>
+<span class="sd">        STARTS_IN`` writes a record only if its start is in the interval, making</span>
+<span class="sd">        emission exactly-once across shards. It also makes ``-XL`` start-based, which</span>
+<span class="sd">        is the definition `reconcile_scored_sites` uses.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">j</span> <span class="o">=</span> <span class="n">b</span><span class="o">.</span><span class="n">new_job</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;GATK: ScoreVariantAnnotations </span><span class="si">{</span><span class="n">mode</span><span class="si">}</span><span class="s2"> </span><span class="si">{</span><span class="n">idx</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+    <span class="n">j</span><span class="o">.</span><span class="n">image</span><span class="p">(</span><span class="n">gatk_image</span><span class="p">)</span>
+    <span class="n">j</span><span class="o">.</span><span class="n">cpu</span><span class="p">(</span><span class="mi">4</span><span class="p">)</span>
+    <span class="n">j</span><span class="o">.</span><span class="n">memory</span><span class="p">(</span><span class="s2">&quot;standard&quot;</span><span class="p">)</span>
+    <span class="n">j</span><span class="o">.</span><span class="n">storage</span><span class="p">(</span><span class="s2">&quot;100G&quot;</span><span class="p">)</span>
+    <span class="c1"># Only the scored VCF is used downstream. GATK writes .annot.hdf5/.scores.hdf5 only</span>
+    <span class="c1"># when the interval has variants, so requiring them fails empty shards (e.g. chr22</span>
+    <span class="c1"># p-arm). Silent under-scoring is caught by reconcile_scored_sites in the load step.</span>
+    <span class="n">j</span><span class="o">.</span><span class="n">declare_resource_group</span><span class="p">(</span>
+        <span class="n">output_score</span><span class="o">=</span><span class="p">{</span>
+            <span class="s2">&quot;vcf.gz&quot;</span><span class="p">:</span> <span class="s2">&quot;</span><span class="si">{root}</span><span class="s2">.vcf.gz&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;vcf.gz.tbi&quot;</span><span class="p">:</span> <span class="s2">&quot;</span><span class="si">{root}</span><span class="s2">.vcf.gz.tbi&quot;</span><span class="p">,</span>
+        <span class="p">}</span>
+    <span class="p">)</span>
+    <span class="n">j</span><span class="o">.</span><span class="n">command</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;&quot;&quot;set -euo pipefail</span>
+<span class="s2">        gatk --java-options &quot;-Xmx6G&quot; ScoreVariantAnnotations </span><span class="se">\\</span>
+<span class="s2">            -V </span><span class="si">{</span><span class="n">sites_only_vcf</span><span class="si">}</span><span class="s2"> </span><span class="se">\\</span>
+<span class="s2">            -O </span><span class="si">{</span><span class="n">j</span><span class="o">.</span><span class="n">output_score</span><span class="si">}</span><span class="s2"> </span><span class="se">\\</span>
+<span class="s2">            --mode </span><span class="si">{</span><span class="n">mode</span><span class="si">}</span><span class="s2"> </span><span class="se">\\</span>
+<span class="s2">            </span><span class="si">{</span><span class="n">_annotation_args</span><span class="p">(</span><span class="n">features</span><span class="p">)</span><span class="si">}</span><span class="s2"> </span><span class="se">\\</span>
+<span class="s2">            --resource:extracted,extracted=true </span><span class="si">{</span><span class="n">extracted_vcf</span><span class="si">}</span><span class="s2"> </span><span class="se">\\</span>
+<span class="s2">            --model-prefix </span><span class="si">{</span><span class="n">model</span><span class="si">}</span><span class="s2"> </span><span class="se">\\</span>
+<span class="s2">            --model-backend PYTHON_IFOREST </span><span class="se">\\</span>
+<span class="s2">            -L </span><span class="si">{</span><span class="n">interval</span><span class="si">}</span><span class="s2"> </span><span class="se">\\</span>
+<span class="s2">            --variant-output-filtering STARTS_IN </span><span class="se">\\</span>
+<span class="s2">            --gcs-project-for-requester-pays </span><span class="si">{</span><span class="n">gcp_billing_project</span><span class="si">}</span><span class="s2"> </span><span class="se">\\</span>
+<span class="s2">            </span><span class="si">{</span><span class="n">resource_args</span><span class="si">}</span>
+<span class="s2">        &quot;&quot;&quot;</span><span class="p">)</span>
+    <span class="n">b</span><span class="o">.</span><span class="n">write_output</span><span class="p">(</span><span class="n">j</span><span class="o">.</span><span class="n">output_score</span><span class="p">,</span> <span class="n">out_root</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">j</span></div>
+
+
+<div class="viewcode-block" id="check_run_config"><a class="viewcode-back" href="../../../../api_reference/v5/variant_qc/isolation_forest.html#gnomad_qc.v5.variant_qc.isolation_forest.check_run_config">[docs]</a><span class="k">def</span> <span class="nf">check_run_config</span><span class="p">(</span>
+    <span class="n">run_prefix</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">config</span><span class="p">:</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">],</span> <span class="n">overwrite</span><span class="p">:</span> <span class="nb">bool</span><span class="p">,</span> <span class="n">write</span><span class="p">:</span> <span class="nb">bool</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Guard reuse of outputs under ``run_prefix`` against a changed run configuration.</span>
+
+<span class="sd">    Extract/model/score outputs are reused by path alone, so a rerun with different</span>
+<span class="sd">    contigs, scatter count, or inputs would silently reuse region- or split-mismatched</span>
+<span class="sd">    files. Compare against the config recorded by the first run and raise on any</span>
+<span class="sd">    difference unless ``overwrite``.</span>
+
+<span class="sd">    :param run_prefix: GCS prefix for this run&#39;s GATK outputs.</span>
+<span class="sd">    :param config: Current run configuration.</span>
+<span class="sd">    :param overwrite: Whether outputs are being overwritten. Skips the comparison</span>
+<span class="sd">        only in the Batch step; --load-only reuses whatever is under ``run_prefix``</span>
+<span class="sd">        (its --overwrite only replaces the result HT), so it always compares.</span>
+<span class="sd">    :param write: Whether to record ``config`` (the Batch step; the load step only</span>
+<span class="sd">        compares).</span>
+<span class="sd">    :return: None.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">path</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">run_prefix</span><span class="si">}</span><span class="s2">/run_config.json&quot;</span>
+    <span class="k">if</span> <span class="n">file_exists</span><span class="p">(</span><span class="n">path</span><span class="p">):</span>
+        <span class="k">with</span> <span class="n">hl</span><span class="o">.</span><span class="n">hadoop_open</span><span class="p">(</span><span class="n">path</span><span class="p">,</span> <span class="s2">&quot;r&quot;</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
+            <span class="n">prev</span> <span class="o">=</span> <span class="n">json</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="n">f</span><span class="p">)</span>
+        <span class="n">diff</span> <span class="o">=</span> <span class="p">{</span><span class="n">k</span><span class="p">:</span> <span class="p">(</span><span class="n">prev</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">k</span><span class="p">),</span> <span class="n">v</span><span class="p">)</span> <span class="k">for</span> <span class="n">k</span><span class="p">,</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">config</span><span class="o">.</span><span class="n">items</span><span class="p">()</span> <span class="k">if</span> <span class="n">prev</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">k</span><span class="p">)</span> <span class="o">!=</span> <span class="n">v</span><span class="p">}</span>
+        <span class="k">if</span> <span class="n">diff</span> <span class="ow">and</span> <span class="ow">not</span> <span class="p">(</span><span class="n">overwrite</span> <span class="ow">and</span> <span class="n">write</span><span class="p">):</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s2">&quot;Run config differs from the existing outputs under </span><span class="si">{</span><span class="n">run_prefix</span><span class="si">}</span><span class="s2"> &quot;</span>
+                <span class="sa">f</span><span class="s2">&quot;(recorded, current): </span><span class="si">{</span><span class="n">diff</span><span class="si">}</span><span class="s2">. Pass --overwrite or use a new --model-id.&quot;</span>
+            <span class="p">)</span>
+    <span class="k">elif</span> <span class="ow">not</span> <span class="n">write</span><span class="p">:</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="s2">&quot;No run config found at </span><span class="si">%s</span><span class="s2">; cannot check consistency.&quot;</span><span class="p">,</span> <span class="n">path</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">write</span><span class="p">:</span>
+        <span class="k">with</span> <span class="n">hl</span><span class="o">.</span><span class="n">hadoop_open</span><span class="p">(</span><span class="n">path</span><span class="p">,</span> <span class="s2">&quot;w&quot;</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
+            <span class="n">f</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">json</span><span class="o">.</span><span class="n">dumps</span><span class="p">(</span><span class="n">config</span><span class="p">))</span></div>
+
+
+<div class="viewcode-block" id="isolation_forest_workflow"><a class="viewcode-back" href="../../../../api_reference/v5/variant_qc/isolation_forest.html#gnomad_qc.v5.variant_qc.isolation_forest.isolation_forest_workflow">[docs]</a><span class="k">def</span> <span class="nf">isolation_forest_workflow</span><span class="p">(</span>
+    <span class="n">b</span><span class="p">:</span> <span class="n">hb</span><span class="o">.</span><span class="n">Batch</span><span class="p">,</span>
+    <span class="n">sites_only_vcf</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="n">run_prefix</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="n">out_vcf_name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="n">singletons_vcf</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">],</span>
+    <span class="n">calling_intervals_args</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="n">exclude_intervals</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="n">scatter_count</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
+    <span class="n">gatk_image</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="n">gcp_billing_project</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="n">hyperparameters_json</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">overwrite</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Add the per-mode extract/train/score jobs (SNP and INDEL) to the Batch.</span>
+
+<span class="sd">    Extract and train outputs are reused if they already exist (unless ``overwrite``).</span>
+
+<span class="sd">    :param b: Batch to add jobs to.</span>
+<span class="sd">    :param sites_only_vcf: AS-annotated sites-only input VCF.</span>
+<span class="sd">    :param run_prefix: GCS prefix for this run&#39;s GATK outputs.</span>
+<span class="sd">    :param out_vcf_name: Base name for scored VCF shards.</span>
+<span class="sd">    :param singletons_vcf: Optional true-positive singletons VCF.</span>
+<span class="sd">    :param calling_intervals_args: GATK ``-L`` args for the calling contigs.</span>
+<span class="sd">    :param exclude_intervals: Path to the telomere/centromere exclusion intervals file.</span>
+<span class="sd">    :param scatter_count: Number of interval shards for scoring.</span>
+<span class="sd">    :param gatk_image: GATK docker image.</span>
+<span class="sd">    :param gcp_billing_project: GCP billing project for requester-pays buckets.</span>
+<span class="sd">    :param hyperparameters_json: Optional model hyperparameters JSON path.</span>
+<span class="sd">    :param overwrite: Whether to rerun extract/train/score even if outputs exist.</span>
+<span class="sd">    :return: None.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="c1"># Skip SplitIntervals when every score shard is reused.</span>
+    <span class="n">missing</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="n">m</span><span class="p">:</span> <span class="p">[</span>
+            <span class="n">idx</span>
+            <span class="k">for</span> <span class="n">idx</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">scatter_count</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">overwrite</span>
+            <span class="ow">or</span> <span class="ow">not</span> <span class="n">file_exists</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">run_prefix</span><span class="si">}</span><span class="s2">/score/</span><span class="si">{</span><span class="n">m</span><span class="si">}</span><span class="s2">/</span><span class="si">{</span><span class="n">out_vcf_name</span><span class="si">}{</span><span class="n">idx</span><span class="si">}</span><span class="s2">.vcf.gz&quot;</span><span class="p">)</span>
+        <span class="p">]</span>
+        <span class="k">for</span> <span class="n">m</span> <span class="ow">in</span> <span class="p">(</span><span class="s2">&quot;snp&quot;</span><span class="p">,</span> <span class="s2">&quot;indel&quot;</span><span class="p">)</span>
+    <span class="p">}</span>
+    <span class="n">intervals</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="k">if</span> <span class="nb">any</span><span class="p">(</span><span class="n">missing</span><span class="o">.</span><span class="n">values</span><span class="p">()):</span>
+        <span class="n">intervals</span> <span class="o">=</span> <span class="n">split_intervals_job</span><span class="p">(</span>
+            <span class="n">b</span><span class="o">=</span><span class="n">b</span><span class="p">,</span>
+            <span class="n">calling_intervals_args</span><span class="o">=</span><span class="n">calling_intervals_args</span><span class="p">,</span>
+            <span class="n">exclude_intervals</span><span class="o">=</span><span class="n">exclude_intervals</span><span class="p">,</span>
+            <span class="n">scatter_count</span><span class="o">=</span><span class="n">scatter_count</span><span class="p">,</span>
+            <span class="n">gatk_image</span><span class="o">=</span><span class="n">gatk_image</span><span class="p">,</span>
+            <span class="n">gcp_billing_project</span><span class="o">=</span><span class="n">gcp_billing_project</span><span class="p">,</span>
+        <span class="p">)</span><span class="o">.</span><span class="n">intervals</span>
+
+    <span class="c1"># GATK requires an uppercase --mode; VARIANT_QC_FEATURES is keyed &#39;snv&#39;/&#39;indel&#39;.</span>
+    <span class="k">for</span> <span class="n">mode</span><span class="p">,</span> <span class="n">feature_key</span> <span class="ow">in</span> <span class="p">[(</span><span class="s2">&quot;SNP&quot;</span><span class="p">,</span> <span class="s2">&quot;snv&quot;</span><span class="p">),</span> <span class="p">(</span><span class="s2">&quot;INDEL&quot;</span><span class="p">,</span> <span class="s2">&quot;indel&quot;</span><span class="p">)]:</span>
+        <span class="n">m</span> <span class="o">=</span> <span class="n">mode</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span>
+        <span class="n">features</span> <span class="o">=</span> <span class="n">VARIANT_QC_FEATURES</span><span class="p">[</span><span class="n">feature_key</span><span class="p">]</span>
+        <span class="n">resource_args</span> <span class="o">=</span> <span class="n">_resource_args</span><span class="p">(</span><span class="n">mode</span><span class="p">,</span> <span class="n">singletons_vcf</span><span class="p">)</span>
+        <span class="n">extract_root</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">run_prefix</span><span class="si">}</span><span class="s2">/extract/</span><span class="si">{</span><span class="n">m</span><span class="si">}</span><span class="s2">/extract&quot;</span>
+        <span class="n">model_root</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">run_prefix</span><span class="si">}</span><span class="s2">/model/</span><span class="si">{</span><span class="n">m</span><span class="si">}</span><span class="s2">/model&quot;</span>
+
+        <span class="c1"># Reuse extract outputs if present.</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">overwrite</span> <span class="ow">and</span> <span class="n">file_exists</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">extract_root</span><span class="si">}</span><span class="s2">.annot.hdf5&quot;</span><span class="p">):</span>
+            <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Reusing existing </span><span class="si">%s</span><span class="s2"> extract outputs.&quot;</span><span class="p">,</span> <span class="n">mode</span><span class="p">)</span>
+            <span class="n">annotations_hdf5</span> <span class="o">=</span> <span class="n">b</span><span class="o">.</span><span class="n">read_input</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">extract_root</span><span class="si">}</span><span class="s2">.annot.hdf5&quot;</span><span class="p">)</span>
+            <span class="n">extracted_vcf</span> <span class="o">=</span> <span class="n">b</span><span class="o">.</span><span class="n">read_input_group</span><span class="p">(</span>
+                <span class="o">**</span><span class="p">{</span>
+                    <span class="s2">&quot;vcf.gz&quot;</span><span class="p">:</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">extract_root</span><span class="si">}</span><span class="s2">.vcf.gz&quot;</span><span class="p">,</span>
+                    <span class="s2">&quot;vcf.gz.tbi&quot;</span><span class="p">:</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">extract_root</span><span class="si">}</span><span class="s2">.vcf.gz.tbi&quot;</span><span class="p">,</span>
+                <span class="p">}</span>
+            <span class="p">)[</span><span class="s2">&quot;vcf.gz&quot;</span><span class="p">]</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">extract_j</span> <span class="o">=</span> <span class="n">extract_variant_annotations_job</span><span class="p">(</span>
+                <span class="n">b</span><span class="o">=</span><span class="n">b</span><span class="p">,</span>
+                <span class="n">mode</span><span class="o">=</span><span class="n">mode</span><span class="p">,</span>
+                <span class="n">sites_only_vcf</span><span class="o">=</span><span class="n">sites_only_vcf</span><span class="p">,</span>
+                <span class="n">features</span><span class="o">=</span><span class="n">features</span><span class="p">,</span>
+                <span class="n">resource_args</span><span class="o">=</span><span class="n">resource_args</span><span class="p">,</span>
+                <span class="n">calling_intervals_args</span><span class="o">=</span><span class="n">calling_intervals_args</span><span class="p">,</span>
+                <span class="n">exclude_intervals</span><span class="o">=</span><span class="n">exclude_intervals</span><span class="p">,</span>
+                <span class="n">out_root</span><span class="o">=</span><span class="n">extract_root</span><span class="p">,</span>
+                <span class="n">gatk_image</span><span class="o">=</span><span class="n">gatk_image</span><span class="p">,</span>
+                <span class="n">gcp_billing_project</span><span class="o">=</span><span class="n">gcp_billing_project</span><span class="p">,</span>
+            <span class="p">)</span>
+            <span class="n">annotations_hdf5</span> <span class="o">=</span> <span class="n">extract_j</span><span class="o">.</span><span class="n">extract</span><span class="p">[</span><span class="s2">&quot;annot.hdf5&quot;</span><span class="p">]</span>
+            <span class="n">extracted_vcf</span> <span class="o">=</span> <span class="n">extract_j</span><span class="o">.</span><span class="n">extract</span><span class="p">[</span><span class="s2">&quot;vcf.gz&quot;</span><span class="p">]</span>
+
+        <span class="c1"># Reuse trained model if present.</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">overwrite</span> <span class="ow">and</span> <span class="n">file_exists</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">model_root</span><span class="si">}</span><span class="s2">.</span><span class="si">{</span><span class="n">m</span><span class="si">}</span><span class="s2">.scorer.pkl&quot;</span><span class="p">):</span>
+            <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Reusing existing </span><span class="si">%s</span><span class="s2"> model.&quot;</span><span class="p">,</span> <span class="n">mode</span><span class="p">)</span>
+            <span class="n">model_group</span> <span class="o">=</span> <span class="n">b</span><span class="o">.</span><span class="n">read_input_group</span><span class="p">(</span>
+                <span class="o">**</span><span class="p">{</span>
+                    <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">m</span><span class="si">}</span><span class="s2">.scorer.pkl&quot;</span><span class="p">:</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">model_root</span><span class="si">}</span><span class="s2">.</span><span class="si">{</span><span class="n">m</span><span class="si">}</span><span class="s2">.scorer.pkl&quot;</span><span class="p">,</span>
+                    <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">m</span><span class="si">}</span><span class="s2">.trainingScores.hdf5&quot;</span><span class="p">:</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">model_root</span><span class="si">}</span><span class="s2">.</span><span class="si">{</span><span class="n">m</span><span class="si">}</span><span class="s2">.trainingScores.hdf5&quot;</span><span class="p">,</span>
+                    <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">m</span><span class="si">}</span><span class="s2">.calibrationScores.hdf5&quot;</span><span class="p">:</span> <span class="p">(</span>
+                        <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">model_root</span><span class="si">}</span><span class="s2">.</span><span class="si">{</span><span class="n">m</span><span class="si">}</span><span class="s2">.calibrationScores.hdf5&quot;</span>
+                    <span class="p">),</span>
+                <span class="p">}</span>
+            <span class="p">)</span>
+            <span class="c1"># A read-in group localizes as a directory ({group}/model.{m}.scorer.pkl),</span>
+            <span class="c1"># unlike a job-declared group whose root is the file prefix, so build the</span>
+            <span class="c1"># --model-prefix from the group path. Interpolating the group localizes it.</span>
+            <span class="n">model</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">model_group</span><span class="si">}</span><span class="s2">/model&quot;</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">model</span> <span class="o">=</span> <span class="n">train_variant_annotations_model_job</span><span class="p">(</span>
+                <span class="n">b</span><span class="o">=</span><span class="n">b</span><span class="p">,</span>
+                <span class="n">mode</span><span class="o">=</span><span class="n">mode</span><span class="p">,</span>
+                <span class="n">annotations_hdf5</span><span class="o">=</span><span class="n">annotations_hdf5</span><span class="p">,</span>
+                <span class="n">out_root</span><span class="o">=</span><span class="n">model_root</span><span class="p">,</span>
+                <span class="n">gatk_image</span><span class="o">=</span><span class="n">gatk_image</span><span class="p">,</span>
+                <span class="n">gcp_billing_project</span><span class="o">=</span><span class="n">gcp_billing_project</span><span class="p">,</span>
+                <span class="n">hyperparameters_json</span><span class="o">=</span><span class="n">hyperparameters_json</span><span class="p">,</span>
+            <span class="p">)</span><span class="o">.</span><span class="n">model</span>
+
+        <span class="c1"># Reuse existing score shards so a partial-failure rerun resumes instead of</span>
+        <span class="c1"># re-scoring and clobbering every shard.</span>
+        <span class="k">for</span> <span class="n">idx</span> <span class="ow">in</span> <span class="n">missing</span><span class="p">[</span><span class="n">m</span><span class="p">]:</span>
+            <span class="n">score_root</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">run_prefix</span><span class="si">}</span><span class="s2">/score/</span><span class="si">{</span><span class="n">m</span><span class="si">}</span><span class="s2">/</span><span class="si">{</span><span class="n">out_vcf_name</span><span class="si">}{</span><span class="n">idx</span><span class="si">}</span><span class="s2">&quot;</span>
+            <span class="n">score_variant_annotations_job</span><span class="p">(</span>
+                <span class="n">b</span><span class="o">=</span><span class="n">b</span><span class="p">,</span>
+                <span class="n">mode</span><span class="o">=</span><span class="n">mode</span><span class="p">,</span>
+                <span class="n">sites_only_vcf</span><span class="o">=</span><span class="n">sites_only_vcf</span><span class="p">,</span>
+                <span class="n">features</span><span class="o">=</span><span class="n">features</span><span class="p">,</span>
+                <span class="n">extracted_vcf</span><span class="o">=</span><span class="n">extracted_vcf</span><span class="p">,</span>
+                <span class="n">model</span><span class="o">=</span><span class="n">model</span><span class="p">,</span>
+                <span class="n">resource_args</span><span class="o">=</span><span class="n">resource_args</span><span class="p">,</span>
+                <span class="n">interval</span><span class="o">=</span><span class="n">intervals</span><span class="p">[</span><span class="sa">f</span><span class="s2">&quot;interval_</span><span class="si">{</span><span class="n">idx</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">],</span>
+                <span class="n">idx</span><span class="o">=</span><span class="n">idx</span><span class="p">,</span>
+                <span class="n">out_root</span><span class="o">=</span><span class="n">score_root</span><span class="p">,</span>
+                <span class="n">gatk_image</span><span class="o">=</span><span class="n">gatk_image</span><span class="p">,</span>
+                <span class="n">gcp_billing_project</span><span class="o">=</span><span class="n">gcp_billing_project</span><span class="p">,</span>
+            <span class="p">)</span>
+        <span class="n">n_skipped</span> <span class="o">=</span> <span class="n">scatter_count</span> <span class="o">-</span> <span class="nb">len</span><span class="p">(</span><span class="n">missing</span><span class="p">[</span><span class="n">m</span><span class="p">])</span>
+        <span class="k">if</span> <span class="n">n_skipped</span><span class="p">:</span>
+            <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Reusing </span><span class="si">%s</span><span class="s2"> existing </span><span class="si">%s</span><span class="s2"> score shards.&quot;</span><span class="p">,</span> <span class="n">n_skipped</span><span class="p">,</span> <span class="n">mode</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="export_exclusion_intervals"><a class="viewcode-back" href="../../../../api_reference/v5/variant_qc/isolation_forest.html#gnomad_qc.v5.variant_qc.isolation_forest.export_exclusion_intervals">[docs]</a><span class="k">def</span> <span class="nf">export_exclusion_intervals</span><span class="p">(</span><span class="n">out_path</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Export telomere/centromere intervals to a GATK-readable ``chr:start-end`` file.</span>
+
+<span class="sd">    Written to a stable path (not a temp file) so the same file used by GATK ``-XL``</span>
+<span class="sd">    can be read back during reconciliation to define the excluded region exactly.</span>
+
+<span class="sd">    `telomeres_and_centromeres` is a BED import, so its intervals are half-open</span>
+<span class="sd">    ``[start, end)``, while GATK reads ``chr:start-end`` as 1-based inclusive on both</span>
+<span class="sd">    ends. Emit ``end - 1`` so the file covers exactly the interval.</span>
+
+<span class="sd">    :param out_path: Destination path for the intervals file.</span>
+<span class="sd">    :return: ``out_path``.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">telomeres_and_centromeres</span><span class="o">.</span><span class="n">ht</span><span class="p">()</span>
+    <span class="n">interval</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">interval</span>
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">key_by</span><span class="p">(</span>
+        <span class="n">interval</span><span class="o">=</span><span class="n">interval</span><span class="o">.</span><span class="n">start</span><span class="o">.</span><span class="n">contig</span>
+        <span class="o">+</span> <span class="s2">&quot;:&quot;</span>
+        <span class="o">+</span> <span class="n">hl</span><span class="o">.</span><span class="n">str</span><span class="p">(</span><span class="n">interval</span><span class="o">.</span><span class="n">start</span><span class="o">.</span><span class="n">position</span><span class="p">)</span>
+        <span class="o">+</span> <span class="s2">&quot;-&quot;</span>
+        <span class="o">+</span> <span class="n">hl</span><span class="o">.</span><span class="n">str</span><span class="p">(</span><span class="n">interval</span><span class="o">.</span><span class="n">end</span><span class="o">.</span><span class="n">position</span> <span class="o">-</span> <span class="mi">1</span><span class="p">)</span>
+    <span class="p">)</span><span class="o">.</span><span class="n">select</span><span class="p">()</span>
+    <span class="n">ht</span><span class="o">.</span><span class="n">export</span><span class="p">(</span><span class="n">out_path</span><span class="p">,</span> <span class="n">header</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">out_path</span></div>
+
+
+<div class="viewcode-block" id="export_v4_test_sites_vcf"><a class="viewcode-back" href="../../../../api_reference/v5/variant_qc/isolation_forest.html#gnomad_qc.v5.variant_qc.isolation_forest.export_v4_test_sites_vcf">[docs]</a><span class="k">def</span> <span class="nf">export_v4_test_sites_vcf</span><span class="p">(</span><span class="n">contigs</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">],</span> <span class="n">out_path</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Export the v4 split info HT, filtered to ``contigs``, as a GATK-readable sites VCF.</span>
+
+<span class="sd">    v4&#39;s ``--export-split-info-vcf`` output is misnamed: it is exported from the unsplit</span>
+<span class="sd">    info HT, so it cannot stand in for the split v5 info VCF. Read the split info HT</span>
+<span class="sd">    directly instead.</span>
+
+<span class="sd">    :param contigs: Contigs to keep.</span>
+<span class="sd">    :param out_path: Destination VCF path.</span>
+<span class="sd">    :return: None.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="kn">from</span> <span class="nn">gnomad_qc.v4.annotations.generate_variant_qc_annotations</span> <span class="kn">import</span> <span class="p">(</span>
+        <span class="n">get_reformatted_info_fields</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="kn">from</span> <span class="nn">gnomad_qc.v4.resources.annotations</span> <span class="kn">import</span> <span class="n">get_info</span> <span class="k">as</span> <span class="n">get_v4_info</span>
+
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">get_v4_info</span><span class="p">(</span><span class="n">split</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span><span class="o">.</span><span class="n">ht</span><span class="p">()</span>
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">hl</span><span class="o">.</span><span class="n">filter_intervals</span><span class="p">(</span>
+        <span class="n">ht</span><span class="p">,</span> <span class="p">[</span><span class="n">hl</span><span class="o">.</span><span class="n">parse_locus_interval</span><span class="p">(</span><span class="n">c</span><span class="p">,</span> <span class="n">reference_genome</span><span class="o">=</span><span class="s2">&quot;GRCh38&quot;</span><span class="p">)</span> <span class="k">for</span> <span class="n">c</span> <span class="ow">in</span> <span class="n">contigs</span><span class="p">]</span>
+    <span class="p">)</span>
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">get_reformatted_info_fields</span><span class="p">(</span><span class="n">ht</span><span class="p">,</span> <span class="n">info_method</span><span class="o">=</span><span class="s2">&quot;quasi&quot;</span><span class="p">)</span>
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">select</span><span class="p">(</span><span class="n">info</span><span class="o">=</span><span class="n">ht</span><span class="o">.</span><span class="n">site_info</span><span class="o">.</span><span class="n">annotate</span><span class="p">(</span><span class="o">**</span><span class="n">ht</span><span class="o">.</span><span class="n">quasi_info</span><span class="p">))</span>
+    <span class="c1"># Drop the strand-bias tables: neither is an iforest feature. AS_SB_TABLE breaks</span>
+    <span class="c1"># adjust_vcf_incompatible_types&#39; pipe-delimiting on split input, and GATK rewrites</span>
+    <span class="c1"># SB&#39;s header to its reserved Number=1,Type=Float while still emitting the</span>
+    <span class="c1"># 4-element array, which then fails to import from the scored VCF.</span>
+    <span class="n">drop_fields</span> <span class="o">=</span> <span class="p">[</span><span class="n">f</span> <span class="k">for</span> <span class="n">f</span> <span class="ow">in</span> <span class="p">(</span><span class="s2">&quot;AS_SB_TABLE&quot;</span><span class="p">,</span> <span class="s2">&quot;SB&quot;</span><span class="p">)</span> <span class="k">if</span> <span class="n">f</span> <span class="ow">in</span> <span class="n">ht</span><span class="o">.</span><span class="n">info</span><span class="p">]</span>
+    <span class="k">if</span> <span class="n">drop_fields</span><span class="p">:</span>
+        <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">annotate</span><span class="p">(</span><span class="n">info</span><span class="o">=</span><span class="n">ht</span><span class="o">.</span><span class="n">info</span><span class="o">.</span><span class="n">drop</span><span class="p">(</span><span class="o">*</span><span class="n">drop_fields</span><span class="p">))</span>
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">adjust_vcf_incompatible_types</span><span class="p">(</span><span class="n">ht</span><span class="p">,</span> <span class="n">pipe_delimited_annotations</span><span class="o">=</span><span class="p">[])</span>
+    <span class="c1"># Declare the features Number=A so GATK runs in allele-specific mode; Hail would</span>
+    <span class="c1"># write Number=1 for these split scalars. See `_annotation_args`.</span>
+    <span class="n">metadata</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="s2">&quot;info&quot;</span><span class="p">:</span> <span class="p">{</span>
+            <span class="n">f</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;Number&quot;</span><span class="p">:</span> <span class="s2">&quot;A&quot;</span><span class="p">,</span> <span class="s2">&quot;Type&quot;</span><span class="p">:</span> <span class="s2">&quot;Float&quot;</span><span class="p">,</span> <span class="s2">&quot;Description&quot;</span><span class="p">:</span> <span class="s2">&quot;&quot;</span><span class="p">}</span>
+            <span class="k">for</span> <span class="n">f</span> <span class="ow">in</span> <span class="n">VARIANT_QC_FEATURES</span><span class="p">[</span><span class="s2">&quot;snv&quot;</span><span class="p">]</span>
+        <span class="p">}</span>
+    <span class="p">}</span>
+    <span class="n">hl</span><span class="o">.</span><span class="n">export_vcf</span><span class="p">(</span><span class="n">ht</span><span class="p">,</span> <span class="n">out_path</span><span class="p">,</span> <span class="n">tabix</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">metadata</span><span class="o">=</span><span class="n">metadata</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="merge_iforest_result"><a class="viewcode-back" href="../../../../api_reference/v5/variant_qc/isolation_forest.html#gnomad_qc.v5.variant_qc.isolation_forest.merge_iforest_result">[docs]</a><span class="k">def</span> <span class="nf">merge_iforest_result</span><span class="p">(</span>
+    <span class="n">run_prefix</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="n">out_vcf_name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="n">model_id</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="n">scatter_count</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
+    <span class="n">n_partitions</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
+    <span class="n">header_path</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">],</span>
+    <span class="n">array_elements_required</span><span class="p">:</span> <span class="nb">bool</span><span class="p">,</span>
+    <span class="n">transmitted_singletons</span><span class="p">:</span> <span class="nb">bool</span><span class="p">,</span>
+    <span class="n">sibling_singletons</span><span class="p">:</span> <span class="nb">bool</span><span class="p">,</span>
+    <span class="n">adj</span><span class="p">:</span> <span class="nb">bool</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Merge the per-mode scored VCFs into a single variant QC result HT.</span>
+
+<span class="sd">    The SNP-pass VCF contributes SNP alleles and the INDEL-pass VCF contributes all</span>
+<span class="sd">    non-SNP alleles, so the union covers every scored allele exactly once.</span>
+
+<span class="sd">    Only the current run&#39;s ``scatter_count`` shards are read (by explicit index), so a</span>
+<span class="sd">    rerun with a smaller scatter count does not pick up stale shards from a prior run.</span>
+
+<span class="sd">    :param run_prefix: GCS prefix for this run&#39;s GATK outputs.</span>
+<span class="sd">    :param out_vcf_name: Base name used for scored VCF shards.</span>
+<span class="sd">    :param model_id: Isolation forest model ID (starts with ``if_``).</span>
+<span class="sd">    :param scatter_count: Number of score shards per mode (must match the scoring run).</span>
+<span class="sd">    :param n_partitions: Number of partitions for the imported HTs.</span>
+<span class="sd">    :param header_path: Optional VCF header file for import.</span>
+<span class="sd">    :param array_elements_required: Value passed to hl.import_vcf.</span>
+<span class="sd">    :param transmitted_singletons: Whether transmitted singletons were a training set.</span>
+<span class="sd">    :param sibling_singletons: Whether sibling singletons were a training set.</span>
+<span class="sd">    :param adj: Whether the singletons VCF used adj genotypes.</span>
+<span class="sd">    :return: Merged variant QC result HT.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">snp_vcfs</span> <span class="o">=</span> <span class="p">[</span>
+        <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">run_prefix</span><span class="si">}</span><span class="s2">/score/snp/</span><span class="si">{</span><span class="n">out_vcf_name</span><span class="si">}{</span><span class="n">idx</span><span class="si">}</span><span class="s2">.vcf.gz&quot;</span>
+        <span class="k">for</span> <span class="n">idx</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">scatter_count</span><span class="p">)</span>
+    <span class="p">]</span>
+    <span class="n">indel_vcfs</span> <span class="o">=</span> <span class="p">[</span>
+        <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">run_prefix</span><span class="si">}</span><span class="s2">/score/indel/</span><span class="si">{</span><span class="n">out_vcf_name</span><span class="si">}{</span><span class="n">idx</span><span class="si">}</span><span class="s2">.vcf.gz&quot;</span>
+        <span class="k">for</span> <span class="n">idx</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">scatter_count</span><span class="p">)</span>
+    <span class="p">]</span>
+
+    <span class="k">def</span> <span class="nf">_import</span><span class="p">(</span><span class="n">vcfs</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">import_variant_qc_vcf</span><span class="p">(</span>
+            <span class="n">vcfs</span><span class="p">,</span>
+            <span class="n">model_id</span><span class="p">,</span>
+            <span class="n">n_partitions</span><span class="p">,</span>
+            <span class="n">header_path</span><span class="p">,</span>
+            <span class="n">array_elements_required</span><span class="p">,</span>
+            <span class="n">is_split</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+            <span class="c1"># Scoring runs with --variant-output-filtering STARTS_IN, so each record is</span>
+            <span class="c1"># emitted by exactly one shard; the check costs a shuffle.</span>
+            <span class="n">deduplicate_check</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+        <span class="p">)</span>
+
+    <span class="n">snp_ht</span> <span class="o">=</span> <span class="n">_import</span><span class="p">(</span><span class="n">snp_vcfs</span><span class="p">)</span>
+    <span class="n">indel_ht</span> <span class="o">=</span> <span class="n">_import</span><span class="p">(</span><span class="n">indel_vcfs</span><span class="p">)</span>
+
+    <span class="n">snp_ht</span> <span class="o">=</span> <span class="n">snp_ht</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">hl</span><span class="o">.</span><span class="n">is_snp</span><span class="p">(</span><span class="n">snp_ht</span><span class="o">.</span><span class="n">alleles</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">snp_ht</span><span class="o">.</span><span class="n">alleles</span><span class="p">[</span><span class="mi">1</span><span class="p">]))</span>
+    <span class="n">indel_ht</span> <span class="o">=</span> <span class="n">indel_ht</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="o">~</span><span class="n">hl</span><span class="o">.</span><span class="n">is_snp</span><span class="p">(</span><span class="n">indel_ht</span><span class="o">.</span><span class="n">alleles</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">indel_ht</span><span class="o">.</span><span class="n">alleles</span><span class="p">[</span><span class="mi">1</span><span class="p">]))</span>
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">snp_ht</span><span class="o">.</span><span class="n">union</span><span class="p">(</span><span class="n">indel_ht</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">ht</span><span class="o">.</span><span class="n">annotate_globals</span><span class="p">(</span>
+        <span class="n">model_id</span><span class="o">=</span><span class="n">model_id</span><span class="p">,</span>
+        <span class="n">snp_features</span><span class="o">=</span><span class="n">VARIANT_QC_FEATURES</span><span class="p">[</span><span class="s2">&quot;snv&quot;</span><span class="p">],</span>
+        <span class="n">indel_features</span><span class="o">=</span><span class="n">VARIANT_QC_FEATURES</span><span class="p">[</span><span class="s2">&quot;indel&quot;</span><span class="p">],</span>
+        <span class="n">filtering_model_specific_info</span><span class="o">=</span><span class="n">hl</span><span class="o">.</span><span class="n">struct</span><span class="p">(</span>
+            <span class="n">transmitted_singletons</span><span class="o">=</span><span class="n">transmitted_singletons</span><span class="p">,</span>
+            <span class="n">sibling_singletons</span><span class="o">=</span><span class="n">sibling_singletons</span><span class="p">,</span>
+            <span class="n">adj</span><span class="o">=</span><span class="n">adj</span><span class="p">,</span>
+        <span class="p">),</span>
+    <span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="reconcile_scored_sites"><a class="viewcode-back" href="../../../../api_reference/v5/variant_qc/isolation_forest.html#gnomad_qc.v5.variant_qc.isolation_forest.reconcile_scored_sites">[docs]</a><span class="k">def</span> <span class="nf">reconcile_scored_sites</span><span class="p">(</span>
+    <span class="n">sites_only_vcf</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="n">contigs</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">],</span>
+    <span class="n">exclude_intervals_path</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="n">scored_ht</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">,</span>
+    <span class="n">array_elements_required</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Raise if any input variant in the scored region is missing from the output or unscored.</span>
+
+<span class="sd">    GATK writes every input record within its interval to the scored VCF, so any variant</span>
+<span class="sd">    absent from the merged output was dropped (e.g. a truncated shard). GATK classifies</span>
+<span class="sd">    every allele as either SNP or INDEL, so every variant should also carry a SCORE.</span>
+
+<span class="sd">    Input and output are both split, so variants are compared on the full key.</span>
+
+<span class="sd">    :param sites_only_vcf: Input sites VCF that was scored.</span>
+<span class="sd">    :param contigs: Calling contigs passed to GATK (``-L``).</span>
+<span class="sd">    :param exclude_intervals_path: Telomere/centromere exclusion file passed to GATK</span>
+<span class="sd">        (``-XL``).</span>
+<span class="sd">    :param scored_ht: Merged scored result HT.</span>
+<span class="sd">    :param array_elements_required: Value passed to hl.import_vcf for the input.</span>
+<span class="sd">    :return: None.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">exclude_ht</span> <span class="o">=</span> <span class="n">hl</span><span class="o">.</span><span class="n">import_locus_intervals</span><span class="p">(</span>
+        <span class="n">exclude_intervals_path</span><span class="p">,</span> <span class="n">reference_genome</span><span class="o">=</span><span class="s2">&quot;GRCh38&quot;</span>
+    <span class="p">)</span>
+    <span class="c1"># GATK reads chr:start-end as 1-based inclusive; hl.import_locus_intervals is</span>
+    <span class="c1"># end-exclusive. Re-key as inclusive so we exclude exactly what GATK excluded.</span>
+    <span class="c1"># `includes_start` must be carried over: Hail canonicalizes a single-base</span>
+    <span class="c1"># &#39;chr:p-p&#39; to the open-open (p-1, p), which is only correct if it stays open.</span>
+    <span class="n">exclude_ht</span> <span class="o">=</span> <span class="n">exclude_ht</span><span class="o">.</span><span class="n">key_by</span><span class="p">(</span>
+        <span class="n">interval</span><span class="o">=</span><span class="n">hl</span><span class="o">.</span><span class="n">interval</span><span class="p">(</span>
+            <span class="n">exclude_ht</span><span class="o">.</span><span class="n">interval</span><span class="o">.</span><span class="n">start</span><span class="p">,</span>
+            <span class="n">exclude_ht</span><span class="o">.</span><span class="n">interval</span><span class="o">.</span><span class="n">end</span><span class="p">,</span>
+            <span class="n">includes_start</span><span class="o">=</span><span class="n">exclude_ht</span><span class="o">.</span><span class="n">interval</span><span class="o">.</span><span class="n">includes_start</span><span class="p">,</span>
+            <span class="n">includes_end</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+        <span class="p">)</span>
+    <span class="p">)</span>
+    <span class="n">input_ht</span> <span class="o">=</span> <span class="n">hl</span><span class="o">.</span><span class="n">import_vcf</span><span class="p">(</span>
+        <span class="n">sites_only_vcf</span><span class="p">,</span>
+        <span class="n">force_bgz</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+        <span class="n">reference_genome</span><span class="o">=</span><span class="s2">&quot;GRCh38&quot;</span><span class="p">,</span>
+        <span class="n">array_elements_required</span><span class="o">=</span><span class="n">array_elements_required</span><span class="p">,</span>
+    <span class="p">)</span><span class="o">.</span><span class="n">rows</span><span class="p">()</span>
+    <span class="n">contig_set</span> <span class="o">=</span> <span class="n">hl</span><span class="o">.</span><span class="n">literal</span><span class="p">(</span><span class="nb">set</span><span class="p">(</span><span class="n">contigs</span><span class="p">))</span>
+    <span class="n">input_ht</span> <span class="o">=</span> <span class="n">input_ht</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span>
+        <span class="n">contig_set</span><span class="o">.</span><span class="n">contains</span><span class="p">(</span><span class="n">input_ht</span><span class="o">.</span><span class="n">locus</span><span class="o">.</span><span class="n">contig</span><span class="p">)</span>
+        <span class="o">&amp;</span> <span class="n">hl</span><span class="o">.</span><span class="n">is_missing</span><span class="p">(</span><span class="n">exclude_ht</span><span class="p">[</span><span class="n">input_ht</span><span class="o">.</span><span class="n">locus</span><span class="p">])</span>
+    <span class="p">)</span><span class="o">.</span><span class="n">select</span><span class="p">()</span>
+
+    <span class="n">input_ht</span> <span class="o">=</span> <span class="n">input_ht</span><span class="o">.</span><span class="n">annotate</span><span class="p">(</span><span class="n">scored</span><span class="o">=</span><span class="n">hl</span><span class="o">.</span><span class="n">is_defined</span><span class="p">(</span><span class="n">scored_ht</span><span class="p">[</span><span class="n">input_ht</span><span class="o">.</span><span class="n">key</span><span class="p">]))</span>
+    <span class="n">counts</span> <span class="o">=</span> <span class="n">input_ht</span><span class="o">.</span><span class="n">aggregate</span><span class="p">(</span>
+        <span class="n">hl</span><span class="o">.</span><span class="n">struct</span><span class="p">(</span><span class="n">n</span><span class="o">=</span><span class="n">hl</span><span class="o">.</span><span class="n">agg</span><span class="o">.</span><span class="n">count</span><span class="p">(),</span> <span class="n">n_missing</span><span class="o">=</span><span class="n">hl</span><span class="o">.</span><span class="n">agg</span><span class="o">.</span><span class="n">count_where</span><span class="p">(</span><span class="o">~</span><span class="n">input_ht</span><span class="o">.</span><span class="n">scored</span><span class="p">))</span>
+    <span class="p">)</span>
+    <span class="c1"># Zero input variants would trivially pass the checks below; treat as a config</span>
+    <span class="c1"># error (e.g. --test-chrom contigs absent from the info VCF).</span>
+    <span class="k">if</span> <span class="n">counts</span><span class="o">.</span><span class="n">n</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+            <span class="s2">&quot;No input variants in the scored region; check that the contigs and &quot;</span>
+            <span class="s2">&quot;exclusion intervals match the input VCF.&quot;</span>
+        <span class="p">)</span>
+    <span class="k">if</span> <span class="n">counts</span><span class="o">.</span><span class="n">n_missing</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+        <span class="n">missing</span> <span class="o">=</span> <span class="n">input_ht</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="o">~</span><span class="n">input_ht</span><span class="o">.</span><span class="n">scored</span><span class="p">)</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+            <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">counts</span><span class="o">.</span><span class="n">n_missing</span><span class="si">}</span><span class="s2"> input variants in the scored region are missing from &quot;</span>
+            <span class="sa">f</span><span class="s2">&quot;the scored output. Examples: &quot;</span>
+            <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="p">[(</span><span class="n">m</span><span class="o">.</span><span class="n">locus</span><span class="p">,</span><span class="w"> </span><span class="n">m</span><span class="o">.</span><span class="n">alleles</span><span class="p">)</span><span class="w"> </span><span class="k">for</span><span class="w"> </span><span class="n">m</span><span class="w"> </span><span class="ow">in</span><span class="w"> </span><span class="n">missing</span><span class="o">.</span><span class="n">take</span><span class="p">(</span><span class="mi">5</span><span class="p">)]</span><span class="si">}</span><span class="s2">&quot;</span>
+        <span class="p">)</span>
+
+    <span class="c1"># Duplicate keys (e.g. shards from two different scatter splits merged together)</span>
+    <span class="c1"># satisfy both the presence and SCORE checks, so check explicitly.</span>
+    <span class="n">n_scored</span> <span class="o">=</span> <span class="n">scored_ht</span><span class="o">.</span><span class="n">count</span><span class="p">()</span>
+    <span class="n">n_dup</span> <span class="o">=</span> <span class="n">n_scored</span> <span class="o">-</span> <span class="n">scored_ht</span><span class="o">.</span><span class="n">distinct</span><span class="p">()</span><span class="o">.</span><span class="n">count</span><span class="p">()</span>
+    <span class="k">if</span> <span class="n">n_dup</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">n_dup</span><span class="si">}</span><span class="s2"> duplicate variants in the scored output.&quot;</span><span class="p">)</span>
+
+    <span class="n">unscored</span> <span class="o">=</span> <span class="n">hl</span><span class="o">.</span><span class="n">is_missing</span><span class="p">(</span><span class="n">scored_ht</span><span class="o">.</span><span class="n">info</span><span class="o">.</span><span class="n">SCORE</span><span class="p">)</span>
+    <span class="n">n_unscored</span> <span class="o">=</span> <span class="n">scored_ht</span><span class="o">.</span><span class="n">aggregate</span><span class="p">(</span><span class="n">hl</span><span class="o">.</span><span class="n">agg</span><span class="o">.</span><span class="n">count_where</span><span class="p">(</span><span class="n">unscored</span><span class="p">))</span>
+    <span class="k">if</span> <span class="n">n_unscored</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+        <span class="n">examples</span> <span class="o">=</span> <span class="n">scored_ht</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">unscored</span><span class="p">)</span><span class="o">.</span><span class="n">take</span><span class="p">(</span><span class="mi">5</span><span class="p">)</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+            <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">n_unscored</span><span class="si">}</span><span class="s2"> variants have no SCORE. Examples: &quot;</span>
+            <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="p">[(</span><span class="n">e</span><span class="o">.</span><span class="n">locus</span><span class="p">,</span><span class="w"> </span><span class="n">e</span><span class="o">.</span><span class="n">alleles</span><span class="p">)</span><span class="w"> </span><span class="k">for</span><span class="w"> </span><span class="n">e</span><span class="w"> </span><span class="ow">in</span><span class="w"> </span><span class="n">examples</span><span class="p">]</span><span class="si">}</span><span class="s2">&quot;</span>
+        <span class="p">)</span>
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span>
+        <span class="s2">&quot;Reconciliation passed: all </span><span class="si">%s</span><span class="s2"> input variants are present and scored.&quot;</span><span class="p">,</span>
+        <span class="n">counts</span><span class="o">.</span><span class="n">n</span><span class="p">,</span>
+    <span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="main"><a class="viewcode-back" href="../../../../api_reference/v5/variant_qc/isolation_forest.html#gnomad_qc.v5.variant_qc.isolation_forest.main">[docs]</a><span class="k">def</span> <span class="nf">main</span><span class="p">(</span><span class="n">args</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Run the isolation forest variant QC workflow.&quot;&quot;&quot;</span>
+    <span class="n">model_id</span> <span class="o">=</span> <span class="n">args</span><span class="o">.</span><span class="n">model_id</span>
+    <span class="k">if</span> <span class="n">_validate_model_id</span><span class="p">(</span><span class="n">model_id</span><span class="p">)</span> <span class="o">!=</span> <span class="s2">&quot;if&quot;</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;model_id must start with &#39;if_&#39;, but got </span><span class="si">{</span><span class="n">model_id</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">export_v4_test_vcf</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">args</span><span class="o">.</span><span class="n">test_on_v4</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;--export-v4-test-vcf requires --test-on-v4.&quot;</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">export_only</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">args</span><span class="o">.</span><span class="n">export_v4_test_vcf</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;--export-only requires --export-v4-test-vcf.&quot;</span><span class="p">)</span>
+    <span class="k">if</span> <span class="p">(</span><span class="n">args</span><span class="o">.</span><span class="n">load_iforest</span> <span class="ow">or</span> <span class="n">args</span><span class="o">.</span><span class="n">load_only</span><span class="p">)</span> <span class="ow">and</span> <span class="n">args</span><span class="o">.</span><span class="n">environment</span> <span class="o">==</span> <span class="s2">&quot;batch&quot;</span><span class="p">:</span>
+        <span class="c1"># Reconciliation OOMs the default QoB driver, even on a chr22 test.</span>
+        <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">driver_memory</span> <span class="o">!=</span> <span class="s2">&quot;highmem&quot;</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+                <span class="s2">&quot;--load-iforest/--load-only require --driver-memory highmem.&quot;</span>
+            <span class="p">)</span>
+        <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">driver_cores</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span>
+                <span class="s2">&quot;--driver-cores not set; the load step has been run with 4-8 cores.&quot;</span>
+            <span class="p">)</span>
+
+    <span class="n">environment</span> <span class="o">=</span> <span class="n">args</span><span class="o">.</span><span class="n">environment</span>
+    <span class="n">_init_hail</span><span class="p">(</span><span class="s2">&quot;isolation_forest&quot;</span><span class="p">,</span> <span class="n">environment</span><span class="p">,</span> <span class="o">**</span><span class="n">_get_batch_resource_kwargs</span><span class="p">(</span><span class="n">args</span><span class="p">))</span>
+
+    <span class="n">test</span> <span class="o">=</span> <span class="n">args</span><span class="o">.</span><span class="n">test</span>
+    <span class="c1"># Tests score only --test-chrom; must match the contigs in the test info VCF (see</span>
+    <span class="c1"># --test-chrom in generate_variant_qc_annotations).</span>
+    <span class="n">test_mode</span> <span class="o">=</span> <span class="n">test</span> <span class="ow">or</span> <span class="n">args</span><span class="o">.</span><span class="n">test_on_v4</span>
+    <span class="n">scatter_count</span> <span class="o">=</span> <span class="mi">10</span> <span class="k">if</span> <span class="n">test_mode</span> <span class="k">else</span> <span class="n">args</span><span class="o">.</span><span class="n">scatter_count</span>
+    <span class="n">contigs</span> <span class="o">=</span> <span class="n">args</span><span class="o">.</span><span class="n">test_chrom</span> <span class="k">if</span> <span class="n">test_mode</span> <span class="k">else</span> <span class="n">get_primary_contigs</span><span class="p">()</span>
+    <span class="n">calling_intervals_args</span> <span class="o">=</span> <span class="s2">&quot; &quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;-L </span><span class="si">{</span><span class="n">c</span><span class="si">}</span><span class="s2">&quot;</span> <span class="k">for</span> <span class="n">c</span> <span class="ow">in</span> <span class="n">contigs</span><span class="p">)</span>
+
+    <span class="n">true_positive_type</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">transmitted_singletons</span> <span class="ow">and</span> <span class="n">args</span><span class="o">.</span><span class="n">sibling_singletons</span><span class="p">:</span>
+        <span class="n">true_positive_type</span> <span class="o">=</span> <span class="s2">&quot;transmitted_singleton.sibling_singleton&quot;</span>
+    <span class="k">elif</span> <span class="n">args</span><span class="o">.</span><span class="n">transmitted_singletons</span><span class="p">:</span>
+        <span class="n">true_positive_type</span> <span class="o">=</span> <span class="s2">&quot;transmitted_singleton&quot;</span>
+    <span class="k">elif</span> <span class="n">args</span><span class="o">.</span><span class="n">sibling_singletons</span><span class="p">:</span>
+        <span class="n">true_positive_type</span> <span class="o">=</span> <span class="s2">&quot;sibling_singleton&quot;</span>
+    <span class="c1"># --test-on-v4 swaps inputs to v4 resources to validate the Batch pipeline while v5</span>
+    <span class="c1"># data is unavailable; outputs still route via --environment.</span>
+    <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">test_on_v4</span><span class="p">:</span>
+        <span class="kn">from</span> <span class="nn">gnomad_qc.v4.resources.annotations</span> <span class="kn">import</span> <span class="p">(</span>
+            <span class="n">get_true_positive_vcf_path</span> <span class="k">as</span> <span class="n">v4_get_true_positive_vcf_path</span><span class="p">,</span>
+        <span class="p">)</span>
+
+        <span class="n">run_prefix</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;gs://</span><span class="si">{</span><span class="n">BATCH_TMP_BUCKET</span><span class="si">}</span><span class="s2">/if_v4_test/</span><span class="si">{</span><span class="n">model_id</span><span class="si">}</span><span class="s2">&quot;</span>
+        <span class="n">result_ht_path</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">run_prefix</span><span class="si">}</span><span class="s2">/gnomad.exomes.v4.0.</span><span class="si">{</span><span class="n">model_id</span><span class="si">}</span><span class="s2">.result.ht&quot;</span>
+        <span class="n">singletons_vcf</span> <span class="o">=</span> <span class="p">(</span>
+            <span class="n">v4_get_true_positive_vcf_path</span><span class="p">(</span>
+                <span class="n">adj</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">adj</span><span class="p">,</span> <span class="n">true_positive_type</span><span class="o">=</span><span class="n">true_positive_type</span>
+            <span class="p">)</span>
+            <span class="k">if</span> <span class="n">true_positive_type</span>
+            <span class="k">else</span> <span class="kc">None</span>
+        <span class="p">)</span>
+        <span class="c1"># v4&#39;s info_vcf_path(split=True) is misnamed (exported from the unsplit info</span>
+        <span class="c1"># HT), so export our own split sites VCF via --export-v4-test-vcf.</span>
+        <span class="n">sites_only_vcf</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">run_prefix</span><span class="si">}</span><span class="s2">/v4_test_sites.vcf.bgz&quot;</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">sites_only_vcf</span> <span class="o">=</span> <span class="n">info_vcf_path</span><span class="p">(</span><span class="n">test</span><span class="o">=</span><span class="n">test</span><span class="p">,</span> <span class="n">environment</span><span class="o">=</span><span class="n">environment</span><span class="p">)</span>
+        <span class="n">singletons_vcf</span> <span class="o">=</span> <span class="p">(</span>
+            <span class="n">get_true_positive_vcf_path</span><span class="p">(</span>
+                <span class="n">adj</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">adj</span><span class="p">,</span>
+                <span class="n">true_positive_type</span><span class="o">=</span><span class="n">true_positive_type</span><span class="p">,</span>
+                <span class="n">test</span><span class="o">=</span><span class="n">test</span><span class="p">,</span>
+                <span class="n">environment</span><span class="o">=</span><span class="n">environment</span><span class="p">,</span>
+            <span class="p">)</span>
+            <span class="k">if</span> <span class="n">true_positive_type</span>
+            <span class="k">else</span> <span class="kc">None</span>
+        <span class="p">)</span>
+        <span class="n">run_prefix</span> <span class="o">=</span> <span class="n">get_iforest_run_prefix</span><span class="p">(</span>
+            <span class="n">model_id</span><span class="p">,</span> <span class="n">test</span><span class="o">=</span><span class="n">test</span><span class="p">,</span> <span class="n">environment</span><span class="o">=</span><span class="n">environment</span>
+        <span class="p">)</span>
+        <span class="n">result_ht_path</span> <span class="o">=</span> <span class="n">get_variant_qc_result</span><span class="p">(</span>
+            <span class="n">model_id</span><span class="p">,</span> <span class="n">test</span><span class="o">=</span><span class="n">test</span><span class="p">,</span> <span class="n">split</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">environment</span><span class="o">=</span><span class="n">environment</span>
+        <span class="p">)</span><span class="o">.</span><span class="n">path</span>
+
+    <span class="c1"># Fail fast on missing inputs. The sites VCF is read in every mode (including</span>
+    <span class="c1"># --load-only), so skip its check only when this run exports it. The singletons</span>
+    <span class="c1"># VCF is only read by the Batch.</span>
+    <span class="n">input_step_resources</span> <span class="o">=</span> <span class="p">{}</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">args</span><span class="o">.</span><span class="n">export_v4_test_vcf</span><span class="p">:</span>
+        <span class="n">input_step_resources</span><span class="p">[</span><span class="s2">&quot;sites_only_vcf&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="p">[</span><span class="n">sites_only_vcf</span><span class="p">]</span>
+    <span class="k">if</span> <span class="n">singletons_vcf</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">args</span><span class="o">.</span><span class="n">load_only</span><span class="p">:</span>
+        <span class="n">input_step_resources</span><span class="p">[</span><span class="s2">&quot;singletons_vcf&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="p">[</span><span class="n">singletons_vcf</span><span class="p">]</span>
+    <span class="k">if</span> <span class="n">input_step_resources</span><span class="p">:</span>
+        <span class="n">_check_resource_existence</span><span class="p">(</span>
+            <span class="n">environment</span><span class="o">=</span><span class="n">environment</span><span class="p">,</span> <span class="n">input_step_resources</span><span class="o">=</span><span class="n">input_step_resources</span>
+        <span class="p">)</span>
+
+    <span class="c1"># Fail fast before the Batch if an output we&#39;d write already exists.</span>
+    <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">export_v4_test_vcf</span><span class="p">:</span>
+        <span class="n">_check_resource_existence</span><span class="p">(</span>
+            <span class="n">environment</span><span class="o">=</span><span class="n">environment</span><span class="p">,</span>
+            <span class="n">output_step_resources</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;v4_test_sites_vcf&quot;</span><span class="p">:</span> <span class="p">[</span><span class="n">sites_only_vcf</span><span class="p">]},</span>
+            <span class="n">overwrite</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">overwrite</span><span class="p">,</span>
+        <span class="p">)</span>
+    <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">load_iforest</span> <span class="ow">or</span> <span class="n">args</span><span class="o">.</span><span class="n">load_only</span><span class="p">:</span>
+        <span class="n">_check_resource_existence</span><span class="p">(</span>
+            <span class="n">environment</span><span class="o">=</span><span class="n">environment</span><span class="p">,</span>
+            <span class="n">output_step_resources</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;variant_qc_result&quot;</span><span class="p">:</span> <span class="p">[</span><span class="n">result_ht_path</span><span class="p">]},</span>
+            <span class="n">overwrite</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">overwrite</span><span class="p">,</span>
+        <span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">export_v4_test_vcf</span><span class="p">:</span>
+        <span class="n">export_v4_test_sites_vcf</span><span class="p">(</span><span class="n">contigs</span><span class="p">,</span> <span class="n">sites_only_vcf</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">export_only</span><span class="p">:</span>
+            <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Exported </span><span class="si">%s</span><span class="s2">; stopping.&quot;</span><span class="p">,</span> <span class="n">sites_only_vcf</span><span class="p">)</span>
+            <span class="k">return</span>
+
+    <span class="c1"># Telomere/centromere exclusion file. Used by both branches below: written and</span>
+    <span class="c1"># passed to GATK -XL in the Batch step, then re-read during reconciliation.</span>
+    <span class="n">exclude_intervals</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">run_prefix</span><span class="si">}</span><span class="s2">/exclude.intervals&quot;</span>
+
+    <span class="c1"># Clear old outputs before recording the new config so a resume after a failed</span>
+    <span class="c1"># --overwrite cannot see a matching config beside stale outputs.</span>
+    <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">overwrite</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">args</span><span class="o">.</span><span class="n">load_only</span><span class="p">:</span>
+        <span class="k">for</span> <span class="n">d</span> <span class="ow">in</span> <span class="p">(</span><span class="s2">&quot;extract&quot;</span><span class="p">,</span> <span class="s2">&quot;model&quot;</span><span class="p">,</span> <span class="s2">&quot;score&quot;</span><span class="p">):</span>
+            <span class="k">if</span> <span class="n">hfs</span><span class="o">.</span><span class="n">is_dir</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">run_prefix</span><span class="si">}</span><span class="s2">/</span><span class="si">{</span><span class="n">d</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">):</span>
+                <span class="n">hfs</span><span class="o">.</span><span class="n">rmtree</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">run_prefix</span><span class="si">}</span><span class="s2">/</span><span class="si">{</span><span class="n">d</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+
+    <span class="c1"># Everything that determines what the reused extract/model/score outputs contain.</span>
+    <span class="n">check_run_config</span><span class="p">(</span>
+        <span class="n">run_prefix</span><span class="p">,</span>
+        <span class="n">config</span><span class="o">=</span><span class="p">{</span>
+            <span class="s2">&quot;contigs&quot;</span><span class="p">:</span> <span class="n">contigs</span><span class="p">,</span>
+            <span class="s2">&quot;scatter_count&quot;</span><span class="p">:</span> <span class="n">scatter_count</span><span class="p">,</span>
+            <span class="s2">&quot;sites_only_vcf&quot;</span><span class="p">:</span> <span class="n">sites_only_vcf</span><span class="p">,</span>
+            <span class="s2">&quot;singletons_vcf&quot;</span><span class="p">:</span> <span class="n">singletons_vcf</span><span class="p">,</span>
+            <span class="s2">&quot;hyperparameters_json&quot;</span><span class="p">:</span> <span class="n">args</span><span class="o">.</span><span class="n">hyperparameters_json</span><span class="p">,</span>
+            <span class="s2">&quot;out_vcf_name&quot;</span><span class="p">:</span> <span class="n">args</span><span class="o">.</span><span class="n">out_vcf_name</span><span class="p">,</span>
+            <span class="s2">&quot;gatk_image&quot;</span><span class="p">:</span> <span class="n">args</span><span class="o">.</span><span class="n">gatk_image</span><span class="p">,</span>
+            <span class="s2">&quot;features&quot;</span><span class="p">:</span> <span class="n">VARIANT_QC_FEATURES</span><span class="p">,</span>
+            <span class="s2">&quot;resource_args&quot;</span><span class="p">:</span> <span class="p">{</span>
+                <span class="n">m</span><span class="p">:</span> <span class="n">_resource_args</span><span class="p">(</span><span class="n">m</span><span class="p">,</span> <span class="n">singletons_vcf</span><span class="p">)</span> <span class="k">for</span> <span class="n">m</span> <span class="ow">in</span> <span class="p">(</span><span class="s2">&quot;SNP&quot;</span><span class="p">,</span> <span class="s2">&quot;INDEL&quot;</span><span class="p">)</span>
+            <span class="p">},</span>
+        <span class="p">},</span>
+        <span class="n">overwrite</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">overwrite</span><span class="p">,</span>
+        <span class="n">write</span><span class="o">=</span><span class="ow">not</span> <span class="n">args</span><span class="o">.</span><span class="n">load_only</span><span class="p">,</span>
+    <span class="p">)</span>
+
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">args</span><span class="o">.</span><span class="n">load_only</span><span class="p">:</span>
+        <span class="n">backend</span> <span class="o">=</span> <span class="n">hb</span><span class="o">.</span><span class="n">ServiceBackend</span><span class="p">(</span>
+            <span class="n">billing_project</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">batch_billing_project</span><span class="p">,</span>
+            <span class="n">remote_tmpdir</span><span class="o">=</span><span class="sa">f</span><span class="s2">&quot;gs://</span><span class="si">{</span><span class="n">BATCH_TMP_BUCKET</span><span class="si">}</span><span class="s2">/&quot;</span><span class="p">,</span>
+        <span class="p">)</span>
+        <span class="n">export_exclusion_intervals</span><span class="p">(</span><span class="n">exclude_intervals</span><span class="p">)</span>
+        <span class="n">b</span> <span class="o">=</span> <span class="n">hb</span><span class="o">.</span><span class="n">Batch</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;isolation forest </span><span class="si">{</span><span class="n">model_id</span><span class="si">}{</span><span class="n">args</span><span class="o">.</span><span class="n">batch_suffix</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">backend</span><span class="o">=</span><span class="n">backend</span><span class="p">)</span>
+        <span class="n">isolation_forest_workflow</span><span class="p">(</span>
+            <span class="n">b</span><span class="o">=</span><span class="n">b</span><span class="p">,</span>
+            <span class="n">sites_only_vcf</span><span class="o">=</span><span class="n">sites_only_vcf</span><span class="p">,</span>
+            <span class="n">run_prefix</span><span class="o">=</span><span class="n">run_prefix</span><span class="p">,</span>
+            <span class="n">out_vcf_name</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">out_vcf_name</span><span class="p">,</span>
+            <span class="n">singletons_vcf</span><span class="o">=</span><span class="n">singletons_vcf</span><span class="p">,</span>
+            <span class="n">calling_intervals_args</span><span class="o">=</span><span class="n">calling_intervals_args</span><span class="p">,</span>
+            <span class="n">exclude_intervals</span><span class="o">=</span><span class="n">exclude_intervals</span><span class="p">,</span>
+            <span class="n">scatter_count</span><span class="o">=</span><span class="n">scatter_count</span><span class="p">,</span>
+            <span class="n">gatk_image</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">gatk_image</span><span class="p">,</span>
+            <span class="n">gcp_billing_project</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">gcp_billing_project</span><span class="p">,</span>
+            <span class="n">hyperparameters_json</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">hyperparameters_json</span><span class="p">,</span>
+            <span class="n">overwrite</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">overwrite</span><span class="p">,</span>
+        <span class="p">)</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="c1"># An all-reused rerun schedules no jobs; an empty batch may not report</span>
+            <span class="c1"># success.</span>
+            <span class="k">if</span> <span class="n">b</span><span class="o">.</span><span class="n">select_jobs</span><span class="p">(</span><span class="s2">&quot;GATK&quot;</span><span class="p">):</span>
+                <span class="n">run_batch</span><span class="p">(</span><span class="n">b</span><span class="p">,</span> <span class="s2">&quot;Isolation forest&quot;</span><span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;All outputs exist; skipping Batch.&quot;</span><span class="p">)</span>
+        <span class="k">finally</span><span class="p">:</span>
+            <span class="n">backend</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+
+    <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">load_iforest</span> <span class="ow">or</span> <span class="n">args</span><span class="o">.</span><span class="n">load_only</span><span class="p">:</span>
+        <span class="n">ht</span> <span class="o">=</span> <span class="n">merge_iforest_result</span><span class="p">(</span>
+            <span class="n">run_prefix</span><span class="o">=</span><span class="n">run_prefix</span><span class="p">,</span>
+            <span class="n">out_vcf_name</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">out_vcf_name</span><span class="p">,</span>
+            <span class="n">model_id</span><span class="o">=</span><span class="n">model_id</span><span class="p">,</span>
+            <span class="n">scatter_count</span><span class="o">=</span><span class="n">scatter_count</span><span class="p">,</span>
+            <span class="n">n_partitions</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">n_partitions</span><span class="p">,</span>
+            <span class="n">header_path</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">header_path</span><span class="p">,</span>
+            <span class="n">array_elements_required</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">array_elements_required</span><span class="p">,</span>
+            <span class="n">transmitted_singletons</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">transmitted_singletons</span><span class="p">,</span>
+            <span class="n">sibling_singletons</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">sibling_singletons</span><span class="p">,</span>
+            <span class="n">adj</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">adj</span><span class="p">,</span>
+        <span class="p">)</span>
+        <span class="c1"># Write first, then reconcile the materialized HT so the merge is computed once.</span>
+        <span class="n">ht</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">result_ht_path</span><span class="p">,</span> <span class="n">overwrite</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">overwrite</span><span class="p">)</span>
+        <span class="n">reconcile_scored_sites</span><span class="p">(</span>
+            <span class="n">sites_only_vcf</span><span class="o">=</span><span class="n">sites_only_vcf</span><span class="p">,</span>
+            <span class="n">contigs</span><span class="o">=</span><span class="n">contigs</span><span class="p">,</span>
+            <span class="n">exclude_intervals_path</span><span class="o">=</span><span class="n">exclude_intervals</span><span class="p">,</span>
+            <span class="n">scored_ht</span><span class="o">=</span><span class="n">hl</span><span class="o">.</span><span class="n">read_table</span><span class="p">(</span><span class="n">result_ht_path</span><span class="p">),</span>
+            <span class="n">array_elements_required</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">array_elements_required</span><span class="p">,</span>
+        <span class="p">)</span></div>
+
+
+<span class="k">def</span> <span class="nf">get_script_argument_parser</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="n">argparse</span><span class="o">.</span><span class="n">ArgumentParser</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Get script argument parser.&quot;&quot;&quot;</span>
+    <span class="n">parser</span> <span class="o">=</span> <span class="n">argparse</span><span class="o">.</span><span class="n">ArgumentParser</span><span class="p">()</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;-o&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;--overwrite&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Whether to overwrite existing outputs (with --load-only, only overwrite the result HT).&quot;</span><span class="p">,</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--environment&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Compute environment.&quot;</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="s2">&quot;batch&quot;</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">str</span><span class="p">,</span>
+        <span class="n">choices</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;rwb&quot;</span><span class="p">,</span> <span class="s2">&quot;batch&quot;</span><span class="p">],</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--model-id&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Model ID for the isolation forest run. Must start with &#39;if&#39; (e.g. if_test1).&quot;</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">str</span><span class="p">,</span>
+        <span class="n">required</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+    <span class="p">)</span>
+
+    <span class="n">test_args</span> <span class="o">=</span> <span class="n">parser</span><span class="o">.</span><span class="n">add_argument_group</span><span class="p">(</span><span class="s2">&quot;testing options&quot;</span><span class="p">)</span>
+    <span class="n">test_args</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--test&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Filter to --test-chrom and use a small scatter count for testing.&quot;</span><span class="p">,</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">test_args</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--test-chrom&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="p">(</span>
+            <span class="s2">&quot;Contig(s) to score under --test/--test-on-v4. Must match the contigs in &quot;</span>
+            <span class="s2">&quot;the test info VCF.&quot;</span>
+        <span class="p">),</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">str</span><span class="p">,</span>
+        <span class="n">nargs</span><span class="o">=</span><span class="s2">&quot;+&quot;</span><span class="p">,</span>
+        <span class="c1"># Test trio stats (singletons) exist only for DENSE_TRIO_TEST_CHROMS.</span>
+        <span class="n">default</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;chr21&quot;</span><span class="p">],</span>
+    <span class="p">)</span>
+    <span class="n">test_args</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--test-on-v4&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Use gnomAD v4 sites/true-positive VCFs as inputs (v5 data unavailable).&quot;</span><span class="p">,</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">test_args</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--export-v4-test-vcf&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="p">(</span>
+            <span class="s2">&quot;Export the v4 split info HT filtered to --test-chrom as the --test-on-v4 &quot;</span>
+            <span class="s2">&quot;sites VCF. Requires --test-on-v4.&quot;</span>
+        <span class="p">),</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">test_args</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--export-only&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Stop after --export-v4-test-vcf instead of continuing to the Batch.&quot;</span><span class="p">,</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+
+    <span class="n">batch_args</span> <span class="o">=</span> <span class="n">parser</span><span class="o">.</span><span class="n">add_argument_group</span><span class="p">(</span><span class="s2">&quot;batch/GCP configuration&quot;</span><span class="p">)</span>
+    <span class="n">batch_args</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--batch-billing-project&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Hail Batch billing project.&quot;</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">str</span><span class="p">,</span>
+        <span class="n">required</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">batch_args</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--gcp-billing-project&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;GCP billing project for requester-pays buckets.&quot;</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">str</span><span class="p">,</span>
+        <span class="n">required</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">batch_args</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--batch-suffix&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;String to append to the Batch name.&quot;</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="s2">&quot;&quot;</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">str</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">batch_args</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--app-name&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Job name for the batch/QoB backend.&quot;</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">str</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">batch_args</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--driver-cores&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Number of driver cores. The load step has been run with 4-8.&quot;</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">int</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">batch_args</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--driver-memory&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Driver memory. Must be &#39;highmem&#39; for --load-iforest/--load-only.&quot;</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">str</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">batch_args</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--worker-cores&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Number of worker cores.&quot;</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">int</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">batch_args</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--worker-memory&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Worker memory.&quot;</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">str</span><span class="p">,</span>
+    <span class="p">)</span>
+
+    <span class="n">gatk_args</span> <span class="o">=</span> <span class="n">parser</span><span class="o">.</span><span class="n">add_argument_group</span><span class="p">(</span><span class="s2">&quot;GATK scoring&quot;</span><span class="p">)</span>
+    <span class="n">gatk_args</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--gatk-image&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;GATK docker image.&quot;</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="n">GATK_IMAGE</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">str</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">gatk_args</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--scatter-count&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Number of intervals to scatter scoring across.&quot;</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="mi">100</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">int</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">gatk_args</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--out-vcf-name&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Base name for scored VCF shards.&quot;</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">str</span><span class="p">,</span>
+        <span class="n">required</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">gatk_args</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--hyperparameters-json&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Optional GATK model hyperparameters JSON path.&quot;</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">str</span><span class="p">,</span>
+    <span class="p">)</span>
+
+    <span class="n">tp_args</span> <span class="o">=</span> <span class="n">parser</span><span class="o">.</span><span class="n">add_argument_group</span><span class="p">(</span><span class="s2">&quot;training/calibration set&quot;</span><span class="p">)</span>
+    <span class="n">tp_args</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--transmitted-singletons&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Include transmitted singletons as a training/calibration set.&quot;</span><span class="p">,</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">tp_args</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--sibling-singletons&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Include sibling singletons as a training/calibration set.&quot;</span><span class="p">,</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">tp_args</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--adj&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Use adj genotypes for the true-positive singletons VCF.&quot;</span><span class="p">,</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+
+    <span class="n">load_args</span> <span class="o">=</span> <span class="n">parser</span><span class="o">.</span><span class="n">add_argument_group</span><span class="p">(</span><span class="s2">&quot;load results HT&quot;</span><span class="p">)</span>
+    <span class="n">load_args</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--load-iforest&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Merge the scored VCFs into a variant QC result HT.&quot;</span><span class="p">,</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">load_args</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--load-only&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Skip the GATK Batch and only run the load step.&quot;</span><span class="p">,</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">load_args</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--n-partitions&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Number of partitions for the result HT.&quot;</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="mi">5000</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">int</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">load_args</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--header-path&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Optional header file to use when importing the scored VCFs.&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">load_args</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--array-elements-required&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Set array_elements_required=True when importing the scored VCFs.&quot;</span><span class="p">,</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="k">return</span> <span class="n">parser</span>
+
+
+<span class="k">if</span> <span class="vm">__name__</span> <span class="o">==</span> <span class="s2">&quot;__main__&quot;</span><span class="p">:</span>
+    <span class="n">parser</span> <span class="o">=</span> <span class="n">get_script_argument_parser</span><span class="p">()</span>
+    <span class="n">main</span><span class="p">(</span><span class="n">parser</span><span class="o">.</span><span class="n">parse_args</span><span class="p">())</span>
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p></p>
+  </div>
+
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

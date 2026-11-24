@@ -1,0 +1,43 @@
+gnomad_qc.v5.variant_qc.create_vqsr_test_data
+=============================================
+
+Create a schema-faithful VQSR test input from gnomAD v4 data.
+
+The v5 VQSR pipeline (``vqsr.py``) consumes a sites-only info VCF
+(:func:`info_vcf_path`) and, optionally, a true-positive/singleton VCF
+(:func:`get_true_positive_vcf_path`). Those are produced by
+``generate_variant_qc_annotations.py`` from AoU data, which is not yet available.
+
+This script stands in for that step so the VQSR pipeline can be exercised
+end-to-end before the real v5 info VCF exists. It reads the public gnomAD v4
+exomes info Table, restricts it to a small test region, and remaps its
+allele-specific annotations onto the exact INFO schema that the v5 info VCF
+export produces, then writes the info VCF and a transmitted-singleton VCF to the
+``test=True`` paths that ``vqsr.py --test`` reads.
+
+The v4 ``AS_info`` struct already carries every field the v5 export keeps that
+VQSR reads, so the mapping is a straight rename plus the two type/shape
+adjustments the v5 export applies:
+
+    - ``AS_QD`` is cast to ``float32`` (v5 stores it as ``float32``).
+    - ``AS_SB_TABLE`` is reshaped from a flat 4-element array to the nested
+      ``[[ref_fwd, ref_rev], [alt_fwd, alt_rev]]`` form expected by
+      ``adjust_vcf_incompatible_types``.
+
+
+
+
+
+.. argparse::
+   :ref: gnomad_qc.v5.variant_qc.create_vqsr_test_data.get_script_argument_parser
+   :prog: gnomad_qc.v5.variant_qc.create_vqsr_test_data.py
+
+
+
+Module Functions
+****************
+
+.. gnomad_automodulesummary:: gnomad_qc.v5.variant_qc.create_vqsr_test_data
+
+.. automodule:: gnomad_qc.v5.variant_qc.create_vqsr_test_data
+    :exclude-members: get_script_argument_parser

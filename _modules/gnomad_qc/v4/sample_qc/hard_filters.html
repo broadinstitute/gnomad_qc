@@ -1,0 +1,818 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>gnomad_qc.v4.sample_qc.hard_filters &mdash; gnomad_qc master documentation</title>
+      <link rel="stylesheet" href="../../../../_static/pygments.css" type="text/css" />
+      <link rel="stylesheet" href="../../../../_static/css/theme.css" type="text/css" />
+      <link rel="stylesheet" href="../../../../_static/theme_overrides.css" type="text/css" />
+  <!--[if lt IE 9]>
+    <script src="../../../../_static/js/html5shiv.min.js"></script>
+  <![endif]-->
+  
+        <script src="../../../../_static/jquery.js"></script>
+        <script src="../../../../_static/_sphinx_javascript_frameworks_compat.js"></script>
+        <script data-url_root="../../../../" id="documentation_options" src="../../../../_static/documentation_options.js"></script>
+        <script src="../../../../_static/doctools.js"></script>
+        <script src="../../../../_static/sphinx_highlight.js"></script>
+        <script src="https://unpkg.com/mermaid@10.2.0/dist/mermaid.min.js"></script>
+        <script>mermaid.initialize({startOnLoad:true});</script>
+    <script src="../../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../../index.html" class="icon icon-home">
+            gnomad_qc
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../../api_reference/index.html">API Reference</a></li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/broadinstitute/gnomad_qc/tags">Change Log</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../../index.html">gnomad_qc</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../../index.html">Module code</a></li>
+      <li class="breadcrumb-item active">gnomad_qc.v4.sample_qc.hard_filters</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for gnomad_qc.v4.sample_qc.hard_filters</h1><div class="highlight"><pre>
+<span></span><span class="sd">&quot;&quot;&quot;Script to determine samples that fail hard filtering thresholds.&quot;&quot;&quot;</span>
+
+<span class="kn">import</span> <span class="nn">argparse</span>
+<span class="kn">import</span> <span class="nn">logging</span>
+
+<span class="kn">import</span> <span class="nn">hail</span> <span class="k">as</span> <span class="nn">hl</span>
+<span class="kn">from</span> <span class="nn">gnomad.resources.grch38.reference_data</span> <span class="kn">import</span> <span class="n">telomeres_and_centromeres</span>
+<span class="kn">from</span> <span class="nn">gnomad.sample_qc.filtering</span> <span class="kn">import</span> <span class="n">compute_stratified_sample_qc</span>
+<span class="kn">from</span> <span class="nn">gnomad.utils.annotations</span> <span class="kn">import</span> <span class="n">annotate_adj</span><span class="p">,</span> <span class="n">bi_allelic_expr</span>
+<span class="kn">from</span> <span class="nn">gnomad.utils.filtering</span> <span class="kn">import</span> <span class="n">add_filters_expr</span><span class="p">,</span> <span class="n">filter_to_adj</span><span class="p">,</span> <span class="n">filter_to_autosomes</span>
+<span class="kn">from</span> <span class="nn">gnomad.utils.slack</span> <span class="kn">import</span> <span class="n">slack_notifications</span>
+
+<span class="kn">from</span> <span class="nn">gnomad_qc.slack_creds</span> <span class="kn">import</span> <span class="n">slack_token</span>
+<span class="kn">from</span> <span class="nn">gnomad_qc.v4.resources.basics</span> <span class="kn">import</span> <span class="p">(</span>
+    <span class="n">calling_intervals</span><span class="p">,</span>
+    <span class="n">get_checkpoint_path</span><span class="p">,</span>
+    <span class="n">get_gnomad_v4_vds</span><span class="p">,</span>
+    <span class="n">get_logging_path</span><span class="p">,</span>
+    <span class="n">gnomad_v4_testset_meta</span><span class="p">,</span>
+<span class="p">)</span>
+<span class="kn">from</span> <span class="nn">gnomad_qc.v4.resources.meta</span> <span class="kn">import</span> <span class="n">project_meta</span>
+<span class="kn">from</span> <span class="nn">gnomad_qc.v4.resources.sample_qc</span> <span class="kn">import</span> <span class="p">(</span>
+    <span class="n">contamination</span><span class="p">,</span>
+    <span class="n">fingerprinting_failed</span><span class="p">,</span>
+    <span class="n">get_sample_qc</span><span class="p">,</span>
+    <span class="n">hard_filtered_samples</span><span class="p">,</span>
+    <span class="n">hard_filtered_samples_no_sex</span><span class="p">,</span>
+    <span class="n">interval_coverage</span><span class="p">,</span>
+    <span class="n">sample_chr20_mean_dp</span><span class="p">,</span>
+    <span class="n">sample_qc_mt_callrate</span><span class="p">,</span>
+    <span class="n">sex</span><span class="p">,</span>
+    <span class="n">v4_predetermined_qc</span><span class="p">,</span>
+<span class="p">)</span>
+
+<span class="n">logging</span><span class="o">.</span><span class="n">basicConfig</span><span class="p">(</span><span class="nb">format</span><span class="o">=</span><span class="s2">&quot;</span><span class="si">%(levelname)s</span><span class="s2"> (</span><span class="si">%(name)s</span><span class="s2"> </span><span class="si">%(lineno)s</span><span class="s2">): </span><span class="si">%(message)s</span><span class="s2">&quot;</span><span class="p">)</span>
+<span class="n">logger</span> <span class="o">=</span> <span class="n">logging</span><span class="o">.</span><span class="n">getLogger</span><span class="p">(</span><span class="s2">&quot;hard_filters&quot;</span><span class="p">)</span>
+<span class="n">logger</span><span class="o">.</span><span class="n">setLevel</span><span class="p">(</span><span class="n">logging</span><span class="o">.</span><span class="n">INFO</span><span class="p">)</span>
+
+
+<div class="viewcode-block" id="compute_sample_qc"><a class="viewcode-back" href="../../../../api_reference/v4/sample_qc/hard_filters.html#gnomad_qc.v4.sample_qc.hard_filters.compute_sample_qc">[docs]</a><span class="k">def</span> <span class="nf">compute_sample_qc</span><span class="p">(</span>
+    <span class="n">n_partitions</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">500</span><span class="p">,</span>
+    <span class="n">test</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+    <span class="n">n_alt_alleles_strata</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">3</span><span class="p">,</span>
+    <span class="n">n_alt_alleles_strata_name</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;three&quot;</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Perform sample QC on the raw split matrix table using `compute_stratified_sample_qc`.</span>
+
+<span class="sd">    :param n_partitions: Number of partitions to write the output sample QC HT to.</span>
+<span class="sd">    :param test: Whether to use the gnomAD v4 test dataset. Default is to use the full</span>
+<span class="sd">        dataset.</span>
+<span class="sd">    :param n_alt_alleles_strata: Number of alternative alleles to stratify sample QC on.</span>
+<span class="sd">        For example `n_alt_alleles_strata` = 2 will stratify &#39;bi-allelic&#39; and</span>
+<span class="sd">        &#39;multi-allelic&#39;. `n_alt_alleles_strata` = 3 will stratify under 3 alt alleles</span>
+<span class="sd">        and 3 or more alt alleles. Default is 3.</span>
+<span class="sd">    :param n_alt_alleles_strata_name: Name to use for number of alternative allele</span>
+<span class="sd">        stratification, where strata names are</span>
+<span class="sd">        &#39;under_{n_alt_alleles_strata_name}_alt_alleles&#39; and</span>
+<span class="sd">        &#39;{n_alt_alleles_strata_name}_or_more_alt_alleles&#39;. This is not used when</span>
+<span class="sd">        `n_alt_alleles_strata` = 2, and instead uses &#39;bi-allelic&#39; and &#39;multi-allelic&#39;.</span>
+<span class="sd">        Default is &#39;three&#39;.</span>
+<span class="sd">    :return: Table containing sample QC metrics.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Computing sample QC&quot;</span><span class="p">)</span>
+    <span class="n">vds</span> <span class="o">=</span> <span class="n">get_gnomad_v4_vds</span><span class="p">(</span><span class="n">split</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">remove_hard_filtered_samples</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">test</span><span class="o">=</span><span class="n">test</span><span class="p">)</span>
+    <span class="n">vds</span> <span class="o">=</span> <span class="n">hl</span><span class="o">.</span><span class="n">vds</span><span class="o">.</span><span class="n">filter_chromosomes</span><span class="p">(</span><span class="n">vds</span><span class="p">,</span> <span class="n">keep_autosomes</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+
+    <span class="c1"># Remove centromeres and telomeres in case they were included.</span>
+    <span class="n">vds</span> <span class="o">=</span> <span class="n">hl</span><span class="o">.</span><span class="n">vds</span><span class="o">.</span><span class="n">filter_intervals</span><span class="p">(</span>
+        <span class="n">vds</span><span class="p">,</span> <span class="n">intervals</span><span class="o">=</span><span class="n">telomeres_and_centromeres</span><span class="o">.</span><span class="n">ht</span><span class="p">(),</span> <span class="n">keep</span><span class="o">=</span><span class="kc">False</span>
+    <span class="p">)</span>
+    <span class="k">if</span> <span class="n">n_alt_alleles_strata</span> <span class="o">&lt;</span> <span class="mi">2</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;&#39;n_alt_alleles_strata&#39; must be greater than or equal to 2!&quot;</span><span class="p">)</span>
+    <span class="k">elif</span> <span class="n">n_alt_alleles_strata</span> <span class="o">==</span> <span class="mi">2</span><span class="p">:</span>
+        <span class="n">strata</span> <span class="o">=</span> <span class="p">{</span>
+            <span class="s2">&quot;bi_allelic&quot;</span><span class="p">:</span> <span class="n">bi_allelic_expr</span><span class="p">(</span><span class="n">vds</span><span class="o">.</span><span class="n">variant_data</span><span class="p">),</span>
+            <span class="s2">&quot;multi_allelic&quot;</span><span class="p">:</span> <span class="o">~</span><span class="n">bi_allelic_expr</span><span class="p">(</span><span class="n">vds</span><span class="o">.</span><span class="n">variant_data</span><span class="p">),</span>
+        <span class="p">}</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="c1"># n_unsplit_alleles includes the reference allele.</span>
+        <span class="c1"># So, for example, if stratifying at 3 alt alleles (n_alt_alleles_strata = 3),</span>
+        <span class="c1"># the stratification will be:</span>
+        <span class="c1"># - Under 3 alt alleles (under_three_alt_alleles): this includes variants with</span>
+        <span class="c1">#     fewer than 3 alt alleles, which is the same as:</span>
+        <span class="c1">#     - total alleles &lt;= 3 (n_unsplit_alleles &lt;= 3)</span>
+        <span class="c1">#     - i.e., 2 or fewer alt alleles (since 1 is the ref)</span>
+        <span class="c1"># - 3 or more alt alleles (three_or_more_alt_alleles): this includes variants with</span>
+        <span class="c1">#     3 or more alt alleles, which is:</span>
+        <span class="c1">#     - total alleles &gt; 3 (n_unsplit_alleles &gt; 3)</span>
+        <span class="n">strata</span> <span class="o">=</span> <span class="p">{</span>
+            <span class="sa">f</span><span class="s2">&quot;under_</span><span class="si">{</span><span class="n">n_alt_alleles_strata_name</span><span class="si">}</span><span class="s2">_alt_alleles&quot;</span><span class="p">:</span> <span class="p">(</span>
+                <span class="n">vds</span><span class="o">.</span><span class="n">variant_data</span><span class="o">.</span><span class="n">n_unsplit_alleles</span> <span class="o">&lt;=</span> <span class="n">n_alt_alleles_strata</span>
+            <span class="p">),</span>
+            <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">n_alt_alleles_strata_name</span><span class="si">}</span><span class="s2">_or_more_alt_alleles&quot;</span><span class="p">:</span> <span class="p">(</span>
+                <span class="n">vds</span><span class="o">.</span><span class="n">variant_data</span><span class="o">.</span><span class="n">n_unsplit_alleles</span> <span class="o">&gt;</span> <span class="n">n_alt_alleles_strata</span>
+            <span class="p">),</span>
+        <span class="p">}</span>
+    <span class="n">sample_qc_ht</span> <span class="o">=</span> <span class="n">compute_stratified_sample_qc</span><span class="p">(</span>
+        <span class="n">vds</span><span class="p">,</span>
+        <span class="n">strata</span><span class="o">=</span><span class="n">strata</span><span class="p">,</span>
+        <span class="n">tmp_ht_prefix</span><span class="o">=</span><span class="n">get_sample_qc</span><span class="p">(</span><span class="n">test</span><span class="o">=</span><span class="n">test</span><span class="p">)</span><span class="o">.</span><span class="n">path</span><span class="p">[:</span><span class="o">-</span><span class="mi">3</span><span class="p">],</span>
+        <span class="n">gt_col</span><span class="o">=</span><span class="s2">&quot;GT&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">sample_qc_ht</span><span class="o">.</span><span class="n">repartition</span><span class="p">(</span><span class="n">n_partitions</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="compute_hard_filters"><a class="viewcode-back" href="../../../../api_reference/v4/sample_qc/hard_filters.html#gnomad_qc.v4.sample_qc.hard_filters.compute_hard_filters">[docs]</a><span class="k">def</span> <span class="nf">compute_hard_filters</span><span class="p">(</span>
+    <span class="n">include_sex_filter</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+    <span class="n">max_n_singleton</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mi">5000</span><span class="p">,</span>
+    <span class="n">max_r_het_hom_var</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mi">10</span><span class="p">,</span>
+    <span class="n">min_bases_dp_over_1</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">5e7</span><span class="p">,</span>
+    <span class="n">min_bases_dp_over_20</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">4e7</span><span class="p">,</span>
+    <span class="n">max_chimera</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">0.05</span><span class="p">,</span>
+    <span class="n">max_contamination_estimate</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">0.015</span><span class="p">,</span>
+    <span class="n">test</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+    <span class="n">chr20_mean_dp_ht</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">min_cov</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">qc_mt_callrate_ht</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">min_qc_mt_adj_callrate</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Apply hard filters to samples and return a Table with the filtered samples and the reason for filtering.</span>
+
+<span class="sd">    If `include_sex_filter` is True, this function expects a sex inference Table</span>
+<span class="sd">    generated by `sex_inference.py --impute-sex`.</span>
+
+<span class="sd">    .. warning::</span>
+<span class="sd">        The defaults used in this function are callset specific, these hardfilter</span>
+<span class="sd">        cutoffs will need to be re-examined for each callset</span>
+
+<span class="sd">    :param include_sex_filter: If sex inference should be used in filtering.</span>
+<span class="sd">    :param max_n_singleton: Filtering threshold to use for the maximum number of</span>
+<span class="sd">        singletons.</span>
+<span class="sd">    :param max_r_het_hom_var: Filtering threshold to use for the maximum ratio of</span>
+<span class="sd">        heterozygotes to alternate homozygotes.</span>
+<span class="sd">    :param min_bases_dp_over_1: Filtering threshold to use for the minimum number of</span>
+<span class="sd">        bases with a DP over one.</span>
+<span class="sd">    :param min_bases_dp_over_20: Filtering threshold to use for the minimum number of</span>
+<span class="sd">        bases with a DP over 20.</span>
+<span class="sd">    :param max_chimera: Filtering threshold to use for maximum chimera (this is a</span>
+<span class="sd">        proportion not a percent, e.g. 5% == 0.05, %5 != 5).</span>
+<span class="sd">    :param max_contamination_estimate: Filtering threshold to use for maximum</span>
+<span class="sd">        contamination estimate.</span>
+<span class="sd">    :param test: Whether to use the gnomAD v4 test dataset. Default is to use the full</span>
+<span class="sd">        dataset.</span>
+<span class="sd">    :param chr20_mean_dp_ht: Table containing the per sample chromosome 20 mean DP.</span>
+<span class="sd">    :param min_cov: Filtering threshold to use for chr20 coverage.</span>
+<span class="sd">    :param qc_mt_callrate_ht: Table containing the per sample QC MatrixTable callrate.</span>
+<span class="sd">    :param min_qc_mt_adj_callrate: Filtering threshold to use for sample callrate</span>
+<span class="sd">        computed on only predetermined QC variants (predetermined using CCDG</span>
+<span class="sd">        genomes/exomes, gnomAD v3.1 genomes, and UKB exomes) after ADJ filtering.</span>
+<span class="sd">    :return: Table of hard filtered samples.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">get_gnomad_v4_vds</span><span class="p">(</span>
+        <span class="n">remove_hard_filtered_samples</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">test</span><span class="o">=</span><span class="n">test</span>
+    <span class="p">)</span><span class="o">.</span><span class="n">variant_data</span><span class="o">.</span><span class="n">cols</span><span class="p">()</span>
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">annotate_globals</span><span class="p">(</span>
+        <span class="n">hard_filter_cutoffs</span><span class="o">=</span><span class="n">hl</span><span class="o">.</span><span class="n">struct</span><span class="p">(</span>
+            <span class="n">max_n_singleton</span><span class="o">=</span><span class="n">max_n_singleton</span><span class="p">,</span>
+            <span class="n">max_r_het_hom_var</span><span class="o">=</span><span class="n">max_r_het_hom_var</span><span class="p">,</span>
+            <span class="n">min_bases_dp_over_1</span><span class="o">=</span><span class="n">min_bases_dp_over_1</span><span class="p">,</span>
+            <span class="n">min_bases_dp_over_20</span><span class="o">=</span><span class="n">min_bases_dp_over_20</span><span class="p">,</span>
+            <span class="n">max_chimera</span><span class="o">=</span><span class="n">max_chimera</span><span class="p">,</span>
+            <span class="n">max_contamination_estimate</span><span class="o">=</span><span class="n">max_contamination_estimate</span><span class="p">,</span>
+        <span class="p">),</span>
+    <span class="p">)</span>
+    <span class="k">if</span> <span class="n">min_cov</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">annotate_globals</span><span class="p">(</span>
+            <span class="n">hard_filter_cutoffs</span><span class="o">=</span><span class="n">ht</span><span class="o">.</span><span class="n">hard_filter_cutoffs</span><span class="o">.</span><span class="n">annotate</span><span class="p">(</span>
+                <span class="n">chr_20_dp_threshold</span><span class="o">=</span><span class="n">min_cov</span>
+            <span class="p">)</span>
+        <span class="p">)</span>
+
+    <span class="n">hard_filters</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">()</span>
+    <span class="n">sample_qc_metric_hard_filters</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">()</span>
+
+    <span class="c1"># Flag samples failing fingerprinting.</span>
+    <span class="n">fp_ht</span> <span class="o">=</span> <span class="n">fingerprinting_failed</span><span class="o">.</span><span class="n">ht</span><span class="p">()</span>
+    <span class="n">hard_filters</span><span class="p">[</span><span class="s2">&quot;failed_fingerprinting&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">hl</span><span class="o">.</span><span class="n">is_defined</span><span class="p">(</span><span class="n">fp_ht</span><span class="p">[</span><span class="n">ht</span><span class="o">.</span><span class="n">key</span><span class="p">])</span>
+
+    <span class="c1"># Flag extreme raw bi-allelic sample QC outliers.</span>
+    <span class="n">bi_allelic_qc_ht</span> <span class="o">=</span> <span class="n">get_sample_qc</span><span class="p">(</span><span class="s2">&quot;bi_allelic&quot;</span><span class="p">,</span> <span class="n">test</span><span class="o">=</span><span class="n">test</span><span class="p">)</span><span class="o">.</span><span class="n">ht</span><span class="p">()</span>
+    <span class="c1"># Convert tuples to lists so we can find the index of the passed threshold.</span>
+    <span class="n">bi_allelic_qc_ht</span> <span class="o">=</span> <span class="n">bi_allelic_qc_ht</span><span class="o">.</span><span class="n">annotate</span><span class="p">(</span>
+        <span class="o">**</span><span class="p">{</span>
+            <span class="sa">f</span><span class="s2">&quot;bases_dp_over_</span><span class="si">{</span><span class="n">hl</span><span class="o">.</span><span class="n">eval</span><span class="p">(</span><span class="n">bi_allelic_qc_ht</span><span class="o">.</span><span class="n">dp_bins</span><span class="p">[</span><span class="n">i</span><span class="p">])</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">:</span> <span class="p">(</span>
+                <span class="n">bi_allelic_qc_ht</span><span class="o">.</span><span class="n">bases_over_dp_threshold</span><span class="p">[</span><span class="n">i</span><span class="p">]</span>
+            <span class="p">)</span>
+            <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">bi_allelic_qc_ht</span><span class="o">.</span><span class="n">dp_bins</span><span class="p">))</span>
+        <span class="p">},</span>
+    <span class="p">)</span>
+    <span class="n">bi_allelic_qc_struct</span> <span class="o">=</span> <span class="n">bi_allelic_qc_ht</span><span class="p">[</span><span class="n">ht</span><span class="o">.</span><span class="n">key</span><span class="p">]</span>
+    <span class="n">sample_qc_metric_hard_filters</span><span class="p">[</span><span class="s2">&quot;high_n_singleton&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span>
+        <span class="n">bi_allelic_qc_struct</span><span class="o">.</span><span class="n">n_singleton</span> <span class="o">&gt;</span> <span class="n">max_n_singleton</span>
+    <span class="p">)</span>
+    <span class="n">sample_qc_metric_hard_filters</span><span class="p">[</span><span class="s2">&quot;high_r_het_hom_var&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span>
+        <span class="n">bi_allelic_qc_struct</span><span class="o">.</span><span class="n">r_het_hom_var</span> <span class="o">&gt;</span> <span class="n">max_r_het_hom_var</span>
+    <span class="p">)</span>
+    <span class="n">sample_qc_metric_hard_filters</span><span class="p">[</span><span class="s2">&quot;low_bases_dp_over_1&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span>
+        <span class="n">bi_allelic_qc_struct</span><span class="o">.</span><span class="n">bases_dp_over_1</span> <span class="o">&lt;</span> <span class="n">min_bases_dp_over_1</span>
+    <span class="p">)</span>
+    <span class="n">sample_qc_metric_hard_filters</span><span class="p">[</span><span class="s2">&quot;low_bases_dp_over_20&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span>
+        <span class="n">bi_allelic_qc_struct</span><span class="o">.</span><span class="n">bases_dp_over_20</span> <span class="o">&lt;</span> <span class="n">min_bases_dp_over_20</span>
+    <span class="p">)</span>
+    <span class="n">hard_filters</span><span class="p">[</span><span class="s2">&quot;sample_qc_metrics&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span>
+        <span class="n">sample_qc_metric_hard_filters</span><span class="p">[</span><span class="s2">&quot;high_n_singleton&quot;</span><span class="p">]</span>
+        <span class="o">|</span> <span class="n">sample_qc_metric_hard_filters</span><span class="p">[</span><span class="s2">&quot;high_r_het_hom_var&quot;</span><span class="p">]</span>
+        <span class="o">|</span> <span class="n">sample_qc_metric_hard_filters</span><span class="p">[</span><span class="s2">&quot;low_bases_dp_over_1&quot;</span><span class="p">]</span>
+        <span class="o">|</span> <span class="n">sample_qc_metric_hard_filters</span><span class="p">[</span><span class="s2">&quot;low_bases_dp_over_20&quot;</span><span class="p">]</span>
+    <span class="p">)</span>
+
+    <span class="c1"># Flag samples that fail bam metric thresholds.</span>
+    <span class="k">if</span> <span class="n">test</span><span class="p">:</span>
+        <span class="n">project_meta_ht</span> <span class="o">=</span> <span class="n">gnomad_v4_testset_meta</span><span class="o">.</span><span class="n">ht</span><span class="p">()</span>
+        <span class="c1"># Use the gnomAD v4 test dataset&#39;s `rand_sampling_meta` annotation to get the</span>
+        <span class="c1"># bam metrics needed for hard filtering.</span>
+        <span class="c1"># This annotation includes all of the metadata for the random samples</span>
+        <span class="c1"># chosen for the test dataset.</span>
+        <span class="n">bam_metrics_struct</span> <span class="o">=</span> <span class="n">project_meta_ht</span><span class="p">[</span><span class="n">ht</span><span class="o">.</span><span class="n">key</span><span class="p">]</span><span class="o">.</span><span class="n">rand_sampling_meta</span>
+        <span class="n">bam_metrics_struct</span> <span class="o">=</span> <span class="n">bam_metrics_struct</span><span class="o">.</span><span class="n">annotate</span><span class="p">(</span>
+            <span class="n">chimeras_rate</span><span class="o">=</span><span class="n">bam_metrics_struct</span><span class="o">.</span><span class="n">pct_chimeras</span>
+        <span class="p">)</span>
+        <span class="n">contamination_struct</span> <span class="o">=</span> <span class="n">hl</span><span class="o">.</span><span class="n">read_table</span><span class="p">(</span>
+            <span class="n">get_checkpoint_path</span><span class="p">(</span><span class="s2">&quot;test_gnomad.exomes.contamination&quot;</span><span class="p">)</span>
+        <span class="p">)[</span><span class="n">ht</span><span class="o">.</span><span class="n">key</span><span class="p">]</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">project_meta_ht</span> <span class="o">=</span> <span class="n">project_meta</span><span class="o">.</span><span class="n">ht</span><span class="p">()</span>
+        <span class="n">bam_metrics_struct</span> <span class="o">=</span> <span class="n">project_meta_ht</span><span class="p">[</span><span class="n">ht</span><span class="o">.</span><span class="n">key</span><span class="p">]</span><span class="o">.</span><span class="n">bam_metrics</span>
+        <span class="n">contamination_struct</span> <span class="o">=</span> <span class="n">contamination</span><span class="o">.</span><span class="n">ht</span><span class="p">()[</span><span class="n">ht</span><span class="o">.</span><span class="n">key</span><span class="p">]</span>
+
+    <span class="n">hard_filters</span><span class="p">[</span><span class="s2">&quot;chimera&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">bam_metrics_struct</span><span class="o">.</span><span class="n">chimeras_rate</span> <span class="o">&gt;</span> <span class="n">max_chimera</span>
+    <span class="n">hard_filters</span><span class="p">[</span><span class="s2">&quot;contamination&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span>
+        <span class="n">contamination_struct</span><span class="o">.</span><span class="n">mean_AB_snp_biallelic</span> <span class="o">&gt;</span> <span class="n">max_contamination_estimate</span>
+    <span class="p">)</span>
+
+    <span class="c1"># Flag low-coverage samples using mean coverage on chromosome 20.</span>
+    <span class="k">if</span> <span class="n">min_cov</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">chr20_mean_dp_ht</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+                <span class="s2">&quot;If a chromosome 20 coverage threshold is supplied, a chr20 mean DP&quot;</span>
+                <span class="s2">&quot; Table must be supplied too.&quot;</span>
+            <span class="p">)</span>
+        <span class="n">hard_filters</span><span class="p">[</span><span class="s2">&quot;low_coverage&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">chr20_mean_dp_ht</span><span class="p">[</span><span class="n">ht</span><span class="o">.</span><span class="n">key</span><span class="p">]</span><span class="o">.</span><span class="n">chr20_mean_dp</span> <span class="o">&lt;</span> <span class="n">min_cov</span>
+
+    <span class="k">if</span> <span class="n">min_qc_mt_adj_callrate</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">qc_mt_callrate_ht</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+                <span class="s2">&quot;If a QC MatrixTable adj sample callrate threshold is supplied, a QC &quot;</span>
+                <span class="s2">&quot;MatrixTable sample callrate Table must be supplied too.&quot;</span>
+            <span class="p">)</span>
+        <span class="n">hard_filters</span><span class="p">[</span><span class="s2">&quot;low_adj_callrate&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span>
+            <span class="n">qc_mt_callrate_ht</span><span class="p">[</span><span class="n">ht</span><span class="o">.</span><span class="n">key</span><span class="p">]</span><span class="o">.</span><span class="n">callrate_adj</span> <span class="o">&lt;</span> <span class="n">min_qc_mt_adj_callrate</span>
+        <span class="p">)</span>
+        <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">annotate_globals</span><span class="p">(</span>
+            <span class="n">hard_filter_cutoffs</span><span class="o">=</span><span class="n">ht</span><span class="o">.</span><span class="n">hard_filter_cutoffs</span><span class="o">.</span><span class="n">annotate</span><span class="p">(</span>
+                <span class="n">min_qc_mt_adj_callrate</span><span class="o">=</span><span class="n">min_qc_mt_adj_callrate</span>
+            <span class="p">)</span>
+        <span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">include_sex_filter</span><span class="p">:</span>
+        <span class="n">sex_struct</span> <span class="o">=</span> <span class="n">sex</span><span class="o">.</span><span class="n">ht</span><span class="p">()[</span><span class="n">ht</span><span class="o">.</span><span class="n">key</span><span class="p">]</span>
+        <span class="c1"># Remove samples with ambiguous sex assignments.</span>
+        <span class="n">hard_filters</span><span class="p">[</span><span class="s2">&quot;ambiguous_sex&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">sex_struct</span><span class="o">.</span><span class="n">sex_karyotype</span> <span class="o">==</span> <span class="s2">&quot;ambiguous&quot;</span>
+        <span class="n">hard_filters</span><span class="p">[</span><span class="s2">&quot;sex_aneuploidy&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">hl</span><span class="o">.</span><span class="n">is_defined</span><span class="p">(</span>
+            <span class="n">sex_struct</span><span class="o">.</span><span class="n">sex_karyotype</span>
+        <span class="p">)</span> <span class="o">&amp;</span> <span class="o">~</span><span class="n">hl</span><span class="o">.</span><span class="n">set</span><span class="p">(</span>  <span class="c1"># pylint: disable=invalid-unary-operand-type</span>
+            <span class="p">{</span><span class="s2">&quot;ambiguous&quot;</span><span class="p">,</span> <span class="s2">&quot;XX&quot;</span><span class="p">,</span> <span class="s2">&quot;XY&quot;</span><span class="p">}</span>
+        <span class="p">)</span><span class="o">.</span><span class="n">contains</span><span class="p">(</span>
+            <span class="n">sex_struct</span><span class="o">.</span><span class="n">sex_karyotype</span>
+        <span class="p">)</span>
+
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">annotate</span><span class="p">(</span>
+        <span class="n">hard_filters</span><span class="o">=</span><span class="n">add_filters_expr</span><span class="p">(</span><span class="n">filters</span><span class="o">=</span><span class="n">hard_filters</span><span class="p">),</span>
+        <span class="n">sample_qc_metric_hard_filters</span><span class="o">=</span><span class="n">add_filters_expr</span><span class="p">(</span>
+            <span class="n">filters</span><span class="o">=</span><span class="n">sample_qc_metric_hard_filters</span>
+        <span class="p">),</span>
+    <span class="p">)</span>
+
+    <span class="c1"># Keep samples failing hard filters.</span>
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">hl</span><span class="o">.</span><span class="n">len</span><span class="p">(</span><span class="n">ht</span><span class="o">.</span><span class="n">hard_filters</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">ht</span></div>
+
+
+<div class="viewcode-block" id="main"><a class="viewcode-back" href="../../../../api_reference/v4/sample_qc/hard_filters.html#gnomad_qc.v4.sample_qc.hard_filters.main">[docs]</a><span class="k">def</span> <span class="nf">main</span><span class="p">(</span><span class="n">args</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Determine samples that fail hard filtering thresholds.&quot;&quot;&quot;</span>
+    <span class="n">hl</span><span class="o">.</span><span class="n">init</span><span class="p">(</span>
+        <span class="n">log</span><span class="o">=</span><span class="s2">&quot;/gnomad_hard_filters.log&quot;</span><span class="p">,</span>
+        <span class="n">default_reference</span><span class="o">=</span><span class="s2">&quot;GRCh38&quot;</span><span class="p">,</span>
+        <span class="n">tmp_dir</span><span class="o">=</span><span class="s2">&quot;gs://gnomad-tmp-4day&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="c1"># NOTE: remove this flag when the new shuffle method is the default.</span>
+    <span class="n">hl</span><span class="o">.</span><span class="n">_set_flags</span><span class="p">(</span><span class="n">use_new_shuffle</span><span class="o">=</span><span class="s2">&quot;1&quot;</span><span class="p">)</span>
+
+    <span class="n">calling_interval_name</span> <span class="o">=</span> <span class="n">args</span><span class="o">.</span><span class="n">calling_interval_name</span>
+    <span class="n">calling_interval_padding</span> <span class="o">=</span> <span class="n">args</span><span class="o">.</span><span class="n">calling_interval_padding</span>
+    <span class="n">test</span> <span class="o">=</span> <span class="n">args</span><span class="o">.</span><span class="n">test</span>
+    <span class="n">overwrite</span> <span class="o">=</span> <span class="n">args</span><span class="o">.</span><span class="n">overwrite</span>
+
+    <span class="k">try</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">sample_qc</span><span class="p">:</span>
+            <span class="n">compute_sample_qc</span><span class="p">(</span>
+                <span class="n">n_partitions</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">sample_qc_n_partitions</span><span class="p">,</span>
+                <span class="n">test</span><span class="o">=</span><span class="n">test</span><span class="p">,</span>
+                <span class="n">n_alt_alleles_strata</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">n_alt_alleles_strata</span><span class="p">,</span>
+                <span class="n">n_alt_alleles_strata_name</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">n_alt_alleles_strata_name</span><span class="p">,</span>
+            <span class="p">)</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">get_sample_qc</span><span class="p">(</span><span class="n">test</span><span class="o">=</span><span class="n">test</span><span class="p">)</span><span class="o">.</span><span class="n">path</span><span class="p">,</span> <span class="n">overwrite</span><span class="o">=</span><span class="n">overwrite</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">compute_coverage</span><span class="p">:</span>
+            <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Loading v4 VDS...&quot;</span><span class="p">)</span>
+            <span class="n">vds</span> <span class="o">=</span> <span class="n">get_gnomad_v4_vds</span><span class="p">(</span><span class="n">remove_hard_filtered_samples</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">test</span><span class="o">=</span><span class="n">test</span><span class="p">)</span>
+
+            <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span>
+                <span class="s2">&quot;Loading calling intervals: </span><span class="si">%s</span><span class="s2"> with padding of </span><span class="si">%d</span><span class="s2">...&quot;</span><span class="p">,</span>
+                <span class="n">calling_interval_name</span><span class="p">,</span>
+                <span class="n">calling_interval_padding</span><span class="p">,</span>
+            <span class="p">)</span>
+            <span class="n">ht</span> <span class="o">=</span> <span class="n">calling_intervals</span><span class="p">(</span><span class="n">calling_interval_name</span><span class="p">,</span> <span class="n">calling_interval_padding</span><span class="p">)</span><span class="o">.</span><span class="n">ht</span><span class="p">()</span>
+            <span class="n">mt</span> <span class="o">=</span> <span class="n">hl</span><span class="o">.</span><span class="n">vds</span><span class="o">.</span><span class="n">interval_coverage</span><span class="p">(</span><span class="n">vds</span><span class="p">,</span> <span class="n">intervals</span><span class="o">=</span><span class="n">ht</span><span class="p">)</span>
+            <span class="n">mt</span> <span class="o">=</span> <span class="n">mt</span><span class="o">.</span><span class="n">annotate_globals</span><span class="p">(</span>
+                <span class="n">calling_interval_name</span><span class="o">=</span><span class="n">calling_interval_name</span><span class="p">,</span>
+                <span class="n">calling_interval_padding</span><span class="o">=</span><span class="n">calling_interval_padding</span><span class="p">,</span>
+            <span class="p">)</span>
+            <span class="n">mt</span><span class="o">.</span><span class="n">write</span><span class="p">(</span>
+                <span class="p">(</span>
+                    <span class="n">get_checkpoint_path</span><span class="p">(</span>
+                        <span class="sa">f</span><span class="s2">&quot;test_interval_coverage.</span><span class="si">{</span><span class="n">calling_interval_name</span><span class="si">}</span><span class="s2">.pad</span><span class="si">{</span><span class="n">calling_interval_padding</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">,</span>
+                        <span class="n">mt</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+                    <span class="p">)</span>
+                    <span class="k">if</span> <span class="n">test</span>
+                    <span class="k">else</span> <span class="n">interval_coverage</span><span class="o">.</span><span class="n">path</span>
+                <span class="p">),</span>
+                <span class="n">overwrite</span><span class="o">=</span><span class="n">overwrite</span><span class="p">,</span>
+            <span class="p">)</span>
+
+        <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">compute_contamination_estimate</span><span class="p">:</span>
+            <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span>
+                <span class="s2">&quot;Loading v4 VDS, filtering to high-quality (DP &gt;= </span><span class="si">%d</span><span class="s2">), autosomal,&quot;</span>
+                <span class="s2">&quot; bi-allelic homozygous SNVs and computing the mean of reference allele&quot;</span>
+                <span class="s2">&quot; balances per sample...&quot;</span><span class="p">,</span>
+                <span class="n">args</span><span class="o">.</span><span class="n">contam_dp_cutoff</span><span class="p">,</span>
+            <span class="p">)</span>
+            <span class="n">mt</span> <span class="o">=</span> <span class="n">filter_to_autosomes</span><span class="p">(</span>
+                <span class="n">get_gnomad_v4_vds</span><span class="p">(</span>
+                    <span class="n">remove_hard_filtered_samples</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">test</span><span class="o">=</span><span class="n">test</span>
+                <span class="p">)</span><span class="o">.</span><span class="n">variant_data</span>
+            <span class="p">)</span>
+            <span class="n">mt</span> <span class="o">=</span> <span class="n">mt</span><span class="o">.</span><span class="n">filter_rows</span><span class="p">(</span>
+                <span class="p">(</span><span class="n">hl</span><span class="o">.</span><span class="n">len</span><span class="p">(</span><span class="n">mt</span><span class="o">.</span><span class="n">alleles</span><span class="p">)</span> <span class="o">==</span> <span class="mi">2</span><span class="p">)</span> <span class="o">&amp;</span> <span class="n">hl</span><span class="o">.</span><span class="n">is_snp</span><span class="p">(</span><span class="n">mt</span><span class="o">.</span><span class="n">alleles</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">mt</span><span class="o">.</span><span class="n">alleles</span><span class="p">[</span><span class="mi">1</span><span class="p">])</span>
+            <span class="p">)</span>
+            <span class="n">mt</span> <span class="o">=</span> <span class="n">mt</span><span class="o">.</span><span class="n">filter_entries</span><span class="p">(</span>
+                <span class="n">mt</span><span class="o">.</span><span class="n">LGT</span><span class="o">.</span><span class="n">is_hom_var</span><span class="p">()</span> <span class="o">&amp;</span> <span class="p">(</span><span class="n">mt</span><span class="o">.</span><span class="n">DP</span> <span class="o">&gt;=</span> <span class="n">args</span><span class="o">.</span><span class="n">contam_dp_cutoff</span><span class="p">)</span>
+            <span class="p">)</span>
+            <span class="n">mt</span> <span class="o">=</span> <span class="n">mt</span><span class="o">.</span><span class="n">annotate_cols</span><span class="p">(</span>
+                <span class="n">mean_AB_snp_biallelic</span><span class="o">=</span><span class="n">hl</span><span class="o">.</span><span class="n">agg</span><span class="o">.</span><span class="n">mean</span><span class="p">(</span><span class="n">mt</span><span class="o">.</span><span class="n">LAD</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">/</span> <span class="p">(</span><span class="n">mt</span><span class="o">.</span><span class="n">LAD</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">+</span> <span class="n">mt</span><span class="o">.</span><span class="n">LAD</span><span class="p">[</span><span class="mi">1</span><span class="p">]))</span>
+            <span class="p">)</span>
+            <span class="n">mt</span> <span class="o">=</span> <span class="n">mt</span><span class="o">.</span><span class="n">cols</span><span class="p">()</span><span class="o">.</span><span class="n">annotate_globals</span><span class="p">(</span><span class="n">dp_cutoff</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">contam_dp_cutoff</span><span class="p">)</span>
+            <span class="n">mt</span><span class="o">.</span><span class="n">write</span><span class="p">(</span>
+                <span class="p">(</span>
+                    <span class="n">get_checkpoint_path</span><span class="p">(</span><span class="s2">&quot;test_gnomad.exomes.contamination&quot;</span><span class="p">)</span>
+                    <span class="k">if</span> <span class="n">test</span>
+                    <span class="k">else</span> <span class="n">contamination</span><span class="o">.</span><span class="n">path</span>
+                <span class="p">),</span>
+                <span class="n">overwrite</span><span class="o">=</span><span class="n">overwrite</span><span class="p">,</span>
+            <span class="p">)</span>
+
+        <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">compute_chr20_mean_dp</span><span class="p">:</span>
+            <span class="c1"># TODO: Add drop of `gq_thresholds` for future versions.</span>
+            <span class="k">if</span> <span class="n">test</span><span class="p">:</span>
+                <span class="n">coverage_mt</span> <span class="o">=</span> <span class="n">hl</span><span class="o">.</span><span class="n">read_matrix_table</span><span class="p">(</span>
+                    <span class="n">get_checkpoint_path</span><span class="p">(</span>
+                        <span class="sa">f</span><span class="s2">&quot;test_interval_coverage.</span><span class="si">{</span><span class="n">calling_interval_name</span><span class="si">}</span><span class="s2">.pad</span><span class="si">{</span><span class="n">calling_interval_padding</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">,</span>
+                        <span class="n">mt</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+                    <span class="p">)</span>
+                <span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">coverage_mt</span> <span class="o">=</span> <span class="n">interval_coverage</span><span class="o">.</span><span class="n">mt</span><span class="p">()</span>
+
+            <span class="n">coverage_mt</span> <span class="o">=</span> <span class="n">coverage_mt</span><span class="o">.</span><span class="n">filter_rows</span><span class="p">(</span>
+                <span class="n">coverage_mt</span><span class="o">.</span><span class="n">interval</span><span class="o">.</span><span class="n">start</span><span class="o">.</span><span class="n">contig</span> <span class="o">==</span> <span class="s2">&quot;chr20&quot;</span>
+            <span class="p">)</span>
+            <span class="n">coverage_mt</span><span class="o">.</span><span class="n">select_cols</span><span class="p">(</span>
+                <span class="n">chr20_mean_dp</span><span class="o">=</span><span class="n">hl</span><span class="o">.</span><span class="n">agg</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">coverage_mt</span><span class="o">.</span><span class="n">sum_dp</span><span class="p">)</span>
+                <span class="o">/</span> <span class="n">hl</span><span class="o">.</span><span class="n">agg</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">coverage_mt</span><span class="o">.</span><span class="n">interval_size</span><span class="p">)</span>
+            <span class="p">)</span><span class="o">.</span><span class="n">cols</span><span class="p">()</span><span class="o">.</span><span class="n">write</span><span class="p">(</span>
+                <span class="p">(</span>
+                    <span class="n">get_checkpoint_path</span><span class="p">(</span><span class="s2">&quot;test_gnomad.exomes.chr20_mean_dp&quot;</span><span class="p">)</span>
+                    <span class="k">if</span> <span class="n">test</span>
+                    <span class="k">else</span> <span class="n">sample_chr20_mean_dp</span><span class="o">.</span><span class="n">path</span>
+                <span class="p">),</span>
+                <span class="n">overwrite</span><span class="o">=</span><span class="n">overwrite</span><span class="p">,</span>
+            <span class="p">)</span>
+
+        <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">compute_qc_mt_callrate</span><span class="p">:</span>
+            <span class="n">mt</span> <span class="o">=</span> <span class="n">v4_predetermined_qc</span><span class="o">.</span><span class="n">mt</span><span class="p">()</span>
+            <span class="n">num_samples</span> <span class="o">=</span> <span class="n">mt</span><span class="o">.</span><span class="n">count_cols</span><span class="p">()</span>
+
+            <span class="c1"># Filter predetermined QC variants to AF &gt; qc_mt_callrate_min_af</span>
+            <span class="c1"># with site callrate &gt; qc_mt_callrate_min_site_callrate for ADJ genotypes.</span>
+            <span class="n">mt</span> <span class="o">=</span> <span class="n">annotate_adj</span><span class="p">(</span><span class="n">mt</span><span class="p">)</span>
+            <span class="n">mt</span> <span class="o">=</span> <span class="n">mt</span><span class="o">.</span><span class="n">filter_rows</span><span class="p">(</span>
+                <span class="n">hl</span><span class="o">.</span><span class="n">agg</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span>
+                    <span class="n">hl</span><span class="o">.</span><span class="n">is_defined</span><span class="p">(</span><span class="n">mt</span><span class="o">.</span><span class="n">GT</span><span class="p">)</span> <span class="o">&amp;</span> <span class="n">mt</span><span class="o">.</span><span class="n">adj</span><span class="p">,</span>
+                    <span class="p">(</span>
+                        <span class="p">(</span><span class="n">hl</span><span class="o">.</span><span class="n">agg</span><span class="o">.</span><span class="n">count</span><span class="p">()</span> <span class="o">/</span> <span class="n">num_samples</span><span class="p">)</span>
+                        <span class="o">&gt;</span> <span class="n">args</span><span class="o">.</span><span class="n">qc_mt_callrate_min_site_callrate</span>
+                    <span class="p">)</span>
+                    <span class="o">&amp;</span> <span class="p">(</span>
+                        <span class="p">(</span><span class="n">hl</span><span class="o">.</span><span class="n">agg</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">mt</span><span class="o">.</span><span class="n">GT</span><span class="o">.</span><span class="n">n_alt_alleles</span><span class="p">())</span> <span class="o">/</span> <span class="p">(</span><span class="n">hl</span><span class="o">.</span><span class="n">agg</span><span class="o">.</span><span class="n">count</span><span class="p">()</span> <span class="o">*</span> <span class="mi">2</span><span class="p">))</span>
+                        <span class="o">&gt;</span> <span class="n">args</span><span class="o">.</span><span class="n">qc_mt_callrate_min_af</span>
+                    <span class="p">),</span>
+                <span class="p">)</span>
+            <span class="p">)</span>
+            <span class="n">num_variants</span> <span class="o">=</span> <span class="n">mt</span><span class="o">.</span><span class="n">count_rows</span><span class="p">()</span>
+            <span class="n">ht</span> <span class="o">=</span> <span class="n">mt</span><span class="o">.</span><span class="n">annotate_cols</span><span class="p">(</span>
+                <span class="n">sample_qc_mt_callrate</span><span class="o">=</span><span class="n">hl</span><span class="o">.</span><span class="n">agg</span><span class="o">.</span><span class="n">count_where</span><span class="p">(</span><span class="n">hl</span><span class="o">.</span><span class="n">is_defined</span><span class="p">(</span><span class="n">mt</span><span class="o">.</span><span class="n">GT</span><span class="p">))</span>
+                <span class="o">/</span> <span class="n">num_variants</span><span class="p">,</span>
+                <span class="n">sample_qc_mt_callrate_adj</span><span class="o">=</span><span class="n">hl</span><span class="o">.</span><span class="n">agg</span><span class="o">.</span><span class="n">count_where</span><span class="p">(</span>
+                    <span class="n">hl</span><span class="o">.</span><span class="n">is_defined</span><span class="p">(</span><span class="n">mt</span><span class="o">.</span><span class="n">GT</span><span class="p">)</span> <span class="o">&amp;</span> <span class="n">mt</span><span class="o">.</span><span class="n">adj</span>
+                <span class="p">)</span>
+                <span class="o">/</span> <span class="n">num_variants</span><span class="p">,</span>
+            <span class="p">)</span><span class="o">.</span><span class="n">cols</span><span class="p">()</span>
+            <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">annotate_globals</span><span class="p">(</span>
+                <span class="n">min_af</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">qc_mt_callrate_min_af</span><span class="p">,</span>
+                <span class="n">min_site_callrate</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">qc_mt_callrate_min_site_callrate</span><span class="p">,</span>
+            <span class="p">)</span>
+            <span class="n">ht</span><span class="o">.</span><span class="n">write</span><span class="p">(</span>
+                <span class="p">(</span>
+                    <span class="n">get_checkpoint_path</span><span class="p">(</span><span class="s2">&quot;test_gnomad.exomes.qc_mt_callrate&quot;</span><span class="p">)</span>
+                    <span class="k">if</span> <span class="n">test</span>
+                    <span class="k">else</span> <span class="n">sample_qc_mt_callrate</span><span class="o">.</span><span class="n">path</span>
+                <span class="p">),</span>
+                <span class="n">overwrite</span><span class="o">=</span><span class="n">overwrite</span><span class="p">,</span>
+            <span class="p">)</span>
+
+        <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">compute_hard_filters</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">test</span><span class="p">:</span>
+                <span class="n">chr20_mean_dp_ht</span> <span class="o">=</span> <span class="n">hl</span><span class="o">.</span><span class="n">read_table</span><span class="p">(</span>
+                    <span class="n">get_checkpoint_path</span><span class="p">(</span><span class="s2">&quot;test_gnomad.exomes.chr20_mean_dp&quot;</span><span class="p">)</span>
+                <span class="p">)</span>
+                <span class="n">qc_mt_callrate_ht</span> <span class="o">=</span> <span class="n">hl</span><span class="o">.</span><span class="n">read_table</span><span class="p">(</span>
+                    <span class="n">get_checkpoint_path</span><span class="p">(</span><span class="s2">&quot;test_gnomad.exomes.qc_mt_callrate&quot;</span><span class="p">)</span>
+                <span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">chr20_mean_dp_ht</span> <span class="o">=</span> <span class="n">sample_chr20_mean_dp</span><span class="o">.</span><span class="n">ht</span><span class="p">()</span>
+                <span class="n">qc_mt_callrate_ht</span> <span class="o">=</span> <span class="n">sample_qc_mt_callrate</span><span class="o">.</span><span class="n">ht</span><span class="p">()</span>
+
+            <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">include_sex_filter</span><span class="p">:</span>
+                <span class="n">hard_filter_path</span> <span class="o">=</span> <span class="n">hard_filtered_samples</span><span class="o">.</span><span class="n">path</span>
+                <span class="k">if</span> <span class="n">test</span><span class="p">:</span>
+                    <span class="n">hard_filter_path</span> <span class="o">=</span> <span class="n">get_checkpoint_path</span><span class="p">(</span>
+                        <span class="s2">&quot;test_gnomad.exomes.hard_filtered_samples&quot;</span>
+                    <span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">hard_filter_path</span> <span class="o">=</span> <span class="n">hard_filtered_samples_no_sex</span><span class="o">.</span><span class="n">path</span>
+                <span class="k">if</span> <span class="n">test</span><span class="p">:</span>
+                    <span class="n">hard_filter_path</span> <span class="o">=</span> <span class="n">get_checkpoint_path</span><span class="p">(</span>
+                        <span class="s2">&quot;test_gnomad.exomes.hard_filtered_samples_no_sex&quot;</span>
+                    <span class="p">)</span>
+
+            <span class="n">ht</span> <span class="o">=</span> <span class="n">compute_hard_filters</span><span class="p">(</span>
+                <span class="n">args</span><span class="o">.</span><span class="n">include_sex_filter</span><span class="p">,</span>
+                <span class="n">args</span><span class="o">.</span><span class="n">max_n_singleton</span><span class="p">,</span>
+                <span class="n">args</span><span class="o">.</span><span class="n">max_r_het_hom_var</span><span class="p">,</span>
+                <span class="n">args</span><span class="o">.</span><span class="n">min_bases_dp_over_1</span><span class="p">,</span>
+                <span class="n">args</span><span class="o">.</span><span class="n">min_bases_dp_over_20</span><span class="p">,</span>
+                <span class="n">args</span><span class="o">.</span><span class="n">max_chimera</span><span class="p">,</span>
+                <span class="n">args</span><span class="o">.</span><span class="n">max_contamination_estimate</span><span class="p">,</span>
+                <span class="n">test</span><span class="p">,</span>
+                <span class="n">chr20_mean_dp_ht</span><span class="p">,</span>
+                <span class="n">args</span><span class="o">.</span><span class="n">min_cov</span><span class="p">,</span>
+                <span class="n">qc_mt_callrate_ht</span><span class="p">,</span>
+                <span class="n">args</span><span class="o">.</span><span class="n">min_qc_mt_adj_callrate</span><span class="p">,</span>
+            <span class="p">)</span>
+            <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">checkpoint</span><span class="p">(</span><span class="n">hard_filter_path</span><span class="p">,</span> <span class="n">overwrite</span><span class="o">=</span><span class="n">overwrite</span><span class="p">)</span>
+            <span class="n">ht</span><span class="o">.</span><span class="n">group_by</span><span class="p">(</span><span class="s2">&quot;hard_filters&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">aggregate</span><span class="p">(</span><span class="n">n</span><span class="o">=</span><span class="n">hl</span><span class="o">.</span><span class="n">agg</span><span class="o">.</span><span class="n">count</span><span class="p">())</span><span class="o">.</span><span class="n">show</span><span class="p">(</span><span class="mi">20</span><span class="p">)</span>
+            <span class="n">ht</span><span class="o">.</span><span class="n">group_by</span><span class="p">(</span><span class="s2">&quot;sample_qc_metric_hard_filters&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">aggregate</span><span class="p">(</span>
+                <span class="n">n</span><span class="o">=</span><span class="n">hl</span><span class="o">.</span><span class="n">agg</span><span class="o">.</span><span class="n">count</span><span class="p">()</span>
+            <span class="p">)</span><span class="o">.</span><span class="n">show</span><span class="p">(</span><span class="mi">20</span><span class="p">)</span>
+    <span class="k">finally</span><span class="p">:</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Copying log to logging bucket...&quot;</span><span class="p">)</span>
+        <span class="n">hl</span><span class="o">.</span><span class="n">copy_log</span><span class="p">(</span><span class="n">get_logging_path</span><span class="p">(</span><span class="s2">&quot;hard_filters&quot;</span><span class="p">))</span></div>
+
+
+<span class="k">def</span> <span class="nf">get_script_argument_parser</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="n">argparse</span><span class="o">.</span><span class="n">ArgumentParser</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Get script argument parser.&quot;&quot;&quot;</span>
+    <span class="n">parser</span> <span class="o">=</span> <span class="n">argparse</span><span class="o">.</span><span class="n">ArgumentParser</span><span class="p">()</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--overwrite&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Overwrite all Matrixtables/Tables. (default: False).&quot;</span><span class="p">,</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--test&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Use the v4 test dataset instead of the full dataset.&quot;</span><span class="p">,</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--sample-qc&quot;</span><span class="p">,</span> <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Compute Hail&#39;s VDS sample QC metrics.&quot;</span><span class="p">,</span> <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--n-alt-alleles-strata&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="p">(</span>
+            <span class="s2">&quot;Number of alternative alleles to stratify sample QC on. For example &quot;</span>
+            <span class="s2">&quot;&#39;n_alt_alleles_strata&#39; = 2 will stratify &#39;bi-allelic&#39; and &#39;multi-allelic&#39;.&quot;</span>
+            <span class="s2">&quot; &#39;n_alt_alleles_strata&#39; = 3 will stratify under 3 alt alleles and 3 or &quot;</span>
+            <span class="s2">&quot;more alt alleles. Default is 3.&quot;</span>
+        <span class="p">),</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">int</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="mi">3</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--n-alt-alleles-strata-name&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="p">(</span>
+            <span class="s2">&quot;Name to use for number of alternative allele stratification, where strata &quot;</span>
+            <span class="s2">&quot;names are &#39;under_</span><span class="si">{n_alt_alleles_strata_name}</span><span class="s2">_alt_alleles&#39; and &quot;</span>
+            <span class="s2">&quot;&#39;</span><span class="si">{n_alt_alleles_strata_name}</span><span class="s2">_or_more_alt_alleles&#39;. This is not used when &quot;</span>
+            <span class="s2">&quot;`n_alt_alleles_strata` = 2, and instead uses &#39;bi-allelic&#39; and &quot;</span>
+            <span class="s2">&quot;&#39;multi-allelic&#39;. Default is &#39;three&#39;.&quot;</span>
+        <span class="p">),</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">str</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="s2">&quot;three&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--sample-qc-n-partitions&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Number of desired partitions for the sample QC output Table.&quot;</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="mi">500</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">int</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--compute-coverage&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="p">(</span>
+            <span class="s2">&quot;Compute per interval coverage metrics using Hail&#39;s vds.interval_coverage&quot;</span>
+            <span class="s2">&quot; method.&quot;</span>
+        <span class="p">),</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--compute-contamination-estimate&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="p">(</span>
+            <span class="s2">&quot;Compute contamination estimate as the mean of reference allele balances of&quot;</span>
+            <span class="s2">&quot; high-quality (DP &gt;= contam-dp-cutoff), autosomal, bi-allelic homozygous&quot;</span>
+            <span class="s2">&quot; SNVs per sample.&quot;</span>
+        <span class="p">),</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--contam-dp-cutoff&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="p">(</span>
+            <span class="s2">&quot;Minimum genotype depth to be included in contamination estimate&quot;</span>
+            <span class="s2">&quot; calculation.&quot;</span>
+        <span class="p">),</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">int</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="mi">10</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--calling-interval-name&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="p">(</span>
+            <span class="s2">&quot;Name of calling intervals to use for interval coverage. One of: &#39;ukb&#39;,&quot;</span>
+            <span class="s2">&quot; &#39;broad&#39;, or &#39;intersection&#39;.&quot;</span>
+        <span class="p">),</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">str</span><span class="p">,</span>
+        <span class="n">choices</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;ukb&quot;</span><span class="p">,</span> <span class="s2">&quot;broad&quot;</span><span class="p">,</span> <span class="s2">&quot;intersection&quot;</span><span class="p">],</span>
+        <span class="n">default</span><span class="o">=</span><span class="s2">&quot;intersection&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--calling-interval-padding&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="p">(</span>
+            <span class="s2">&quot;Number of base pair padding to use on the calling intervals. One of 0 or&quot;</span>
+            <span class="s2">&quot; 50 bp.&quot;</span>
+        <span class="p">),</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">int</span><span class="p">,</span>
+        <span class="n">choices</span><span class="o">=</span><span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">50</span><span class="p">],</span>
+        <span class="n">default</span><span class="o">=</span><span class="mi">50</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--compute-chr20-mean-dp&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="p">(</span>
+            <span class="s2">&quot;Compute per sample mean DP on chromosome 20 using interval coverage&quot;</span>
+            <span class="s2">&quot; results.&quot;</span>
+        <span class="p">),</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--compute-qc-mt-callrate&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="p">(</span>
+            <span class="s2">&quot;Compute per sample callrate on the predetermined QC variants after &quot;</span>
+            <span class="s2">&quot;filtering to common variants (AF &gt; --qc-mt-callrate-min-af) with high &quot;</span>
+            <span class="s2">&quot;site callrate ( &gt; --qc-mt-callrate-min-site-callrate) for ADJ genotypes.&quot;</span>
+        <span class="p">),</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--qc-mt-callrate-min-af&quot;</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="mf">0.0001</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">float</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="p">(</span>
+            <span class="s2">&quot;Filtering threshold to use for minimum variant allele frequency when &quot;</span>
+            <span class="s2">&quot;computing sample callrate on the predetermined QC variants &quot;</span>
+            <span class="s2">&quot;(--compute-qc-mt-callrate). Default is 0.0001.&quot;</span>
+        <span class="p">),</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--qc-mt-callrate-min-site-callrate&quot;</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="mf">0.99</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">float</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="p">(</span>
+            <span class="s2">&quot;Filtering threshold to use for minimum site ADJ callrate when computing &quot;</span>
+            <span class="s2">&quot;sample callrate on predetermined QC variants (--compute-qc-mt-callrate). &quot;</span>
+            <span class="s2">&quot;Default is 0.99.&quot;</span>
+        <span class="p">),</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--compute-hard-filters&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="p">(</span>
+            <span class="s2">&quot;Computes samples to be hard-filtered. NOTE: Cutoffs should be determined&quot;</span>
+            <span class="s2">&quot; by visual inspection of the metrics.&quot;</span>
+        <span class="p">),</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--include-sex-filter&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;If sex filters should be included in hard filtering.&quot;</span><span class="p">,</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument_group</span><span class="p">()</span>
+    <span class="n">hard_filter_args</span> <span class="o">=</span> <span class="n">parser</span><span class="o">.</span><span class="n">add_argument_group</span><span class="p">(</span>
+        <span class="s2">&quot;Hard-filter cutoffs&quot;</span><span class="p">,</span> <span class="s2">&quot;Arguments used for hard-filter cutoffs.&quot;</span>
+    <span class="p">)</span>
+    <span class="n">hard_filter_args</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--max-n-singleton&quot;</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">float</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="mi">5000</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="p">(</span>
+            <span class="s2">&quot;Filtering threshold to use for the maximum number of singletons. Default&quot;</span>
+            <span class="s2">&quot; is 5000.&quot;</span>
+        <span class="p">),</span>
+    <span class="p">)</span>
+    <span class="n">hard_filter_args</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--max-r-het-hom-var&quot;</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">float</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="mi">10</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="p">(</span>
+            <span class="s2">&quot;Filtering threshold to use for the maximum ratio of heterozygotes to&quot;</span>
+            <span class="s2">&quot; alternate homozygotes. Default is 10.&quot;</span>
+        <span class="p">),</span>
+    <span class="p">)</span>
+    <span class="n">hard_filter_args</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--min-bases-dp-over-1&quot;</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">float</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="p">(</span>
+            <span class="s2">&quot;Filtering threshold to use for the minimum number of bases with a DP over&quot;</span>
+            <span class="s2">&quot; one. Default is 5e7.&quot;</span>
+        <span class="p">),</span>
+        <span class="n">default</span><span class="o">=</span><span class="mf">5e7</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">hard_filter_args</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--min-bases-dp-over-20&quot;</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">float</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="p">(</span>
+            <span class="s2">&quot;Filtering threshold to use for the minimum number of bases with a DP over&quot;</span>
+            <span class="s2">&quot; 20. Default is 4e7.&quot;</span>
+        <span class="p">),</span>
+        <span class="n">default</span><span class="o">=</span><span class="mf">4e7</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">hard_filter_args</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--max-chimera&quot;</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">float</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="mf">0.05</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="p">(</span>
+            <span class="s2">&quot;Filtering threshold to use for maximum chimera (this is a proportion not a&quot;</span>
+            <span class="s2">&quot; percent, e.g. 5% == 0.05, %5 != 5). Default is 0.05.&quot;</span>
+        <span class="p">),</span>
+    <span class="p">)</span>
+    <span class="n">hard_filter_args</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--max-contamination-estimate&quot;</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="mf">0.015</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">float</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="p">(</span>
+            <span class="s2">&quot;Filtering threshold to use for maximum contamination estimate (from&quot;</span>
+            <span class="s2">&quot; --compute-contamination-estimate). Default is 0.015.&quot;</span>
+        <span class="p">),</span>
+    <span class="p">)</span>
+    <span class="n">hard_filter_args</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--min-cov&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="p">(</span>
+            <span class="s2">&quot;Minimum chromosome 20 coverage for inclusion when computing hard-filters.&quot;</span>
+        <span class="p">),</span>
+        <span class="n">default</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">int</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">hard_filter_args</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--min-qc-mt-adj-callrate&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="p">(</span>
+            <span class="s2">&quot;Minimum sample callrate computed on only predetermined QC variants&quot;</span>
+            <span class="s2">&quot; (predetermined using CCDG genomes/exomes, gnomAD v3.1 genomes, and UKB&quot;</span>
+            <span class="s2">&quot; exomes) after ADJ filtering.&quot;</span>
+        <span class="p">),</span>
+        <span class="n">default</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">float</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--slack-channel&quot;</span><span class="p">,</span> <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Slack channel to post results and notifications to.&quot;</span>
+    <span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">parser</span>
+
+
+<span class="k">if</span> <span class="vm">__name__</span> <span class="o">==</span> <span class="s2">&quot;__main__&quot;</span><span class="p">:</span>
+    <span class="n">parser</span> <span class="o">=</span> <span class="n">get_script_argument_parser</span><span class="p">()</span>
+    <span class="n">args</span> <span class="o">=</span> <span class="n">parser</span><span class="o">.</span><span class="n">parse_args</span><span class="p">()</span>
+
+    <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">slack_channel</span><span class="p">:</span>
+        <span class="k">with</span> <span class="n">slack_notifications</span><span class="p">(</span><span class="n">slack_token</span><span class="p">,</span> <span class="n">args</span><span class="o">.</span><span class="n">slack_channel</span><span class="p">):</span>
+            <span class="n">main</span><span class="p">(</span><span class="n">args</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">main</span><span class="p">(</span><span class="n">args</span><span class="p">)</span>
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p></p>
+  </div>
+
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

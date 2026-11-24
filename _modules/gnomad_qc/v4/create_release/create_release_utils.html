@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>gnomad_qc.v4.create_release.create_release_utils &mdash; gnomad_qc master documentation</title>
+      <link rel="stylesheet" href="../../../../_static/pygments.css" type="text/css" />
+      <link rel="stylesheet" href="../../../../_static/css/theme.css" type="text/css" />
+      <link rel="stylesheet" href="../../../../_static/theme_overrides.css" type="text/css" />
+  <!--[if lt IE 9]>
+    <script src="../../../../_static/js/html5shiv.min.js"></script>
+  <![endif]-->
+  
+        <script src="../../../../_static/jquery.js"></script>
+        <script src="../../../../_static/_sphinx_javascript_frameworks_compat.js"></script>
+        <script data-url_root="../../../../" id="documentation_options" src="../../../../_static/documentation_options.js"></script>
+        <script src="../../../../_static/doctools.js"></script>
+        <script src="../../../../_static/sphinx_highlight.js"></script>
+        <script src="https://unpkg.com/mermaid@10.2.0/dist/mermaid.min.js"></script>
+        <script>mermaid.initialize({startOnLoad:true});</script>
+    <script src="../../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../../index.html" class="icon icon-home">
+            gnomad_qc
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../../api_reference/index.html">API Reference</a></li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/broadinstitute/gnomad_qc/tags">Change Log</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../../index.html">gnomad_qc</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../../index.html">Module code</a></li>
+      <li class="breadcrumb-item active">gnomad_qc.v4.create_release.create_release_utils</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for gnomad_qc.v4.create_release.create_release_utils</h1><div class="highlight"><pre>
+<span></span><span class="sd">&quot;&quot;&quot;Common utils for creating gnomAD v4 exomes and genomes releases.&quot;&quot;&quot;</span>
+
+<span class="kn">import</span> <span class="nn">hail</span> <span class="k">as</span> <span class="nn">hl</span>
+
+<span class="kn">from</span> <span class="nn">gnomad_qc.v4.resources.constants</span> <span class="kn">import</span> <span class="n">DEFAULT_VEP_VERSION</span>
+
+<span class="c1"># Tool versions used in the release that were not on the source tables</span>
+<span class="n">DBSNP_VERSION</span> <span class="o">=</span> <span class="s2">&quot;b156&quot;</span>
+<span class="n">SIFT_VERSION</span> <span class="o">=</span> <span class="s2">&quot;5.2.2&quot;</span>
+<span class="n">POLYPHEN_VERSION</span> <span class="o">=</span> <span class="s2">&quot;2.2.2&quot;</span>
+<span class="n">VRS_SCHEMA_VERSION</span> <span class="o">=</span> <span class="s2">&quot;2.0.1&quot;</span>
+<span class="n">VRS_PYTHON_VERSION</span> <span class="o">=</span> <span class="s2">&quot;2.2.0&quot;</span>
+<span class="n">SEQREPO_VERSION</span> <span class="o">=</span> <span class="s2">&quot;2024-12-20&quot;</span>
+
+<span class="c1"># GENCODE versions by VEP version.</span>
+<span class="n">GENCODE_VERSIONS</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="s2">&quot;105&quot;</span><span class="p">:</span> <span class="s2">&quot;Release 39&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;115&quot;</span><span class="p">:</span> <span class="s2">&quot;Release 49&quot;</span><span class="p">,</span>
+<span class="p">}</span>
+<span class="c1"># MANE Select versions by VEP version.</span>
+<span class="n">MANE_SELECT_VERSIONS</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="s2">&quot;105&quot;</span><span class="p">:</span> <span class="s2">&quot;v0.95&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;115&quot;</span><span class="p">:</span> <span class="s2">&quot;v1.4&quot;</span><span class="p">,</span>
+<span class="p">}</span>
+<span class="c1"># Backward compatibility: default to DEFAULT_VEP_VERSION.</span>
+<span class="n">GENCODE_VERSION</span> <span class="o">=</span> <span class="n">GENCODE_VERSIONS</span><span class="p">[</span><span class="n">DEFAULT_VEP_VERSION</span><span class="p">]</span>
+<span class="n">MANE_SELECT_VERSION</span> <span class="o">=</span> <span class="n">MANE_SELECT_VERSIONS</span><span class="p">[</span><span class="n">DEFAULT_VEP_VERSION</span><span class="p">]</span>
+
+<span class="c1"># NOTE: VEP 115 annotations were added in v4.1.1.</span>
+<span class="n">VEP_VERSIONS_TO_ADD</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;4.1.1&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;115&quot;</span><span class="p">]}</span>
+
+
+<div class="viewcode-block" id="remove_missing_vep_fields"><a class="viewcode-back" href="../../../../api_reference/v4/create_release/create_release_utils.html#gnomad_qc.v4.create_release.create_release_utils.remove_missing_vep_fields">[docs]</a><span class="k">def</span> <span class="nf">remove_missing_vep_fields</span><span class="p">(</span><span class="n">vep_expr</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">StructExpression</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">hl</span><span class="o">.</span><span class="n">StructExpression</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Remove fields from VEP 105 annotations that have been excluded in past releases or are missing in all rows.</span>
+
+<span class="sd">    See https://github.com/broadinstitute/gnomad_production/issues/936 for more</span>
+<span class="sd">    information.</span>
+
+<span class="sd">    :param vep_expr: StructExpression containing VEP 105 annotations.</span>
+<span class="sd">    :return: StructExpression containing VEP 105 annotations with missing fields</span>
+<span class="sd">        removed.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">vep_expr</span> <span class="o">=</span> <span class="n">vep_expr</span><span class="o">.</span><span class="n">drop</span><span class="p">(</span><span class="s2">&quot;colocated_variants&quot;</span><span class="p">,</span> <span class="s2">&quot;context&quot;</span><span class="p">)</span>
+
+    <span class="n">vep_expr</span> <span class="o">=</span> <span class="n">vep_expr</span><span class="o">.</span><span class="n">annotate</span><span class="p">(</span>
+        <span class="n">transcript_consequences</span><span class="o">=</span><span class="n">vep_expr</span><span class="o">.</span><span class="n">transcript_consequences</span><span class="o">.</span><span class="n">map</span><span class="p">(</span>
+            <span class="k">lambda</span> <span class="n">x</span><span class="p">:</span> <span class="n">x</span><span class="o">.</span><span class="n">drop</span><span class="p">(</span><span class="s2">&quot;minimised&quot;</span><span class="p">,</span> <span class="s2">&quot;swissprot&quot;</span><span class="p">,</span> <span class="s2">&quot;trembl&quot;</span><span class="p">,</span> <span class="s2">&quot;uniparc&quot;</span><span class="p">)</span>
+        <span class="p">)</span>
+    <span class="p">)</span>
+
+    <span class="k">for</span> <span class="n">consequence</span> <span class="ow">in</span> <span class="p">[</span>
+        <span class="s2">&quot;intergenic_consequences&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;motif_feature_consequences&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;regulatory_feature_consequences&quot;</span><span class="p">,</span>
+    <span class="p">]:</span>
+        <span class="n">vep_expr</span> <span class="o">=</span> <span class="n">vep_expr</span><span class="o">.</span><span class="n">annotate</span><span class="p">(</span>
+            <span class="o">**</span><span class="p">{</span><span class="n">consequence</span><span class="p">:</span> <span class="n">vep_expr</span><span class="p">[</span><span class="n">consequence</span><span class="p">]</span><span class="o">.</span><span class="n">map</span><span class="p">(</span><span class="k">lambda</span> <span class="n">x</span><span class="p">:</span> <span class="n">x</span><span class="o">.</span><span class="n">drop</span><span class="p">(</span><span class="s2">&quot;minimised&quot;</span><span class="p">))}</span>
+        <span class="p">)</span>
+    <span class="k">return</span> <span class="n">vep_expr</span></div>
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p></p>
+  </div>
+
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>
