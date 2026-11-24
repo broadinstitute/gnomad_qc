@@ -692,6 +692,26 @@ def compute_all_release_stats_per_ref_site(
     if project == "aou":
         # qual_hists comes back as a length-1 array; unwrap it.
         ht = ht.annotate(qual_hists=ht.qual_hists[0])
+        # get_aou_vds drops this site's variant row but not its reference blocks, so
+        # only samples with no variant call are left; report it as uncovered.
+        is_dropped_site = ht.locus == hl.locus("chr4", 12237652, "GRCh38")
+        gq_hist = ht.qual_hists.qual_hists.gq_hist_all
+        ht = ht.annotate(
+            AN=hl.if_else(is_dropped_site, ht.AN.map(lambda _: hl.int64(0)), ht.AN),
+            qual_hists=hl.if_else(
+                is_dropped_site,
+                hl.struct(
+                    qual_hists=hl.struct(
+                        gq_hist_all=gq_hist.annotate(
+                            bin_freq=gq_hist.bin_freq.map(lambda _: hl.int64(0)),
+                            n_smaller=hl.int64(0),
+                            n_larger=hl.int64(0),
+                        )
+                    )
+                ),
+                ht.qual_hists,
+            ),
+        )
     return ht
 
 
